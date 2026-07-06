@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成小学期项目详细任务分工表 PDF（对齐 GitHub 仓库结构）"""
+"""生成小学期项目详细任务分工表 PDF（详细版）"""
 
 import os
 from datetime import date
@@ -7,18 +7,11 @@ from datetime import date
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import (
-    PageBreak,
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
+from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 OUTPUT = os.path.join(ROOT, "docs", "项目任务分工表.pdf")
@@ -26,338 +19,383 @@ REPO_URL = "https://github.com/niu-spec/face-unlock-monitor"
 FONT_PATH = r"C:\Windows\Fonts\msyh.ttc"
 FONT_NAME = "MicrosoftYaHei"
 
+TEAM = {
+    "A": ("牛雨昊", "组长/前端/Git/部署"),
+    "B": ("苏哲勋", "流媒体/Flask骨架"),
+    "C": ("王梓铭", "AI人脸/开锁"),
+    "D": ("李东礼", "AI区域/异常检测"),
+    "E": ("刘帅华", "Flask业务/数据库"),
+    "F": ("刘澎潮", "专职文档"),
+}
+
 
 def register_font():
-    if os.path.exists(FONT_PATH):
-        pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_PATH, subfontIndex=0))
-        return FONT_NAME
-    raise FileNotFoundError(f"未找到中文字体: {FONT_PATH}")
+    pdfmetrics.registerFont(TTFont(FONT_NAME, FONT_PATH, subfontIndex=0))
+    return FONT_NAME
 
 
-def build_styles(font_name):
+def build_styles(fn):
     return {
-        "title": ParagraphStyle(
-            "title", fontName=font_name, fontSize=18, leading=24,
-            alignment=TA_CENTER, spaceAfter=10, textColor=colors.HexColor("#1a365d"),
-        ),
-        "subtitle": ParagraphStyle(
-            "subtitle", fontName=font_name, fontSize=10, leading=15,
-            alignment=TA_CENTER, spaceAfter=14, textColor=colors.HexColor("#4a5568"),
-        ),
-        "h1": ParagraphStyle(
-            "h1", fontName=font_name, fontSize=14, leading=20,
-            spaceBefore=12, spaceAfter=6, textColor=colors.HexColor("#2c5282"),
-        ),
-        "h2": ParagraphStyle(
-            "h2", fontName=font_name, fontSize=11, leading=16,
-            spaceBefore=8, spaceAfter=4, textColor=colors.HexColor("#2d3748"),
-        ),
-        "body": ParagraphStyle(
-            "body", fontName=font_name, fontSize=9.5, leading=14, spaceAfter=6,
-        ),
-        "small": ParagraphStyle(
-            "small", fontName=font_name, fontSize=8.5, leading=12,
-            textColor=colors.HexColor("#4a5568"),
-        ),
-        "cell": ParagraphStyle("cell", fontName=font_name, fontSize=7.5, leading=11),
-        "cell_bold": ParagraphStyle(
-            "cell_bold", fontName=font_name, fontSize=7.5, leading=11,
-            textColor=colors.HexColor("#1a365d"),
-        ),
+        "title": ParagraphStyle("title", fontName=fn, fontSize=17, leading=22, alignment=TA_CENTER,
+                                spaceAfter=8, textColor=colors.HexColor("#1a365d")),
+        "subtitle": ParagraphStyle("subtitle", fontName=fn, fontSize=9.5, leading=14, alignment=TA_CENTER,
+                                   spaceAfter=12, textColor=colors.HexColor("#4a5568")),
+        "h1": ParagraphStyle("h1", fontName=fn, fontSize=13, leading=18, spaceBefore=10, spaceAfter=5,
+                             textColor=colors.HexColor("#2c5282")),
+        "h2": ParagraphStyle("h2", fontName=fn, fontSize=10.5, leading=15, spaceBefore=7, spaceAfter=4,
+                             textColor=colors.HexColor("#2d3748")),
+        "body": ParagraphStyle("body", fontName=fn, fontSize=9, leading=13, spaceAfter=5),
+        "small": ParagraphStyle("small", fontName=fn, fontSize=8, leading=11, textColor=colors.HexColor("#4a5568")),
+        "cell": ParagraphStyle("cell", fontName=fn, fontSize=6.8, leading=10),
+        "cell_bold": ParagraphStyle("cell_bold", fontName=fn, fontSize=6.8, leading=10,
+                                    textColor=colors.HexColor("#1a365d")),
     }
 
 
-def make_table(data, col_widths, styles, header_rows=1):
-    wrapped = []
+def tbl(data, widths, styles, hdr=1):
+    rows = []
     for r, row in enumerate(data):
-        new_row = []
+        nr = []
         for cell in row:
-            if isinstance(cell, str):
-                style = styles["cell_bold"] if r < header_rows else styles["cell"]
-                text = f"<b>{cell}</b>" if r < header_rows else cell
-                new_row.append(Paragraph(text.replace("\n", "<br/>"), style))
-            else:
-                new_row.append(cell)
-        wrapped.append(new_row)
-
-    table = Table(wrapped, colWidths=col_widths, repeatRows=header_rows)
-    cmds = [
-        ("BACKGROUND", (0, 0), (-1, header_rows - 1), colors.HexColor("#ebf4ff")),
-        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#cbd5e0")),
+            st = styles["cell_bold"] if r < hdr else styles["cell"]
+            txt = f"<b>{cell}</b>" if r < hdr else cell
+            nr.append(Paragraph(txt.replace("\n", "<br/>"), st))
+        rows.append(nr)
+    t = Table(rows, colWidths=widths, repeatRows=hdr)
+    cmd = [
+        ("BACKGROUND", (0, 0), (-1, hdr - 1), colors.HexColor("#ebf4ff")),
+        ("GRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#cbd5e0")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 3),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 2),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 2),
+        ("TOPPADDING", (0, 0), (-1, -1), 2),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
     ]
-    for i in range(header_rows, len(data)):
+    for i in range(hdr, len(data)):
         if i % 2 == 0:
-            cmds.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f7fafc")))
-    table.setStyle(TableStyle(cmds))
-    return table
+            cmd.append(("BACKGROUND", (0, i), (-1, i), colors.HexColor("#f7fafc")))
+    t.setStyle(TableStyle(cmd))
+    return t
+
+
+def person_section(story, styles, code, tasks, col_widths=None):
+    name, role = TEAM[code]
+    story.append(Paragraph(f"{code} — {name}（{role}）", styles["h2"]))
+    if col_widths is None:
+        col_widths = [0.6 * cm, 3.8 * cm, 4.8 * cm, 2.8 * cm, 1.5 * cm, 1.0 * cm]
+    header = ["序号", "任务项", "详细说明", "交付物/验收标准", "截止", "优先级"]
+    story.append(tbl([header] + tasks, col_widths, styles))
+    story.append(Spacer(1, 5))
 
 
 def build_story(styles):
-    story = []
-    story.append(Paragraph("软件工程学期实训 II", styles["title"]))
-    story.append(Paragraph("face-unlock-monitor — 项目任务分工表", styles["title"]))
-    story.append(
-        Paragraph(
-            f"应用场景：人脸识别开锁　|　仓库：{REPO_URL}<br/>"
-            f"分支：main / dev　|　编制日期：{date.today()}",
-            styles["subtitle"],
-        )
-    )
+    s = []
+    s.append(Paragraph("软件工程学期实训 II", styles["title"]))
+    s.append(Paragraph("face-unlock-monitor 项目任务分工表（详细版）", styles["title"]))
+    s.append(Paragraph(
+        f"应用场景：人脸识别开锁　|　{REPO_URL}<br/>"
+        f"团队：牛雨昊、苏哲勋、王梓铭、李东礼、刘帅华、刘澎潮　|　{date.today()}",
+        styles["subtitle"],
+    ))
 
-    # ── 1. 概述 ──
-    story.append(Paragraph("一、项目概述", styles["h1"]))
-    story.append(
-        Paragraph(
-            "本系统为智慧门禁「人脸识别开锁」方案。技术栈：Vue3 + Flask + Nginx-RTMP + MySQL。"
-            "代码托管于 GitHub，目录结构已初始化；各成员按<b>仓库路径</b>认领开发任务，"
-            "在对应 feature 分支提交，由 A 合并至 dev/main。",
-            styles["body"],
-        )
-    )
+    # ── 1 概述 ──
+    s.append(Paragraph("一、项目概述与协作原则", styles["h1"]))
+    s.append(Paragraph(
+        "技术栈：Vue3 + Flask + Nginx-RTMP + MySQL。A 负责前端与 Git；F 专职文档不写代码；"
+        "其余成员按 backend/ 模块开发。开发流程：feature/* → PR → dev → A 合并 main。",
+        styles["body"],
+    ))
+    s.append(tbl([
+        ["原则", "说明"],
+        ["路径唯一", "每个文件只有一个主负责人，协作需提前沟通"],
+        ["先通后优", "7/11 前保证可演示，优化与加分项放后期"],
+        ["文档集中", "F 统一撰写；17:00 各模块口头反馈素材"],
+        ["Commit 规范", "feat(模块): 描述 — 使用真实姓名"],
+        ["联调节点", "7/9 首次联调；7/11 中期演示；7/14 全链路测试"],
+    ], [2.5 * cm, 13 * cm], styles))
+    s.append(Spacer(1, 6))
 
-    # ── 2. GitHub 仓库现状 ──
-    story.append(Paragraph("二、GitHub 仓库现状（已推送）", styles["h1"]))
-    repo_now = [
-        ["路径", "状态", "说明", "负责人"],
-        ["README.md", "✅ 已有", "项目说明、快速开始", "A"],
-        ["CONTRIBUTORS.md", "✅ 已有", "GitHub 昵称 ↔ 真实姓名（待填）", "A"],
-        [".gitignore", "✅ 已有", "Python/Node/venv 忽略规则", "A"],
-        ["backend/app.py", "✅ 已有", "Flask 入口（/health 可测）", "B + E"],
-        ["backend/requirements.txt", "✅ 已有", "Python 依赖清单", "E"],
-        ["backend/blueprints/", "⬜ 空目录", "各 API 模块 Blueprint", "B/C/D/E/A"],
-        ["backend/services/", "⬜ 空目录", "AI 与业务 Service 层", "C/D/E/A"],
-        ["backend/models/", "⬜ 空目录", "SQLAlchemy 数据模型", "E"],
-        ["backend/config.py", "⬜ 待建", "数据库/JWT/RTMP 配置", "E"],
-        ["backend/dat/", "⬜ 待建", "dlib 模型（.gitignore）", "C"],
-        ["frontend/", "⬜ 空目录", "Vue3 工程（待 npm init）", "A"],
-        ["nginx/README.md", "✅ 已有", "RTMP 说明占位", "B"],
-        ["nginx/nginx.conf", "⬜ 待建", "RTMP 9090 + HTTP 反代", "B"],
-        ["deploy/deploy-flask.sh", "✅ 已有", "Flask gunicorn 部署", "A"],
-        ["deploy/deploy-frontend.sh", "✅ 已有", "前端 build + Nginx 重载", "A"],
-        ["docs/总体架构说明.md", "✅ 已有", "总体架构文档", "F 维护"],
-        ["docs/项目任务分工表.pdf", "✅ 已有", "本文档", "F 维护"],
-        ["docs/*.pdf", "✅ 已有", "课程参考 PDF ×5", "—"],
-        ["scripts/", "✅ 已有", "PDF 生成等工具脚本", "A"],
-    ]
-    story.append(make_table(repo_now, [3.2 * cm, 1.3 * cm, 5.5 * cm, 1.5 * cm], styles))
-    story.append(Spacer(1, 6))
+    # ── 2 团队总览 ──
+    s.append(Paragraph("二、团队分工总览", styles["h1"]))
+    s.append(tbl([
+        ["代号", "姓名", "角色", "Git 分支", "核心目录", "工作量"],
+        ["A", "牛雨昊", "组长/前端/Git/部署", "feature/infra\nfeature/frontend", "frontend/ deploy/", "★★★★★"],
+        ["B", "苏哲勋", "流媒体+Flask骨架", "feature/nginx\nfeature/flask-core", "nginx/ video.py app.py", "★★★★"],
+        ["C", "王梓铭", "AI人脸/开锁", "feature/face", "face_service face.py door.py", "★★★★"],
+        ["D", "李东礼", "AI区域/异常", "feature/detection", "detection_service.py", "★★★★"],
+        ["E", "刘帅华", "Flask业务/DB", "feature/business", "models/ auth alerts zones", "★★★★"],
+        ["F", "刘澎潮", "专职文档", "docs/", "飞书文档 docs/", "★★★"],
+    ], [0.7 * cm, 1.2 * cm, 2.3 * cm, 2.3 * cm, 4.5 * cm, 1.0 * cm], styles))
 
-    story.append(Paragraph("2.1 克隆与分支工作流", styles["h2"]))
-    story.append(
-        Paragraph(
-            "<b>克隆：</b>git clone {url} → cd face-unlock-monitor → git checkout dev<br/>"
-            "<b>开发：</b>git checkout -b feature/xxx → 开发 → push → 提 PR 至 dev<br/>"
-            "<b>发布：</b>A 将 dev 合并至 main，打 tag（v0.1-midterm / v1.0-final）".format(url=REPO_URL),
-            styles["body"],
-        )
-    )
+    s.append(PageBreak())
 
-    # ── 3. 团队角色 ──
-    story.append(Paragraph("三、团队成员与 Git 分支", styles["h1"]))
-    story.append(Paragraph("文档类工作<b>全部由 F 负责</b>；前端开发<b>全部由 A 负责</b>。", styles["small"]))
-    role_data = [
-        ["代号", "成员", "角色", "Git 分支", "主要仓库路径"],
-        ["A", "牛雨昊", "组长/前端/Git/部署", "feature/infra\nfeature/frontend", "frontend/、deploy/、logs.py、replay.py"],
-        ["B", "苏哲勋", "流媒体+Flask骨架", "feature/nginx\nfeature/flask-core", "nginx/、backend/app.py、blueprints/video.py"],
-        ["C", "王梓铭", "AI人脸/开锁", "feature/face", "backend/services/face_service.py、blueprints/face.py、door.py"],
-        ["D", "李东礼", "AI区域/异常", "feature/detection", "backend/services/detection_service.py"],
-        ["E", "刘帅华", "Flask业务/DB", "feature/business", "backend/models/、blueprints/auth|users|zones|alerts.py"],
-        ["F", "刘澎潮", "专职文档专员", "docs/", "docs/、飞书文档（全部文档，不写代码）"],
-    ]
-    story.append(make_table(role_data, [0.8 * cm, 1.3 * cm, 2.2 * cm, 2.2 * cm, 5 * cm], styles))
-    story.append(Spacer(1, 6))
+    # ── 3 各人详细任务 ──
+    s.append(Paragraph("三、成员详细任务清单", styles["h1"]))
+    s.append(Paragraph("每项任务均含验收标准。完成后在晨会汇报并在 GitHub 提交对应代码。", styles["small"]))
 
-    # ── 4. 按仓库路径分配任务（核心） ──
-    story.append(Paragraph("四、按 GitHub 目录分配开发任务", styles["h1"]))
+    person_section(s, styles, "A", [
+        ["1", "邀请 GitHub Collaborator", "Settings→Collaborators 添加 5 人 Write 权限", "6 人均可 push", "7/6", "P0"],
+        ["2", "完善 CONTRIBUTORS.md", "补全 B–F 的 GitHub 昵称", "6 人信息完整", "7/6", "P0"],
+        ["3", "Vue3 工程初始化", "npm create vue@latest；装 Element Plus、Axios、Router", "npm run dev 可访问", "7/7", "P0"],
+        ["4", "vite.config.js 代理", "proxy: /api、/video_feed → localhost:5000", "前端无 CORS 报错", "7/9", "P0"],
+        ["5", "Login.vue", "用户名密码登录；Token 存 localStorage；路由守卫", "登录成功跳转主页", "7/9", "P0"],
+        ["6", "DoorMonitor.vue", "MJPEG 视频 img；轮询 door/status；展示门锁", "可看到实时视频", "7/11", "P0"],
+        ["7", "DoorLock.vue", "三态：locked/unlocked/denied 图标+动画", "识别成功变绿开锁", "7/11", "P0"],
+        ["8", "FaceRegister.vue", "getUserMedia 摄像头；canvas 截图 base64 上传", "注册成功提示", "7/10", "P0"],
+        ["9", "ZoneEditor.vue", "Canvas 画多边形；保存 points 至 /api/zones", "区域可保存回显", "7/10", "P1"],
+        ["10", "AlertCenter.vue", "告警列表分页；处置按钮 PUT handle", "可查看并处置告警", "7/12", "P0"],
+        ["11", "AccessLog.vue", "展示通行记录表格", "显示开锁/拒绝记录", "7/13", "P1"],
+        ["12", "api/*.js 封装", "auth/face/door/alerts/zones/access 模块", "Axios 统一拦截器", "7/9", "P0"],
+        ["13", "snapshot_service.py", "告警时 cv2.imwrite 保存截图", "alert 含 snapshot_path", "7/11", "P0"],
+        ["14", "logs.py", "GET /api/logs 分页查告警日志", "Swagger 可测", "7/12", "P0"],
+        ["15", "replay.py", "GET /api/replay/{id} 返回截图+录像路径", "前端可查看回放", "7/13", "P1"],
+        ["16", "deploy 脚本完善", "服务器实测 deploy-flask/frontend.sh", "一键部署成功", "7/10", "P0"],
+        ["17", "merge dev→main", "中期/结题打 tag v0.1/v1.0", "GitHub Releases 可见", "7/11/15", "P0"],
+        ["18", "【可选】Jenkins", "Docker 8099 + Webhook", "push 自动部署", "7/12", "P2"],
+    ])
 
-    story.append(Paragraph("4.1 backend/ — Flask 后端", styles["h2"]))
-    backend_files = [
-        ["文件路径", "负责人", "优先级", "任务说明", "截止"],
-        ["backend/app.py", "B", "P0", "注册所有 Blueprint、CORS、DB 初始化", "7/7"],
-        ["backend/config.py", "E", "P0", "MySQL URI、JWT Secret、RTMP 地址", "7/7"],
-        ["backend/blueprints/video.py", "B", "P0", "GET /video_feed/{id} MJPEG 拉流", "7/8"],
-        ["backend/blueprints/face.py", "C", "P0", "POST /api/face/register", "7/9"],
-        ["backend/blueprints/door.py", "C+E", "P0", "POST /api/door/unlock、GET /api/door/status", "7/10"],
-        ["backend/blueprints/auth.py", "E", "P0", "POST /api/auth/login JWT", "7/9"],
-        ["backend/blueprints/users.py", "E", "P1", "用户 CRUD", "7/10"],
-        ["backend/blueprints/zones.py", "E", "P0", "门禁区域 CRUD", "7/9"],
-        ["backend/blueprints/alerts.py", "E", "P0", "告警列表/写入/处置", "7/11"],
-        ["backend/blueprints/access.py", "E", "P0", "GET /api/access/logs 通行记录", "7/11"],
-        ["backend/blueprints/logs.py", "A", "P0", "GET /api/logs 监控日志", "7/12"],
-        ["backend/blueprints/replay.py", "A", "P1", "GET /api/replay/{alert_id}", "7/13"],
-        ["backend/services/face_service.py", "C", "P0", "dlib 检测/编码/比对", "7/10"],
-        ["backend/services/detection_service.py", "D", "P0", "HOG+区域+尾随+徘徊", "7/12"],
-        ["backend/services/alert_service.py", "E", "P0", "告警统一写入", "7/10"],
-        ["backend/services/snapshot_service.py", "A", "P0", "告警截图保存", "7/11"],
-        ["backend/models/user.py", "E", "P0", "用户表模型", "7/7"],
-        ["backend/models/zone.py", "E", "P0", "门禁区域表", "7/9"],
-        ["backend/models/alert.py", "E", "P0", "告警表", "7/9"],
-        ["backend/models/access_log.py", "E", "P0", "通行记录表", "7/11"],
-        ["backend/registered_faces.json", "C", "P0", "人脸特征库（gitignore）", "7/9"],
-        ["backend/requirements.txt", "E", "P0", "补充 flask-restx 等依赖", "7/7"],
-    ]
-    story.append(make_table(backend_files, [3.5 * cm, 1 * cm, 0.8 * cm, 4.2 * cm, 1.2 * cm], styles))
+    person_section(s, styles, "B", [
+        ["1", "租用云服务器", "Ubuntu；放行 80/9090/5000/22", "SSH 可登录", "7/6", "P0"],
+        ["2", "安装依赖包", "build-essential libpcre3-dev libssl-dev 等", "apt 无报错", "7/6", "P0"],
+        ["3", "编译 Nginx-RTMP", "按任务说明书 configure + make install", "9090 端口监听", "7/7", "P0"],
+        ["4", "nginx/nginx.conf", "RTMP live app；record flv；HTTP 9091/9092", "推流后 VLC 可拉", "7/7", "P0"],
+        ["5", "推流测试", "OBS/手机推 rtmp://IP:9090/live/1", "9092 可看录像列表", "7/7", "P0"],
+        ["6", "app.py 骨架", "注册 Blueprint、CORS、create_app 工厂模式", "import 无报错", "7/7", "P0"],
+        ["7", "video.py", "cv2.VideoCapture 拉 RTMP；frame_skip=5；MJPEG", "浏览器可看 /video_feed/1", "7/8", "P0"],
+        ["8", "多路流支持", "live/1、live/2 不同 stream_id", "前端可切换", "7/9", "P0"],
+        ["9", "gen_frames 框架", "预留 hook 供 C/D 注入 AI 处理", "帧上可画框", "7/10", "P0"],
+        ["10", "生产 Nginx 反代", "80 端口：/api→5000 /video_feed→5000 /→dist", "统一域名访问", "7/13", "P1"],
+        ["11", "协助 Jenkins", "挂载 /service；配合 A 配 Webhook", "CI 可构建", "7/12", "P2"],
+    ])
 
-    story.append(Paragraph("4.2 frontend/ — Vue3 前端", styles["h2"]))
-    frontend_files = [
-        ["文件路径", "负责人", "优先级", "任务说明", "截止"],
-        ["frontend/package.json", "A", "P0", "npm create vue@latest 初始化", "7/7"],
-        ["frontend/vite.config.js", "A", "P0", "proxy /api、/video_feed → :5000", "7/9"],
-        ["frontend/src/views/Login.vue", "A", "P0", "登录页", "7/9"],
-        ["frontend/src/views/DoorMonitor.vue", "A", "P0", "门禁主页：视频+门锁", "7/11"],
-        ["frontend/src/components/DoorLock.vue", "A", "P0", "门锁状态（开/锁/拒绝）", "7/11"],
-        ["frontend/src/views/FaceRegister.vue", "A", "P0", "摄像头人脸录入", "7/10"],
-        ["frontend/src/views/ZoneEditor.vue", "A", "P1", "Canvas 画门禁区域", "7/10"],
-        ["frontend/src/views/AlertCenter.vue", "A", "P0", "告警列表+处置", "7/12"],
-        ["frontend/src/views/AccessLog.vue", "A", "P1", "通行记录页", "7/13"],
-        ["frontend/src/api/*.js", "A", "P0", "Axios 封装各 API", "7/9"],
-    ]
-    story.append(make_table(frontend_files, [3.8 * cm, 1 * cm, 0.8 * cm, 3.9 * cm, 1.2 * cm], styles))
+    person_section(s, styles, "C", [
+        ["1", "Conda 环境", "python=3.10；conda-forge 装 dlib", "import dlib 成功", "7/6", "P0"],
+        ["2", "下载模型", "shape_predictor_68 + resnet 放 backend/dat/", "dat/ 两文件存在", "7/7", "P0"],
+        ["3", "face_service 初始化", "detector/sp/facerec 加载；load_registered_faces", "单测可检测人脸", "7/7", "P0"],
+        ["4", "静态图 demo", "本地图片检测+编码", "立项可演示", "7/8", "P0"],
+        ["5", "face.py register", "POST {user_id,image} base64；存 JSON", "Swagger/Postman 201", "7/9", "P0"],
+        ["6", "实时识别", "gen_frames 中灰度→检测→128维比对", "视频流有框", "7/10", "P0"],
+        ["7", "识别成功逻辑", "tolerance=0.4；绿框+姓名", "熟人显示学号", "7/10", "P0"],
+        ["8", "陌生人逻辑", "红框+Stranger；调 alert_service", "告警 FACE_UNKNOWN", "7/11", "P0"],
+        ["9", "door unlock 联动", "识别成功调 door_service.unlock", "前端门锁变开", "7/10", "P0"],
+        ["10", "registered_faces.json", "初始 {}；与用户 ID 绑定", "重启后数据仍在", "7/9", "P0"],
+        ["11", "【可选】活体检测", "眨眼/随机动作序列", "照片无法开锁", "7/14", "P2"],
+    ])
 
-    story.append(Paragraph("4.3 nginx/ + deploy/ — 部署", styles["h2"]))
-    deploy_files = [
-        ["文件路径", "负责人", "优先级", "任务说明", "截止"],
-        ["nginx/nginx.conf", "B", "P0", "RTMP 9090 + HTTP 80 反代", "7/7"],
-        ["deploy/deploy-flask.sh", "A", "P0", "完善 gunicorn 启动逻辑", "7/10"],
-        ["deploy/deploy-frontend.sh", "A", "P0", "完善 npm build + rsync", "7/10"],
-        ["deploy/docker-compose.yml", "A", "P2", "【可选】Jenkins 容器", "7/12"],
-    ]
-    story.append(make_table(deploy_files, [3.5 * cm, 1 * cm, 0.8 * cm, 4.2 * cm, 1.2 * cm], styles))
+    s.append(PageBreak())
 
-    story.append(Paragraph("4.4 docs/ + 根目录 — 文档与规范", styles["h2"]))
-    docs_files = [
-        ["文件路径", "负责人", "优先级", "任务说明", "截止"],
-        ["CONTRIBUTORS.md", "A", "P0", "填写 6 人 GitHub 昵称与姓名", "7/6"],
-        ["docs/总体架构说明.md", "F", "P0", "随开发更新架构章节", "持续"],
-        ["docs/项目任务分工表.pdf", "F", "P0", "本文档，随分工更新", "7/6"],
-        ["飞书：工作日报-MMDD", "F", "P0", "每日撰写提交", "7/6 起"],
-        ["飞书：需求设计文档 v1.0", "F", "P0", "立项评审", "7/8 中午"],
-        ["飞书：需求设计文档 v2.0", "F", "P0", "中期评审", "7/11 中午"],
-        ["飞书：需求设计文档 v3.0", "F", "P0", "结题材料", "7/15"],
-        ["演示视频 MP4", "F", "P0", "5–10 分钟功能演示", "7/14"],
-        ["GitHub Insights 截图", "A→F", "P0", "Contributors/Network 截图嵌入 v3.0", "7/14"],
-    ]
-    story.append(make_table(docs_files, [3.5 * cm, 1 * cm, 0.8 * cm, 4.2 * cm, 1.2 * cm], styles))
+    person_section(s, styles, "D", [
+        ["1", "检测方案文档", "尾随+徘徊算法说明 500 字给 F", "F 写入 v1.0", "7/7", "P0"],
+        ["2", "detection_service 框架", "类结构：load_zones/process_frame", "B 可 import 调用", "7/9", "P0"],
+        ["3", "HOG 行人检测", "cv2.HOGDescriptor 默认行人器", "视频帧检出 person 框", "7/10", "P0"],
+        ["4", "区域读取", "从 E 的 zones API 或 DB 读多边形", "能获取 points_json", "7/10", "P0"],
+        ["5", "点-in-多边形", "射线法判断行人中心是否在区域内", "单元测试通过", "7/11", "P0"],
+        ["6", "闯入告警 INTRUSION", "未识别成功+进入区域→alert", "告警中心可见", "7/11", "P0"],
+        ["7", "过近告警 PROXIMITY", "距边缘 < safe_distance(px)", "阈值可配置", "7/12", "P0"],
+        ["8", "停留告警 LOITER", "门前 dwell_time 秒未认证", "超时触发告警", "7/13", "P0"],
+        ["9", "尾随 TAILGATE", "同帧>1人脸或 unlock 后 3s 新人脸", "alert type=TAILGATE", "7/12", "P0"],
+        ["10", "徘徊（与LOITER合并）", "文档中说明与停留检测关系", "满足 2 种异常", "7/13", "P0"],
+        ["11", "【可选】YOLOv8n", "ultralytics 替换 HOG", "检测更准", "7/14", "P2"],
+    ])
 
-    story.append(PageBreak())
+    person_section(s, styles, "E", [
+        ["1", "config.py", "Dev/Prod 配置类；SQLALCHEMY_DATABASE_URI", "Flask 读配置正常", "7/7", "P0"],
+        ["2", "models/user.py", "username/password_hash/student_id/role", "migrate 建表成功", "7/7", "P0"],
+        ["3", "models/zone.py", "name/stream_id/points_json/safe_distance/dwell_time", "CRUD 可用", "7/9", "P0"],
+        ["4", "models/alert.py", "type/level/stream_id/status/snapshot_path", "可写入查询", "7/9", "P0"],
+        ["5", "models/access_log.py", "user_id/result/stream_id/created_at", "开锁自动写入", "7/11", "P0"],
+        ["6", "auth.py login", "POST {username,password}→JWT", "返回 access_token", "7/9", "P0"],
+        ["7", "users.py CRUD", "管理员增删改查用户", "Swagger 文档完整", "7/10", "P1"],
+        ["8", "zones.py CRUD", "GET/POST/PUT/DELETE /api/zones", "A 前端可调用", "7/9", "P0"],
+        ["9", "alert_service.py", "create_alert(type,desc,...) 供 C/D 调用", "内部函数不写 HTTP", "7/10", "P0"],
+        ["10", "alerts.py API", "GET 列表分页；PUT handle；POST 内部写入", "告警中心联调", "7/11", "P0"],
+        ["11", "door.py status", "GET /api/door/status 返回 locked/unlocked", "A 轮询可用", "7/10", "P0"],
+        ["12", "access.py logs", "GET /api/access/logs 通行记录", "AccessLog.vue 展示", "7/11", "P0"],
+        ["13", "flask-restx Swagger", "app.py 注册 Api；各 Blueprint 加 doc", "/api/docs 可访问", "7/11", "P1"],
+        ["14", "requirements.txt", "补充 flask-sqlalchemy/jwt/cors/restx/pymysql", "pip install 成功", "7/7", "P0"],
+        ["15", "MySQL 部署", "服务器建库建表；提供连接串给 B", "生产 DB 可用", "7/13", "P0"],
+    ])
 
-    # ── 5. 验收分值 ──
-    story.append(Paragraph("五、验收分值与场景映射", styles["h1"]))
-    score_data = [
-        ["模块", "分值", "门禁场景实现", "主要路径"],
-        ["人脸识别", "12", "注册+识别+开锁/拒开+陌生人告警", "face_service.py、door.py"],
-        ["目标检测", "25", "门禁区闯入/过近/停留", "detection_service.py、zones.py"],
-        ["视频检测", "20", "尾随 TAILGATE + 徘徊 LOITER", "detection_service.py"],
-        ["告警中心", "8", "展示+处置+日志+回放", "alerts.py、AlertCenter.vue、replay.py"],
-        ["项目基础", "3", "GitHub 分支/Network/Contributors", "CONTRIBUTORS.md、Insights"],
-        ["Swagger 可选", "+3", "flask-restx /api/docs", "app.py"],
-        ["CI/CD 可选", "+4", "Jenkins + Webhook", "deploy/"],
-        ["文档", "10", "日报+设计文档+演示视频", "docs/、飞书"],
-    ]
-    story.append(make_table(score_data, [2.5 * cm, 1 * cm, 5.5 * cm, 4.5 * cm], styles))
-    story.append(Spacer(1, 8))
+    person_section(s, styles, "F", [
+        ["1", "文档模板", "从飞书复制 PRD 模板建目录", "章节框架完整", "7/6", "P0"],
+        ["2", "工作日报", "计划/进展/待办/效果；每晚提交", "工作日报-MMDD", "7/6起", "P0"],
+        ["3", "v1.0 背景目标", "门禁场景+项目意义", "7/8 立项", "7/7", "P0"],
+        ["4", "v1.0 需求分析", "素材：C/D 功能说明", "功能列表+用例", "7/7", "P0"],
+        ["5", "v1.0 技术方案", "素材：B/E 架构说明", "架构图+技术栈", "7/7", "P0"],
+        ["6", "v1.0 分工", "本文档 PDF 嵌入", "6 人职责清晰", "7/8", "P0"],
+        ["7", "v2.0 概要设计", "模块划分+接口+库表", "中期评审", "7/11", "P0"],
+        ["8", "v3.0 最终文档", "测试+部署+总结", "结题提交", "7/15", "P0"],
+        ["9", "总结报告", "汇总 6 人个人总结各 1 页", "项目组总结", "7/15", "P0"],
+        ["10", "演示视频", "5–10min：注册→刷脸→告警→区域", "MP4 上传", "7/14", "P0"],
+        ["11", "维护 docs/", "架构说明.md 随版本更新", "与代码一致", "持续", "P1"],
+    ])
 
-    # ── 6. A 与 F 专项 ──
-    story.append(Paragraph("六、组长 A 具体开发任务（含前端）", styles["h1"]))
-    a_tasks = [
-        ["任务", "仓库路径", "截止"],
-        ["邀请 5 名组员为 GitHub Collaborator", "Settings → Collaborators", "7/6"],
-        ["填写 CONTRIBUTORS.md", "CONTRIBUTORS.md", "7/6"],
-        ["Vue3 工程初始化 + 全部前端页面", "frontend/", "7/7–7/13"],
-        ["前后端联调（vite proxy + API）", "frontend/vite.config.js", "7/9"],
-        ["完善 deploy 脚本并在服务器验证", "deploy/*.sh", "7/10"],
-        ["snapshot_service 告警截图", "backend/services/snapshot_service.py", "7/11"],
-        ["logs / replay Blueprint", "backend/blueprints/logs.py、replay.py", "7/13"],
-        ["dev → main 合并 + 打 tag", "GitHub Releases", "7/11/7/15"],
-        ["【可选】Jenkins Docker + Webhook", "deploy/docker-compose.yml", "7/12"],
-    ]
-    story.append(make_table(a_tasks, [4.5 * cm, 5 * cm, 1.8 * cm], styles))
-    story.append(Spacer(1, 6))
+    s.append(PageBreak())
 
-    story.append(Paragraph("七、文档专员 F 全部文档任务", styles["h1"]))
-    story.append(Paragraph("以下<b>仅 F 撰写提交</b>，其他人 17:00 前口头反馈素材。", styles["small"]))
-    f_tasks = [
-        ["文档", "截止", "素材来源"],
-        ["工作日报（飞书）", "每晚", "全组"],
-        ["v1.0 需求设计文档", "7/8 中午", "B/C/D/E/A"],
-        ["v2.0 需求设计文档", "7/11 中午", "全组"],
-        ["v3.0 最终文档", "7/15", "全组"],
-        ["项目组总结报告", "7/15", "每人 1 页个人总结"],
-        ["系统演示视频", "7/14", "全组配合操作"],
-    ]
-    story.append(make_table(f_tasks, [4 * cm, 2 * cm, 6.5 * cm], styles))
+    # ── 4 模块验收 ──
+    s.append(Paragraph("四、功能模块验收标准（对照任务清单）", styles["h1"]))
 
-    story.append(PageBreak())
+    s.append(Paragraph("4.1 人脸识别开锁（12 分）", styles["h2"]))
+    s.append(tbl([
+        ["验收项", "负责人", "验收操作", "通过标准"],
+        ["人脸注册", "C+A", "FaceRegister 页录入", "registered_faces 有记录"],
+        ["实时识别", "C+B", "视频流刷脸", "熟人绿框+姓名"],
+        ["开锁", "C+E+A", "熟人刷脸", "DoorLock 变 unlocked"],
+        ["拒开", "C+E+A", "陌生人刷脸", "DoorLock 变 denied"],
+        ["陌生人告警", "C+E", "查告警中心", "type=FACE_UNKNOWN"],
+        ["通行记录", "E+A", "AccessLog 页", "unlock/denied 有记录"],
+    ], [2.5 * cm, 1.5 * cm, 4 * cm, 4.5 * cm], styles))
 
-    # ── 8. 日程 ──
-    story.append(Paragraph("八、按日进度（7/6 — 7/15）", styles["h1"]))
-    daily = [
-        ["日期", "节点", "A", "B", "C", "D", "E", "F"],
-        ["7/6", "启动", "Collaborators\nnpm init", "租服务器", "装 dlib", "检测方案", "config.py\nmodels/", "文档框架"],
-        ["7/7", "环境", "deploy\n前端骨架", "nginx.conf\nRTMP", "dat/ 模型", "方案给 F", "auth 设计", "v1.0 草稿"],
-        ["7/8", "立项", "Login 原型", "video.py\ndemo", "人脸 demo", "—", "素材给 F", "提交 v1.0"],
-        ["7/9", "联调", "Login.vue\n联调", "MJPEG 通", "face/register", "—", "login API", "写日报"],
-        ["7/10", "核心", "FaceRegister", "app.py 完善", "识别+unlock", "HOG demo", "alerts 表", "写日报"],
-        ["7/11", "中期", "DoorMonitor\nmerge main", "联调", "陌生人告警", "区域检测", "Swagger", "提交 v2.0"],
-        ["7/12", "完善", "AlertCenter\nlogs API", "Nginx 反代", "—", "闯入/过近", "告警 CRUD", "写日报"],
-        ["7/13", "部署", "build+部署\nreplay API", "生产部署", "—", "尾随/徘徊", "DB 部署", "写日报"],
-        ["7/14", "测试", "UI 走查\nGit 截图", "压测", "准确率", "告警测试", "Swagger 导出", "v3.0+视频"],
-        ["7/15", "结题", "前端演示\n材料打包", "推流保障", "演示", "演示", "后端保障", "提交文档"],
-    ]
-    story.append(make_table(daily, [1.1 * cm, 1.2 * cm, 1.85 * cm, 1.85 * cm, 1.85 * cm, 1.85 * cm, 1.85 * cm, 1.85 * cm], styles))
-    story.append(Spacer(1, 8))
+    s.append(Paragraph("4.2 目标检测 — 门禁区域（25 分）", styles["h2"]))
+    s.append(tbl([
+        ["验收项", "负责人", "验收操作", "通过标准"],
+        ["区域配置", "E+A", "ZoneEditor 画框保存", "zones 表有数据"],
+        ["闯入检测", "D", "未授权进入区域", "INTRUSION 告警"],
+        ["过近检测", "D", "靠近边缘<Xpx", "PROXIMITY 告警"],
+        ["停留检测", "D", "门前停留>X秒", "LOITER 告警"],
+        ["参数可配", "E+D", "修改 zone 阈值", "无需改代码"],
+    ], [2.5 * cm, 1.5 * cm, 4 * cm, 4.5 * cm], styles))
 
-    # ── 9. 接口速查 ──
-    story.append(Paragraph("九、API 与文件对应速查", styles["h1"]))
-    api_data = [
-        ["接口", "方法", "Blueprint 文件", "负责人"],
-        ["/video_feed/{id}", "GET", "blueprints/video.py", "B"],
-        ["/api/face/register", "POST", "blueprints/face.py", "C"],
-        ["/api/door/unlock", "POST", "blueprints/door.py", "C+E"],
-        ["/api/door/status", "GET", "blueprints/door.py", "E"],
-        ["/api/auth/login", "POST", "blueprints/auth.py", "E"],
-        ["/api/zones", "CRUD", "blueprints/zones.py", "E"],
-        ["/api/alerts", "GET/POST", "blueprints/alerts.py", "E"],
-        ["/api/access/logs", "GET", "blueprints/access.py", "E"],
-        ["/api/logs", "GET", "blueprints/logs.py", "A"],
-        ["/api/replay/{id}", "GET", "blueprints/replay.py", "A"],
-        ["/api/docs", "GET", "app.py (flask-restx)", "E"],
-    ]
-    story.append(make_table(api_data, [3.2 * cm, 1.2 * cm, 3.8 * cm, 1.3 * cm], styles))
-    story.append(Spacer(1, 8))
+    s.append(Paragraph("4.3 视频异常检测（20 分，≥2 种）", styles["h2"]))
+    s.append(tbl([
+        ["验收项", "负责人", "验收操作", "通过标准"],
+        ["尾随 TAILGATE", "D", "unlock 后第二人出现", "告警触发"],
+        ["徘徊 LOITER", "D", "未认证停留超时", "告警触发"],
+    ], [2.5 * cm, 1.5 * cm, 4 * cm, 4.5 * cm], styles))
 
-    # ── 10. 协作 ──
-    story.append(Paragraph("十、协作规范", styles["h1"]))
-    story.append(
-        Paragraph(
-            "• <b>9:00 晨会</b>（A 主持）：昨日完成 / 今日计划 / 阻塞<br/>"
-            "• <b>17:00</b>：各模块向 F 反馈文档素材<br/>"
-            "• <b>Commit 规范</b>：feat/fix/docs: 描述（使用真实姓名）<br/>"
-            "• <b>PR 流程</b>：feature/* → dev（Review）→ main（A merge）<br/>"
-            "• <b>禁止</b>：直接 push main；F 以外成员修改最终文档；非 A 成员修改 frontend/",
-            styles["body"],
-        )
-    )
-    story.append(Spacer(1, 10))
-    story.append(Paragraph(f"仓库地址：{REPO_URL}", styles["subtitle"]))
-    story.append(Paragraph("— 项目组：牛雨昊、苏哲勋、王梓铭、李东礼、刘帅华、刘澎潮 —", styles["subtitle"]))
-    return story
+    s.append(Paragraph("4.4 告警中心（8 分）", styles["h2"]))
+    s.append(tbl([
+        ["验收项", "负责人", "验收操作", "通过标准"],
+        ["列表展示", "E+A", "AlertCenter 页", "分页可见所有告警"],
+        ["告警处置", "E+A", "点击处置", "status→handled"],
+        ["监控日志", "A+E", "GET /api/logs", "可查询历史"],
+        ["事件回放", "A", "replay 页/API", "可看截图"],
+    ], [2.5 * cm, 1.5 * cm, 4 * cm, 4.5 * cm], styles))
+
+    s.append(PageBreak())
+
+    # ── 5 API 详细 ──
+    s.append(Paragraph("五、API 接口详细说明", styles["h1"]))
+    s.append(tbl([
+        ["接口", "方法", "负责人", "请求/响应要点"],
+        ["/video_feed/{id}", "GET", "B", "MJPEG 流；无需 JSON"],
+        ["/api/auth/login", "POST", "E", "入:{username,password} 出:{access_token}"],
+        ["/api/face/register", "POST", "C", "入:{user_id,image(base64)} 出:{message}"],
+        ["/api/door/unlock", "POST", "C+E", "入:{user_id,stream_id} 内部调用；写 access_log"],
+        ["/api/door/status", "GET", "E", "出:{status:locked|unlocked|denied}"],
+        ["/api/zones", "CRUD", "E", "points_json:[[x,y],...] safe_distance dwell_time"],
+        ["/api/alerts", "GET", "E", "参:page,type,status 出:分页列表"],
+        ["/api/alerts", "POST", "E", "内部:C/D 调用 create_alert"],
+        ["/api/alerts/{id}/handle", "PUT", "E", "出:handled_at 更新"],
+        ["/api/access/logs", "GET", "E", "出:通行记录列表"],
+        ["/api/logs", "GET", "A", "监控日志查询"],
+        ["/api/replay/{id}", "GET", "A", "出:snapshot_url, video_path"],
+        ["/api/docs", "GET", "E", "Swagger UI"],
+    ], [3 * cm, 1 * cm, 1 * cm, 7.5 * cm], styles))
+
+    s.append(Spacer(1, 6))
+    s.append(Paragraph("5.1 告警类型枚举", styles["h2"]))
+    s.append(tbl([
+        ["type 值", "含义", "触发模块", "负责人"],
+        ["FACE_UNKNOWN", "陌生人", "face_service", "C"],
+        ["INTRUSION", "闯入区域", "detection_service", "D"],
+        ["PROXIMITY", "距边缘过近", "detection_service", "D"],
+        ["LOITER", "停留超时", "detection_service", "D"],
+        ["TAILGATE", "尾随进入", "detection_service", "D"],
+    ], [2.5 * cm, 2 * cm, 3 * cm, 1.5 * cm], styles))
+
+    s.append(PageBreak())
+
+    # ── 6 日程详细 ──
+    s.append(Paragraph("六、按日详细进度（7/6 — 7/15）", styles["h1"]))
+    s.append(tbl([
+        ["日期", "节点", "牛雨昊(A)", "苏哲勋(B)", "王梓铭(C)", "李东礼(D)", "刘帅华(E)", "刘澎潮(F)"],
+        ["7/6", "启动", "Collaborators\nVue init", "租服务器\n装依赖", "Conda+dlib", "写检测方案", "config\nuser模型", "文档模板\n日报"],
+        ["7/7", "环境", "路由布局\nElement Plus", "Nginx-RTMP\n推流通", "下载模型\ndemo", "方案给F\nservice框架", "zone/alert模型\nrequirements", "v1.0草稿"],
+        ["7/8", "立项", "Login原型", "video.py\nMJPEG", "静态人脸demo", "—", "素材给F", "提交v1.0\n答辩"],
+        ["7/9", "联调①", "Login.vue\napi封装", "多路流", "face/register", "读zones", "login API\nzones API", "日报"],
+        ["7/10", "核心", "FaceRegister\nZoneEditor", "gen_frames框架", "实时识别\nunlock", "HOG检测", "alert_service\nalerts表", "日报"],
+        ["7/11", "中期", "DoorMonitor\nmerge main", "联调保障", "陌生人告警", "闯入检测", "Swagger\nalerts API", "提交v2.0"],
+        ["7/12", "完善", "AlertCenter\nlogs API", "Nginx反代", "—", "过近+尾随", "告警CRUD", "日报"],
+        ["7/13", "部署", "build部署\nreplay", "生产环境", "AI部署", "停留检测", "MySQL部署", "v3.0草稿"],
+        ["7/14", "测试", "UI走查\nGit截图", "稳定性", "准确率", "告警测试", "导出Swagger", "视频+v3.0"],
+        ["7/15", "结题", "演示+打包", "推流保障", "人脸演示", "检测演示", "后端保障", "提交全部文档"],
+    ], [0.9 * cm, 0.9 * cm, 1.75 * cm, 1.75 * cm, 1.75 * cm, 1.75 * cm, 1.75 * cm, 1.75 * cm], styles))
+
+    s.append(Spacer(1, 6))
+    s.append(Paragraph("6.1 里程碑检查清单", styles["h2"]))
+    s.append(tbl([
+        ["里程碑", "时间", "必达项", "负责人"],
+        ["立项", "7/8 下午", "v1.0+推流demo+人脸静态demo+仓库链接", "F+A+B+C"],
+        ["中期", "7/11 下午", "v2.0+登录+视频+人脸注册+识别+区域API", "F+全组"],
+        ["结题", "7/15", "全功能部署+文档+视频+Git截图", "F+A+全组"],
+    ], [2 * cm, 2 * cm, 6.5 * cm, 2 * cm], styles))
+
+    s.append(PageBreak())
+
+    # ── 7 依赖关系 ──
+    s.append(Paragraph("七、任务依赖关系（阻塞项）", styles["h1"]))
+    s.append(tbl([
+        ["下游任务", "依赖上游", "说明"],
+        ["A Login.vue", "E login API", "7/9 前 E 必须提供接口"],
+        ["A DoorMonitor", "B video_feed + E door/status", "视频+状态接口"],
+        ["A FaceRegister", "C face/register", "7/10 联调"],
+        ["C 实时识别", "B gen_frames 框架", "B 7/10 前留 hook"],
+        ["C unlock", "E door_service + access_log", "E 7/10 前就绪"],
+        ["D 区域检测", "E zones API + B 视频帧", "区域数据+帧输入"],
+        ["D 告警", "E alert_service", "统一写库"],
+        ["F v1.0", "B/C/D/E 7/7 素材", "延期则文档延期"],
+        ["全员部署", "B 服务器 + A deploy", "7/13 集成"],
+    ], [3.5 * cm, 3.5 * cm, 5.5 * cm], styles))
+
+    s.append(Spacer(1, 6))
+    s.append(Paragraph("7.1 联调时间表", styles["h2"]))
+    s.append(tbl([
+        ["时间", "参与人", "内容", "地点/方式"],
+        ["7/9 15:00", "A+E", "登录 API 联调", "本地/远程"],
+        ["7/9 16:00", "A+B", "视频流 MJPEG 展示", "浏览器"],
+        ["7/10 15:00", "A+C", "人脸注册+识别", "前后端"],
+        ["7/10 16:00", "C+E", "开锁+通行记录", "API"],
+        ["7/11 10:00", "全组", "中期演示彩排", "服务器"],
+        ["7/12 15:00", "A+D+E", "告警+区域联调", "AlertCenter"],
+        ["7/14 10:00", "全组", "结题彩排", "服务器"],
+    ], [2 * cm, 2 * cm, 4.5 * cm, 3 * cm], styles))
+
+    # ── 8 仓库结构 ──
+    s.append(Paragraph("八、GitHub 仓库目录（当前+目标）", styles["h1"]))
+    s.append(tbl([
+        ["路径", "状态", "目标内容", "负责人"],
+        ["frontend/src/views/*.vue", "⬜", "6 个页面组件", "牛雨昊"],
+        ["frontend/src/api/*.js", "⬜", "6 个 API 模块", "牛雨昊"],
+        ["backend/blueprints/*.py", "⬜", "11 个 Blueprint", "见第三节"],
+        ["backend/services/*.py", "⬜", "4 个 Service", "C/D/E/A"],
+        ["backend/models/*.py", "⬜", "4 个 Model", "刘帅华"],
+        ["nginx/nginx.conf", "⬜", "RTMP+反代", "苏哲勋"],
+        ["deploy/*.sh", "✅", "完善并实测", "牛雨昊"],
+        ["docs/", "✅", "架构说明+分工表", "刘澎潮"],
+    ], [3.5 * cm, 0.8 * cm, 4.5 * cm, 2.7 * cm], styles))
+
+    s.append(Spacer(1, 8))
+    s.append(Paragraph("九、协作规范", styles["h1"]))
+    s.append(Paragraph(
+        "• 9:00 晨会（牛雨昊主持）　• 17:00 向刘澎潮反馈文档素材　• PR 审查：A 审 frontend，E 审 business<br/>"
+        "• 禁止直接 push main　• 阻塞超过 2 小时在群里@相关人　• 缺勤 3 次取消成绩",
+        styles["body"],
+    ))
+    s.append(Spacer(1, 8))
+    s.append(Paragraph(REPO_URL, styles["subtitle"]))
+    s.append(Paragraph("牛雨昊、苏哲勋、王梓铭、李东礼、刘帅华、刘澎潮", styles["subtitle"]))
+    return s
 
 
 def main():
-    font_name = register_font()
-    styles = build_styles(font_name)
+    fn = register_font()
+    styles = build_styles(fn)
     os.makedirs(os.path.dirname(OUTPUT), exist_ok=True)
     doc = SimpleDocTemplate(
         OUTPUT, pagesize=A4,
-        leftMargin=1.4 * cm, rightMargin=1.4 * cm,
-        topMargin=1.4 * cm, bottomMargin=1.4 * cm,
-        title="face-unlock-monitor 项目任务分工表",
+        leftMargin=1.2 * cm, rightMargin=1.2 * cm,
+        topMargin=1.2 * cm, bottomMargin=1.2 * cm,
     )
     doc.build(build_story(styles))
     print(f"PDF 已生成: {OUTPUT}")
