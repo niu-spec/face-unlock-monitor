@@ -58,7 +58,7 @@ def tbl(data, widths, styles, hdr=1):
         nr = []
         for cell in row:
             st = styles["cell_bold"] if r < hdr else styles["cell"]
-            txt = f"<b>{cell}</b>" if r < hdr else cell
+            txt = f"<b>{cell}</b>" if r < hdr else cell.replace("<", "&lt;").replace(">", "&gt;")
             nr.append(Paragraph(txt.replace("\n", "<br/>"), st))
         rows.append(nr)
     t = Table(rows, colWidths=widths, repeatRows=hdr)
@@ -191,7 +191,7 @@ def build_story(styles):
         ["4", "区域读取", "从 E 的 zones API 或 DB 读多边形", "能获取 points_json", "7/10", "P0"],
         ["5", "点-in-多边形", "射线法判断行人中心是否在区域内", "单元测试通过", "7/11", "P0"],
         ["6", "闯入告警 INTRUSION", "未识别成功+进入区域→alert", "告警中心可见", "7/11", "P0"],
-        ["7", "过近告警 PROXIMITY", "距边缘 < safe_distance(px)", "阈值可配置", "7/12", "P0"],
+        ["7", "过近告警 PROXIMITY", "距边缘小于 safe_distance 像素", "阈值可配置", "7/12", "P0"],
         ["8", "停留告警 LOITER", "门前 dwell_time 秒未认证", "超时触发告警", "7/13", "P0"],
         ["9", "尾随 TAILGATE", "同帧>1人脸或 unlock 后 3s 新人脸", "alert type=TAILGATE", "7/12", "P0"],
         ["10", "徘徊（与LOITER合并）", "文档中说明与停留检测关系", "满足 2 种异常", "7/13", "P0"],
@@ -251,7 +251,7 @@ def build_story(styles):
         ["验收项", "负责人", "验收操作", "通过标准"],
         ["区域配置", "E+A", "ZoneEditor 画框保存", "zones 表有数据"],
         ["闯入检测", "D", "未授权进入区域", "INTRUSION 告警"],
-        ["过近检测", "D", "靠近边缘<Xpx", "PROXIMITY 告警"],
+        ["过近检测", "D", "靠近边缘小于X像素", "PROXIMITY 告警"],
         ["停留检测", "D", "门前停留>X秒", "LOITER 告警"],
         ["参数可配", "E+D", "修改 zone 阈值", "无需改代码"],
     ], [2.5 * cm, 1.5 * cm, 4 * cm, 4.5 * cm], styles))
