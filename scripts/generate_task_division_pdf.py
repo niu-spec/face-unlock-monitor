@@ -134,7 +134,7 @@ def build_story(styles):
         ["backend/models/", "⬜ 空目录", "SQLAlchemy 数据模型", "E"],
         ["backend/config.py", "⬜ 待建", "数据库/JWT/RTMP 配置", "E"],
         ["backend/dat/", "⬜ 待建", "dlib 模型（.gitignore）", "C"],
-        ["frontend/", "⬜ 空目录", "Vue3 工程（待 npm init）", "F"],
+        ["frontend/", "⬜ 空目录", "Vue3 工程（待 npm init）", "A"],
         ["nginx/README.md", "✅ 已有", "RTMP 说明占位", "B"],
         ["nginx/nginx.conf", "⬜ 待建", "RTMP 9090 + HTTP 反代", "B"],
         ["deploy/deploy-flask.sh", "✅ 已有", "Flask gunicorn 部署", "A"],
@@ -159,15 +159,15 @@ def build_story(styles):
 
     # ── 3. 团队角色 ──
     story.append(Paragraph("三、团队成员与 Git 分支", styles["h1"]))
-    story.append(Paragraph("文档类工作<b>全部由 F 负责</b>；A 承担具体开发，仅主持晨会。", styles["small"]))
+    story.append(Paragraph("文档类工作<b>全部由 F 负责</b>；前端开发<b>全部由 A 负责</b>。", styles["small"]))
     role_data = [
         ["代号", "成员", "角色", "Git 分支", "主要仓库路径"],
-        ["A", "（填）", "组长/Git/部署/回放", "feature/infra", "deploy/、CONTRIBUTORS.md、backend/blueprints/logs.py"],
+        ["A", "（填）", "组长/前端/Git/部署", "feature/infra\nfeature/frontend", "frontend/、deploy/、logs.py、replay.py"],
         ["B", "（填）", "流媒体+Flask骨架", "feature/nginx\nfeature/flask-core", "nginx/、backend/app.py、blueprints/video.py"],
         ["C", "（填）", "AI人脸/开锁", "feature/face", "backend/services/face_service.py、blueprints/face.py、door.py"],
         ["D", "（填）", "AI区域/异常", "feature/detection", "backend/services/detection_service.py"],
         ["E", "（填）", "Flask业务/DB", "feature/business", "backend/models/、blueprints/auth|users|zones|alerts.py"],
-        ["F", "（填）", "前端+文档专员", "feature/frontend\ndocs/", "frontend/、docs/（全部文档）"],
+        ["F", "（填）", "专职文档专员", "docs/", "docs/、飞书文档（全部文档，不写代码）"],
     ]
     story.append(make_table(role_data, [0.8 * cm, 1.3 * cm, 2.2 * cm, 2.2 * cm, 5 * cm], styles))
     story.append(Spacer(1, 6))
@@ -206,16 +206,16 @@ def build_story(styles):
     story.append(Paragraph("4.2 frontend/ — Vue3 前端", styles["h2"]))
     frontend_files = [
         ["文件路径", "负责人", "优先级", "任务说明", "截止"],
-        ["frontend/package.json", "F", "P0", "npm create vue@latest 初始化", "7/7"],
-        ["frontend/vite.config.js", "F", "P0", "proxy /api、/video_feed → :5000", "7/9"],
-        ["frontend/src/views/Login.vue", "F", "P0", "登录页", "7/9"],
-        ["frontend/src/views/DoorMonitor.vue", "F", "P0", "门禁主页：视频+门锁", "7/11"],
-        ["frontend/src/components/DoorLock.vue", "F", "P0", "门锁状态（开/锁/拒绝）", "7/11"],
-        ["frontend/src/views/FaceRegister.vue", "F", "P0", "摄像头人脸录入", "7/10"],
-        ["frontend/src/views/ZoneEditor.vue", "F", "P1", "Canvas 画门禁区域", "7/10"],
-        ["frontend/src/views/AlertCenter.vue", "F", "P0", "告警列表+处置", "7/12"],
-        ["frontend/src/views/AccessLog.vue", "F", "P1", "通行记录页", "7/13"],
-        ["frontend/src/api/*.js", "F", "P0", "Axios 封装各 API", "7/9"],
+        ["frontend/package.json", "A", "P0", "npm create vue@latest 初始化", "7/7"],
+        ["frontend/vite.config.js", "A", "P0", "proxy /api、/video_feed → :5000", "7/9"],
+        ["frontend/src/views/Login.vue", "A", "P0", "登录页", "7/9"],
+        ["frontend/src/views/DoorMonitor.vue", "A", "P0", "门禁主页：视频+门锁", "7/11"],
+        ["frontend/src/components/DoorLock.vue", "A", "P0", "门锁状态（开/锁/拒绝）", "7/11"],
+        ["frontend/src/views/FaceRegister.vue", "A", "P0", "摄像头人脸录入", "7/10"],
+        ["frontend/src/views/ZoneEditor.vue", "A", "P1", "Canvas 画门禁区域", "7/10"],
+        ["frontend/src/views/AlertCenter.vue", "A", "P0", "告警列表+处置", "7/12"],
+        ["frontend/src/views/AccessLog.vue", "A", "P1", "通行记录页", "7/13"],
+        ["frontend/src/api/*.js", "A", "P0", "Axios 封装各 API", "7/9"],
     ]
     story.append(make_table(frontend_files, [3.8 * cm, 1 * cm, 0.8 * cm, 3.9 * cm, 1.2 * cm], styles))
 
@@ -263,11 +263,13 @@ def build_story(styles):
     story.append(Spacer(1, 8))
 
     # ── 6. A 与 F 专项 ──
-    story.append(Paragraph("六、组长 A 具体开发任务", styles["h1"]))
+    story.append(Paragraph("六、组长 A 具体开发任务（含前端）", styles["h1"]))
     a_tasks = [
         ["任务", "仓库路径", "截止"],
         ["邀请 5 名组员为 GitHub Collaborator", "Settings → Collaborators", "7/6"],
         ["填写 CONTRIBUTORS.md", "CONTRIBUTORS.md", "7/6"],
+        ["Vue3 工程初始化 + 全部前端页面", "frontend/", "7/7–7/13"],
+        ["前后端联调（vite proxy + API）", "frontend/vite.config.js", "7/9"],
         ["完善 deploy 脚本并在服务器验证", "deploy/*.sh", "7/10"],
         ["snapshot_service 告警截图", "backend/services/snapshot_service.py", "7/11"],
         ["logs / replay Blueprint", "backend/blueprints/logs.py、replay.py", "7/13"],
@@ -296,16 +298,16 @@ def build_story(styles):
     story.append(Paragraph("八、按日进度（7/6 — 7/15）", styles["h1"]))
     daily = [
         ["日期", "节点", "A", "B", "C", "D", "E", "F"],
-        ["7/6", "启动", "Collaborators\nCONTRIBUTORS", "租服务器", "装 dlib", "检测方案", "config.py\nmodels/", "npm init\n文档框架"],
-        ["7/7", "环境", "deploy 完善", "nginx.conf\nRTMP", "dat/ 模型", "方案给 F", "auth 设计", "v1.0 草稿"],
-        ["7/8", "立项", "snapshot 设计", "video.py\ndemo", "人脸 demo", "—", "素材给 F", "提交 v1.0"],
-        ["7/9", "联调", "deploy 测试", "MJPEG 通", "face/register", "—", "login API", "Login.vue"],
-        ["7/10", "核心", "Jenkins?", "app.py 完善", "识别+unlock", "HOG demo", "alerts 表", "FaceRegister"],
-        ["7/11", "中期", "merge main", "联调", "陌生人告警", "区域检测", "Swagger", "v2.0+DoorMonitor"],
-        ["7/12", "完善", "logs API", "Nginx 反代", "—", "闯入/过近", "告警 CRUD", "AlertCenter"],
-        ["7/13", "部署", "replay API", "生产部署", "—", "尾随/徘徊", "DB 部署", "build+联调"],
-        ["7/14", "测试", "Git 截图", "压测", "准确率", "告警测试", "Swagger 导出", "v3.0+视频"],
-        ["7/15", "结题", "材料打包", "推流保障", "演示", "演示", "后端保障", "提交文档"],
+        ["7/6", "启动", "Collaborators\nnpm init", "租服务器", "装 dlib", "检测方案", "config.py\nmodels/", "文档框架"],
+        ["7/7", "环境", "deploy\n前端骨架", "nginx.conf\nRTMP", "dat/ 模型", "方案给 F", "auth 设计", "v1.0 草稿"],
+        ["7/8", "立项", "Login 原型", "video.py\ndemo", "人脸 demo", "—", "素材给 F", "提交 v1.0"],
+        ["7/9", "联调", "Login.vue\n联调", "MJPEG 通", "face/register", "—", "login API", "写日报"],
+        ["7/10", "核心", "FaceRegister", "app.py 完善", "识别+unlock", "HOG demo", "alerts 表", "写日报"],
+        ["7/11", "中期", "DoorMonitor\nmerge main", "联调", "陌生人告警", "区域检测", "Swagger", "提交 v2.0"],
+        ["7/12", "完善", "AlertCenter\nlogs API", "Nginx 反代", "—", "闯入/过近", "告警 CRUD", "写日报"],
+        ["7/13", "部署", "build+部署\nreplay API", "生产部署", "—", "尾随/徘徊", "DB 部署", "写日报"],
+        ["7/14", "测试", "UI 走查\nGit 截图", "压测", "准确率", "告警测试", "Swagger 导出", "v3.0+视频"],
+        ["7/15", "结题", "前端演示\n材料打包", "推流保障", "演示", "演示", "后端保障", "提交文档"],
     ]
     story.append(make_table(daily, [1.1 * cm, 1.2 * cm, 1.85 * cm, 1.85 * cm, 1.85 * cm, 1.85 * cm, 1.85 * cm, 1.85 * cm], styles))
     story.append(Spacer(1, 8))
@@ -337,7 +339,7 @@ def build_story(styles):
             "• <b>17:00</b>：各模块向 F 反馈文档素材<br/>"
             "• <b>Commit 规范</b>：feat/fix/docs: 描述（使用真实姓名）<br/>"
             "• <b>PR 流程</b>：feature/* → dev（Review）→ main（A merge）<br/>"
-            "• <b>禁止</b>：直接 push main；F 以外成员修改最终文档",
+            "• <b>禁止</b>：直接 push main；F 以外成员修改最终文档；非 A 成员修改 frontend/",
             styles["body"],
         )
     )
