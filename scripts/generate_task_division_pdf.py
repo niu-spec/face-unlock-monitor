@@ -166,7 +166,7 @@ def build_story(styles):
         ["B", "苏哲勋", "流媒体+Flask骨架", "feature/nginx\nfeature/flask-core", "nginx/、backend/app.py、blueprints/video.py"],
         ["C", "王梓铭", "AI人脸/开锁", "feature/face", "backend/services/face_service.py、blueprints/face.py、door.py"],
         ["D", "李东礼", "AI区域/异常", "feature/detection", "backend/services/detection_service.py"],
-        ["E", "李东礼", "Flask业务/DB", "feature/business", "backend/models/、blueprints/auth|users|zones|alerts.py"],
+        ["E", "刘帅华", "Flask业务/DB", "feature/business", "backend/models/、blueprints/auth|users|zones|alerts.py"],
         ["F", "刘澎潮", "专职文档专员", "docs/", "docs/、飞书文档（全部文档，不写代码）"],
     ]
     story.append(make_table(role_data, [0.8 * cm, 1.3 * cm, 2.2 * cm, 2.2 * cm, 5 * cm], styles))
@@ -345,7 +345,7 @@ def build_story(styles):
     )
     story.append(Spacer(1, 10))
     story.append(Paragraph(f"仓库地址：{REPO_URL}", styles["subtitle"]))
-    story.append(Paragraph("— 项目组：牛雨昊、苏哲勋、王梓铭、李东礼、刘澎潮 —", styles["subtitle"]))
+    story.append(Paragraph("— 项目组：牛雨昊、苏哲勋、王梓铭、李东礼、刘帅华、刘澎潮 —", styles["subtitle"]))
     return story
 
 
