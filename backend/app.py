@@ -6,7 +6,11 @@ app = Flask(__name__)
 
 @app.route("/")
 def index():
-    return jsonify({"status": "ok", "service": "face-unlock-monitor"})
+    return jsonify({
+        "status": "ok",
+        "service": "home-camera-monitor",
+        "scenario": "居家智能摄像头监控",
+    })
 
 
 @app.route("/health")
