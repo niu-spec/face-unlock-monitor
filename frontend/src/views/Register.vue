@@ -29,8 +29,12 @@ async function sendSms() {
     return
   }
   try {
-    await authApi.sendSms({ phone: form.phone })
-    ElMessage.success('验证码已发送（开发环境请查看后端控制台）')
+    const data = await authApi.sendSms({ phone: form.phone })
+    if (data.dev_code) {
+      ElMessage.success(`验证码已发送（开发模式：${data.dev_code}）`)
+    } else {
+      ElMessage.success('验证码已发送')
+    }
     smsCountdown.value = 60
     const timer = setInterval(() => {
       smsCountdown.value--

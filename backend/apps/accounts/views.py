@@ -58,7 +58,12 @@ def send_sms_view(request):
     print(f"[DEV SMS] 手机号: {phone}  验证码: {code}")
     print(f"{'='*50}\n")
 
-    return Response({"success": True, "message": "验证码已发送（开发环境请查看控制台）"})
+    from django.conf import settings
+    return Response({
+        "success": True,
+        "message": "验证码已发送",
+        **({"dev_code": code} if settings.DEBUG else {}),
+    })
 
 
 # ── 数学 CAPTCHA ───────────────────────────────────────────────────
