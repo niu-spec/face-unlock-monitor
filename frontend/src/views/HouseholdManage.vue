@@ -1,28 +1,29 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { householdApi } from '@/api'
+import { householdApi, memberApi } from '@/api'
 
 const households = ref([])
 const activeId = ref(Number(localStorage.getItem('activeHouseholdId')) || 0)
-const activeTab = ref('my')
 const showCreateDialog = ref(false)
 const showJoinDialog = ref(false)
 const newName = ref('')
 const joinHouseholdId = ref('')
 const joinMessage = ref('')
 
-// 待审核数（用于徽标）
-const pendingCounts = ref({})
-
-// 成员管理
+// 当前进入的家庭
+const enteredHousehold = ref(null)
+const householdMembers = ref([])
 const showMembersDialog = ref(false)
 const currentMembers = ref([])
-const currentHouseholdId = ref(0)
-
-// 申请列表
+const editingMember = ref(null)
+const editMemberForm = ref({ name: '', role: 'adult' })
 const showApplicationsDialog = ref(false)
 const currentApplications = ref([])
+const currentHouseholdId = ref(0)
+
+// 待审核数
+const pendingCounts = ref({})
 
 async function loadHouseholds() {
   try {
@@ -45,6 +46,19 @@ function switchHousehold(household) {
   ElMessage.success(`已切换到「${household.name}」`)
 }
 
+function enterHousehold(household) {
+  switchHousehold(household)
+  enteredHousehold.value = household
+  loadHouseholdMembers(household.id)
+}
+
+async function loadHouseholdMembers(householdId) {
+  try {
+    const data = await memberApi.list()
+    householdMembers.value = data.results || data
+  } catch { householdMembers.value = [] }
+}
+
 async function createHousehold() {
   if (!newName.value.trim()) { ElMessage.warning('请输入家庭名称'); return }
   try {
@@ -64,6 +78,7 @@ async function deleteHousehold(household) {
       activeId.value = 0
       localStorage.removeItem('activeHouseholdId')
     }
+    if (enteredHousehold.value?.id === household.id) enteredHousehold.value = null
     delete pendingCounts.value[household.id]
     ElMessage.success('已删除')
     await loadHouseholds()
@@ -76,6 +91,32 @@ async function loadMembers(household) {
     const data = await householdApi.getMembers(household.id)
     currentMembers.value = data
     showMembersDialog.value = true
+  } catch { /* ignore */ }
+}
+
+function startEditMember(member) {
+  editingMember.value = member
+  editMemberForm.value = { name: member.name, role: member.role }
+}
+
+async function saveEditMember() {
+  if (!editingMember.value) return
+  try {
+    await memberApi.update(editingMember.value.id, editMemberForm.value)
+    ElMessage.success('已更新')
+    editingMember.value = null
+    loadHouseholdMembers(enteredHousehold.value.id)
+  } catch { /* ignore */ }
+}
+
+function cancelEdit() { editingMember.value = null }
+
+async function removeHouseholdMember(member) {
+  try {
+    await ElMessageBox.confirm(`确定删除「${member.name}」？`, '确认', { type: 'warning' })
+    await memberApi.remove(member.id)
+    ElMessage.success('已删除')
+    loadHouseholdMembers(enteredHousehold.value.id)
   } catch { /* ignore */ }
 }
 
@@ -104,7 +145,6 @@ async function loadApplications(household) {
     const data = await householdApi.getApplications(household.id)
     currentApplications.value = data
     showApplicationsDialog.value = true
-    // 打开审核窗口时清零徽标
     pendingCounts.value[household.id] = 0
   } catch { /* ignore */ }
 }
@@ -133,7 +173,7 @@ onMounted(loadHouseholds)
 
 <template>
   <div class="household-page">
-    <el-tabs v-model="activeTab">
+    <el-tabs>
       <el-tab-pane label="我的家庭" name="my">
         <div class="toolbar">
           <el-button type="primary" @click="showCreateDialog = true">创建新家庭</el-button>
@@ -157,8 +197,9 @@ onMounted(loadHouseholds)
           </el-table-column>
           <el-table-column label="操作" min-width="340">
             <template #default="{ row }">
+              <el-button size="small" type="success" @click="enterHousehold(row)">进入</el-button>
               <el-button v-if="row.id !== activeId" size="small" type="primary" @click="switchHousehold(row)">切换</el-button>
-              <el-button size="small" @click="loadMembers(row)">成员</el-button>
+              <el-button size="small" @click="loadMembers(row)">成员管理</el-button>
               <el-badge v-if="row.is_admin" :value="pendingCounts[row.id] || 0" :hidden="!pendingCounts[row.id]">
                 <el-button size="small" type="warning" @click="loadApplications(row)">审核</el-button>
               </el-badge>
@@ -167,6 +208,52 @@ onMounted(loadHouseholds)
             </template>
           </el-table-column>
         </el-table>
+
+        <!-- 进入家庭后的成员管理面板 -->
+        <div v-if="enteredHousehold" style="margin-top: 24px">
+          <el-divider />
+          <h3 style="margin-bottom: 12px">
+            {{ enteredHousehold.name }} — 家庭成员
+            <el-tag size="small" style="margin-left: 8px">{{ householdMembers.length }}人</el-tag>
+          </h3>
+
+          <el-table :data="householdMembers" stripe>
+            <el-table-column prop="name" label="姓名" />
+            <el-table-column label="角色" width="120">
+              <template #default="{ row: m }">
+                <template v-if="editingMember?.id === m.id">
+                  <el-select v-model="editMemberForm.role" size="small" style="width: 90px">
+                    <el-option label="成人" value="adult" />
+                    <el-option label="小孩" value="child" />
+                    <el-option label="老人" value="elder" />
+                    <el-option label="访客" value="guest" />
+                  </el-select>
+                </template>
+                <el-tag v-else size="small">{{ m.role_display || m.role }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="人脸" width="80">
+              <template #default="{ row: m }">
+                <el-tag :type="m.face_encoding ? 'success' : 'info'" size="small">
+                  {{ m.face_encoding ? '已录入' : '未录入' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="180">
+              <template #default="{ row: m }">
+                <template v-if="editingMember?.id === m.id">
+                  <el-button size="small" type="primary" @click="saveEditMember">保存</el-button>
+                  <el-button size="small" @click="cancelEdit">取消</el-button>
+                </template>
+                <template v-else>
+                  <el-button size="small" link type="primary" @click="startEditMember(m)">编辑</el-button>
+                  <el-button size="small" link type="danger" @click="removeHouseholdMember(m)">删除</el-button>
+                </template>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-if="householdMembers.length === 0" description="暂无家庭成员，请去「家人注册」页面录入" />
+        </div>
       </el-tab-pane>
     </el-tabs>
 
@@ -195,7 +282,7 @@ onMounted(loadHouseholds)
       </template>
     </el-dialog>
 
-    <!-- 成员管理对话框 -->
+    <!-- 成员管理对话框（成员关系） -->
     <el-dialog v-model="showMembersDialog" title="成员管理" width="500px">
       <el-table :data="currentMembers">
         <el-table-column prop="user_phone" label="手机号" width="140" />
@@ -235,13 +322,6 @@ onMounted(loadHouseholds)
 </template>
 
 <style scoped>
-.household-page {
-  max-width: 900px;
-  margin: 0 auto;
-}
-
-.toolbar {
-  display: flex;
-  gap: 8px;
-}
+.household-page { max-width: 950px; margin: 0 auto; }
+.toolbar { display: flex; gap: 8px; }
 </style>
