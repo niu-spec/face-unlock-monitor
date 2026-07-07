@@ -1,7 +1,17 @@
 """Flask application entry point."""
 from flask import Flask, jsonify
+from config import Config
 
 app = Flask(__name__)
+app.config.from_object(Config)
+
+# ---------------------------------------------------------------------------
+# 注册蓝图
+# ---------------------------------------------------------------------------
+
+# D-李东礼：危险区域与异常检测
+from blueprints.detection import detection_bp
+app.register_blueprint(detection_bp)
 
 
 @app.route("/")
