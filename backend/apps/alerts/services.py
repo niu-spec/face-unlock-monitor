@@ -1,8 +1,8 @@
 """
 告警服务层 — 供 C（人脸识别）和 D（异常检测）通过 HTTP 调用。
 
-使用方式（其他队友在 Flask 中调用）：
-    POST http://localhost:8000/api/alerts/
+使用方式（AI 模块通过 HTTP 调用）：
+    POST http://localhost:5000/api/alerts/
     Body: {
         "type": "FACE_UNKNOWN",
         "level": "HIGH",

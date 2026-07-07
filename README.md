@@ -1,6 +1,6 @@
 # home-camera-monitor
 
-Smart home camera monitoring system with RTMP streaming, Flask AI backend, and dlib face recognition — family identification, person counting, stranger alerts, danger zones, and emergency detection.
+Smart home camera monitoring system with RTMP streaming, Django business backend, and dlib face recognition — family identification, person counting, stranger alerts, danger zones, and emergency detection.
 
 ## 应用场景
 
@@ -20,9 +20,9 @@ Smart home camera monitoring system with RTMP streaming, Flask AI backend, and d
 
 | 层次 | 技术 |
 |------|------|
-| 前端 | Vue3 + Vite + Element Plus |
-| 后端 | Flask + Blueprint |
-| AI | OpenCV + dlib + face_recognition |
+| 前端 | Vue3 + Vite + Element Plus + Vue Router + Axios |
+| 业务后端 | Django 4.2 + Django REST Framework + JWT + Swagger |
+| AI 模块 | OpenCV + dlib + face_recognition（各 feature 分支开发，HTTP 接入） |
 | 数据库 | MySQL |
 | 流媒体 | Nginx-RTMP |
 | 部署 | gunicorn + Nginx 反代 |
@@ -32,7 +32,7 @@ Smart home camera monitoring system with RTMP streaming, Flask AI backend, and d
 ```
 home-camera-monitor/
 ├── frontend/          # Vue3 前端
-├── backend/           # Flask 后端（AI + 业务 API）
+├── backend/           # Django 业务后端（认证 / 区域 / 告警 / 事件）
 ├── nginx/             # Nginx-RTMP 配置
 ├── deploy/            # 部署脚本
 ├── docs/              # 项目文档
@@ -41,15 +41,24 @@ home-camera-monitor/
 
 ## 快速开始
 
-### 后端
+### 后端（Django）
 
 ```bash
 cd backend
 python -m venv venv
 venv\Scripts\activate        # Windows
 pip install -r requirements.txt
-python app.py
+
+# 配置 MySQL 环境变量（按需修改）
+set DB_PASSWORD=your_password
+
+python manage.py migrate
+python manage.py createsuperuser
+python manage.py runserver 5000
 ```
+
+- API 文档：http://localhost:5000/api/docs/
+- 管理后台：http://localhost:5000/admin/
 
 ### 前端
 
@@ -59,11 +68,13 @@ npm install
 npm run dev
 ```
 
+访问 http://localhost:5173/ ，Vite 开发服务器会将 `/api` 代理到后端 `5000` 端口。
+
 ### 推流地址
 
 ```
-推流：rtmp://{服务器IP}:9090/live/1
-观看：http://{服务器IP}/video_feed/1
+推流：rtmp://{服务器IP}:9090/live/living_room
+观看：http://{服务器IP}/video_feed/living_room   # AI 模块接入后可用
 ```
 
 ## 文档
