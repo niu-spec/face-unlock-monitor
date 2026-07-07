@@ -7,6 +7,7 @@ export const authApi = {
   sendSms: (data) => request.post('/api/auth/sms/send/', data),
   getCaptcha: () => request.get('/api/auth/captcha/'),
   getMe: () => request.get('/api/auth/me/'),
+  updateProfile: (data) => request.put('/api/auth/profile/', data),
 }
 
 // ── 家庭管理 ──────────────────────────────────────────
