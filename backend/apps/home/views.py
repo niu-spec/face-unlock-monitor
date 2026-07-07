@@ -16,13 +16,8 @@ def presence_view(request):
     """
     当前画面人数统计。
 
-    后续由 AI 模块（人脸识别/人员检测）写入实时数据；
-    目前返回占位数据，供前端联调。
+    由人脸识别模块实时更新；尚未收到视频帧时返回零值。
     """
-    return Response(
-        {
-            "total": 0,
-            "family": 0,
-            "stranger": 0,
-        }
-    )
+    from apps.face.services import get_face_service
+
+    return Response(get_face_service().get_presence())
