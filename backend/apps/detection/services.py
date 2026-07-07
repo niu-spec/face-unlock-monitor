@@ -1,4 +1,4 @@
-"""检测服务模块 — 危险区域与异常检测。
+"""检测服务模块 — 危险区域与异常检测（Django 版）。
 
 负责：
   - 危险区域闯入检测（HOG 行人检测 + 多边形碰撞）
@@ -7,6 +7,9 @@
   - 摔倒检测（人体框高宽比分析）
 
 由团队成员 D（李东礼）负责实现和维护。
+
+告警通过 apps.alerts.services.create_alert() 写入数据库，
+与 dev 分支的告警模块（刘帅华）对接。
 """
 
 import json
@@ -18,9 +21,58 @@ from typing import Any, Optional
 import cv2
 import numpy as np
 
-from config import Config
-
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# 检测配置（可在 Django settings 中覆盖）
+# ---------------------------------------------------------------------------
+
+DETECTION_CONFIG = {
+    # --- 视频处理 ---
+    "FRAME_WIDTH": 480,
+    "FRAME_HEIGHT": 480,
+    "FRAME_SKIP": 3,
+    # --- 积水（WATER）---
+    "FLOOD_ROI_BOTTOM_RATIO": 0.6,
+    "FLOOD_HSV_LOWER": (90, 50, 50),
+    "FLOOD_HSV_UPPER": (140, 255, 255),
+    "FLOOD_AREA_THRESHOLD": 0.15,
+    # --- 着火（FIRE）---
+    "FIRE_HSV_LOWER_1": (0, 100, 100),
+    "FIRE_HSV_UPPER_1": (25, 255, 255),
+    "FIRE_HSV_LOWER_2": (160, 100, 100),
+    "FIRE_HSV_UPPER_2": (180, 255, 255),
+    "FIRE_AREA_THRESHOLD": 0.05,
+    "FIRE_BRIGHTNESS_THRESHOLD": 180,
+    # --- 摔倒（FALL）---
+    "FALL_ASPECT_RATIO_THRESHOLD": 1.3,
+    "FALL_PERSIST_FRAMES": 5,
+    # --- HOG 行人检测 ---
+    "HOG_WIN_STRIDE": (4, 4),
+    "HOG_PADDING": (8, 8),
+    "HOG_SCALE": 1.05,
+    "HOG_CONFIDENCE_THRESHOLD": 0.5,
+    # --- 告警冷却（秒）---
+    "ALERT_COOLDOWN_SECONDS": {
+        "WATER": 30,
+        "FIRE": 30,
+        "FALL": 15,
+        "INTRUSION": 10,
+    },
+}
+
+
+def _cfg(key: str):
+    """从 Django settings 读取检测配置，未设置时使用默认值。"""
+    try:
+        from django.conf import settings
+
+        return getattr(settings, "DETECTION_CONFIG", {}).get(
+            key, DETECTION_CONFIG[key]
+        )
+    except Exception:
+        return DETECTION_CONFIG[key]
 
 
 # ---------------------------------------------------------------------------
@@ -28,51 +80,38 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _parse_polygon(points_json: str) -> Optional[np.ndarray]:
-    """将 JSON 多边形坐标解析为 (N, 1, 2) 格式的 numpy 数组。
+def _parse_polygon(points) -> Optional[np.ndarray]:
+    """将多边形坐标解析为 (N, 1, 2) 格式的 numpy 数组。
 
     Args:
-        points_json: JSON 字符串，如 '[[x1,y1],[x2,y2],...]'。
+        points: JSON 数组 [[x1,y1],[x2,y2],...] 或 JSON 字符串。
 
     Returns:
         numpy 数组或 None（解析失败时）。
     """
-    try:
-        pts = json.loads(points_json)
-        if not pts or len(pts) < 3:
+    if isinstance(points, str):
+        try:
+            points = json.loads(points)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            logger.warning("Failed to parse polygon points: %s", points)
             return None
-        return np.array(pts, dtype=np.int32).reshape((-1, 1, 2))
-    except (json.JSONDecodeError, ValueError, TypeError):
-        logger.warning("Failed to parse polygon points: %s", points_json)
+    if not points or len(points) < 3:
+        return None
+    try:
+        return np.array(points, dtype=np.int32).reshape((-1, 1, 2))
+    except (ValueError, TypeError):
         return None
 
 
 def _is_point_in_polygon(point: tuple, polygon: np.ndarray) -> bool:
-    """判断点是否在多边形内部。
-
-    Args:
-        point: (x, y) 坐标。
-        polygon: cv2 格式的多边形数组。
-
-    Returns:
-        True 表示点在多边形内部。
-    """
+    """判断点是否在多边形内部。"""
     return cv2.pointPolygonTest(polygon, point, False) >= 0
 
 
 def _is_rect_in_polygon(
     x: int, y: int, w: int, h: int, polygon: np.ndarray
 ) -> bool:
-    """判断矩形框是否与多边形有交集（以矩形中心点判断）。
-
-    Args:
-        x, y: 矩形左上角坐标。
-        w, h: 矩形宽高。
-        polygon: cv2 格式的多边形。
-
-    Returns:
-        True 表示矩形中心在多边形内部。
-    """
+    """判断矩形框中心点是否在多边形内部。"""
     cx, cy = x + w // 2, y + h // 2
     return _is_point_in_polygon((cx, cy), polygon)
 
@@ -86,12 +125,11 @@ class DetectionService:
     """危险区域与异常检测服务。
 
     在视频处理流水线中，每 N 帧调用一次 process_frame()，
-    返回检测结果列表，供调用方（如 video.py）标注和告警。
+    返回检测结果列表，并通过 apps.alerts.services 写入告警。
 
     Usage:
         service = DetectionService()
         results = service.process_frame(frame, stream_id, person_boxes, face_roles)
-        # results: List[dict] 包含告警类型和位置信息
     """
 
     def __init__(self):
@@ -99,13 +137,10 @@ class DetectionService:
         self._hog = cv2.HOGDescriptor()
         self._hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
 
-        # 告警冷却：{alert_type: {stream_id: last_alert_time}}
         self._cooldown: dict[str, dict[str, float]] = defaultdict(dict)
-
-        # 摔倒持续帧计数器：{track_id: consecutive_fall_count}
         self._fall_counter: dict[int, int] = defaultdict(int)
 
-        logger.info("DetectionService initialized (HOG + HSV analysis)")
+        logger.info("DetectionService initialized (Django + HOG + HSV)")
 
     # -----------------------------------------------------------------------
     # 公共入口
@@ -123,9 +158,9 @@ class DetectionService:
 
         Args:
             frame: BGR 格式的 numpy 图像数组 (H, W, 3)。
-            stream_id: 摄像头流 ID。
-            person_boxes: 已检测到的人体框列表，每项含
-                {'x', 'y', 'w', 'h', 'track_id'}。
+            stream_id: 摄像头流 ID（如 "living_room"）。
+            person_boxes: 已检测的人体框列表，
+                [{'x', 'y', 'w', 'h', 'track_id'}, ...]。
                 若为 None，则内部使用 HOG 自行检测。
             face_roles: 人脸识别结果，{track_id: role}，
                 role 为 'adult' / 'child' / 'stranger'。
@@ -133,13 +168,7 @@ class DetectionService:
                 {'id', 'name', 'points_json', 'forbidden_roles'}。
 
         Returns:
-            detection_results: 检测结果列表，每项为：
-                {
-                    'alert_type': str,      # ZONE_INTRUSION / FLOOD / FIRE / FALL
-                    'message': str,         # 告警描述
-                    'bbox': (x, y, w, h),  # 关联区域框（可选）
-                    'severity': str,        # high / medium
-                }
+            detection_results: 检测结果列表。
         """
         results: list[dict] = []
 
@@ -159,7 +188,7 @@ class DetectionService:
             )
 
         # 2. 积水检测
-        results.extend(self._detect_flood(frame, stream_id))
+        results.extend(self._detect_water(frame, stream_id))
 
         # 3. 着火检测
         results.extend(self._detect_fire(frame, stream_id))
@@ -174,32 +203,32 @@ class DetectionService:
     # -----------------------------------------------------------------------
 
     def _detect_pedestrians(self, frame: np.ndarray) -> list[dict]:
-        """使用 HOG 检测器检测行人。
-
-        Args:
-            frame: BGR 图像。
-
-        Returns:
-            人体框列表 [{'x', 'y', 'w', 'h', 'track_id'}, ...]。
-        """
+        """使用 HOG 检测器检测行人。"""
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         rects, weights = self._hog.detectMultiScale(
             gray,
-            winStride=Config.HOG_WIN_STRIDE,
-            padding=Config.HOG_PADDING,
-            scale=Config.HOG_SCALE,
+            winStride=_cfg("HOG_WIN_STRIDE"),
+            padding=_cfg("HOG_PADDING"),
+            scale=_cfg("HOG_SCALE"),
         )
 
         boxes = []
+        threshold = _cfg("HOG_CONFIDENCE_THRESHOLD")
         for i, (x, y, w, h) in enumerate(rects):
-            if weights[i] >= Config.HOG_CONFIDENCE_THRESHOLD:
+            if weights[i] >= threshold:
                 boxes.append(
-                    {"x": int(x), "y": int(y), "w": int(w), "h": int(h), "track_id": i}
+                    {
+                        "x": int(x),
+                        "y": int(y),
+                        "w": int(w),
+                        "h": int(h),
+                        "track_id": i,
+                    }
                 )
         return boxes
 
     # -----------------------------------------------------------------------
-    # 1. 危险区域闯入检测
+    # 1. 危险区域闯入检测（INTRUSION）
     # -----------------------------------------------------------------------
 
     def _detect_zone_intrusion(
@@ -212,23 +241,12 @@ class DetectionService:
     ) -> list[dict]:
         """检测危险区域闯入。
 
-        对每个启用的危险区域，检查是否有行人进入，
-        且该行人的角色属于 forbidden_roles。
-
-        Args:
-            frame: 当前帧（用于绘制标注，可选）。
-            stream_id: 摄像头流 ID。
-            zones: 危险区域配置列表。
-            person_boxes: 人体框列表。
-            face_roles: {track_id: role}。
-
-        Returns:
-            闯入告警结果列表。
+        dev 分支告警类型: INTRUSION（对应 Flask 版的 ZONE_INTRUSION）。
         """
         results = []
 
         for zone in zones:
-            if not zone.get("enabled", True):
+            if not zone.get("is_active", zone.get("enabled", True)):
                 continue
 
             polygon = _parse_polygon(zone.get("points_json", ""))
@@ -243,28 +261,33 @@ class DetectionService:
                 tid = box.get("track_id", -1)
                 role = face_roles.get(tid, "stranger")
 
-                # 仅当角色属于禁止角色时触发
                 if role not in forbidden:
                     continue
 
                 if _is_rect_in_polygon(
                     box["x"], box["y"], box["w"], box["h"], polygon
                 ):
-                    if not self._check_cooldown("ZONE_INTRUSION", stream_id):
+                    if not self._check_cooldown("INTRUSION", stream_id):
                         continue
 
-                    msg = (
-                        f"[{zone.get('name', '危险区域')}] "
-                        f"检测到 {role} 闯入禁区"
+                    zone_name = zone.get("name", "危险区域")
+                    msg = f"[{zone_name}] 检测到 {role} 闯入禁区"
+
+                    self._create_alert(
+                        alert_type="INTRUSION",
+                        level="HIGH",
+                        stream_id=stream_id,
+                        description=msg,
                     )
+
                     results.append(
                         {
-                            "alert_type": "ZONE_INTRUSION",
+                            "alert_type": "INTRUSION",
                             "message": msg,
                             "bbox": (box["x"], box["y"], box["w"], box["h"]),
                             "severity": "high",
                             "zone_id": zone.get("id"),
-                            "zone_name": zone.get("name"),
+                            "zone_name": zone_name,
                         }
                     )
                     logger.info("Zone intrusion: %s", msg)
@@ -272,51 +295,50 @@ class DetectionService:
         return results
 
     # -----------------------------------------------------------------------
-    # 2. 积水检测（FLOOD）
+    # 2. 积水检测（WATER）
     # -----------------------------------------------------------------------
 
-    def _detect_flood(self, frame: np.ndarray, stream_id: str) -> list[dict]:
+    def _detect_water(self, frame: np.ndarray, stream_id: str) -> list[dict]:
         """检测画面下方积水。
 
-        通过 HSV 颜色空间分析画面下方区域，
-        检测大面积蓝色/青色反光区域（积水特征）。
-
-        Args:
-            frame: BGR 图像。
-            stream_id: 摄像头流 ID。
-
-        Returns:
-            积水告警结果列表。
+        dev 分支告警类型: WATER（对应 Flask 版的 FLOOD）。
         """
         h, w = frame.shape[:2]
-        roi_y_start = int(h * Config.FLOOD_ROI_BOTTOM_RATIO)
+        roi_y_start = int(h * _cfg("FLOOD_ROI_BOTTOM_RATIO"))
         roi = frame[roi_y_start:h, 0:w]
 
         hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
         mask = cv2.inRange(
             hsv,
-            np.array(Config.FLOOD_HSV_LOWER),
-            np.array(Config.FLOOD_HSV_UPPER),
+            np.array(_cfg("FLOOD_HSV_LOWER")),
+            np.array(_cfg("FLOOD_HSV_UPPER")),
         )
 
-        # 形态学去噪
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
 
         roi_area = roi.shape[0] * roi.shape[1]
-        flood_area = cv2.countNonZero(mask)
-        ratio = flood_area / roi_area if roi_area > 0 else 0
+        water_area = cv2.countNonZero(mask)
+        ratio = water_area / roi_area if roi_area > 0 else 0
 
-        if ratio >= Config.FLOOD_AREA_THRESHOLD:
-            if not self._check_cooldown("FLOOD", stream_id):
+        if ratio >= _cfg("FLOOD_AREA_THRESHOLD"):
+            if not self._check_cooldown("WATER", stream_id):
                 return []
 
             msg = f"检测到疑似积水区域（占比 {ratio:.1%}）"
-            logger.info("Flood detected: %s", msg)
+
+            self._create_alert(
+                alert_type="WATER",
+                level="HIGH",
+                stream_id=stream_id,
+                description=msg,
+            )
+
+            logger.info("Water detected: %s", msg)
             return [
                 {
-                    "alert_type": "FLOOD",
+                    "alert_type": "WATER",
                     "message": msg,
                     "bbox": (0, roi_y_start, w, h - roi_y_start),
                     "severity": "high",
@@ -331,41 +353,27 @@ class DetectionService:
     # -----------------------------------------------------------------------
 
     def _detect_fire(self, frame: np.ndarray, stream_id: str) -> list[dict]:
-        """检测画面中火焰区域。
-
-        通过 HSV 颜色空间检测红/橙/黄色火焰区域，
-        并结合亮度阈值过滤误检。
-
-        Args:
-            frame: BGR 图像。
-            stream_id: 摄像头流 ID。
-
-        Returns:
-            着火告警结果列表。
-        """
+        """检测画面中火焰区域。"""
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-        # 火焰颜色范围 — 红色在 HSV 中分两段
         mask1 = cv2.inRange(
             hsv,
-            np.array(Config.FIRE_HSV_LOWER_1),
-            np.array(Config.FIRE_HSV_UPPER_1),
+            np.array(_cfg("FIRE_HSV_LOWER_1")),
+            np.array(_cfg("FIRE_HSV_UPPER_1")),
         )
         mask2 = cv2.inRange(
             hsv,
-            np.array(Config.FIRE_HSV_LOWER_2),
-            np.array(Config.FIRE_HSV_UPPER_2),
+            np.array(_cfg("FIRE_HSV_LOWER_2")),
+            np.array(_cfg("FIRE_HSV_UPPER_2")),
         )
         mask = cv2.bitwise_or(mask1, mask2)
 
-        # 亮度过滤：火焰区域 V 通道应较高
         v_channel = hsv[:, :, 2]
         _, bright_mask = cv2.threshold(
-            v_channel, Config.FIRE_BRIGHTNESS_THRESHOLD, 255, cv2.THRESH_BINARY
+            v_channel, _cfg("FIRE_BRIGHTNESS_THRESHOLD"), 255, cv2.THRESH_BINARY
         )
         mask = cv2.bitwise_and(mask, bright_mask)
 
-        # 形态学去噪
         kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
@@ -374,11 +382,10 @@ class DetectionService:
         fire_area = cv2.countNonZero(mask)
         ratio = fire_area / frame_area if frame_area > 0 else 0
 
-        if ratio >= Config.FIRE_AREA_THRESHOLD:
+        if ratio >= _cfg("FIRE_AREA_THRESHOLD"):
             if not self._check_cooldown("FIRE", stream_id):
                 return []
 
-            # 定位火焰区域边界框
             contours, _ = cv2.findContours(
                 mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
@@ -390,6 +397,14 @@ class DetectionService:
                 x, y, fw, fh = 0, 0, frame.shape[1], frame.shape[0]
 
             msg = f"检测到疑似火焰区域（占比 {ratio:.1%}）"
+
+            self._create_alert(
+                alert_type="FIRE",
+                level="HIGH",
+                stream_id=stream_id,
+                description=msg,
+            )
+
             logger.info("Fire detected: %s", msg)
             return [
                 {
@@ -410,18 +425,7 @@ class DetectionService:
     def _detect_fall(
         self, person_boxes: list[dict], stream_id: str
     ) -> list[dict]:
-        """检测人员摔倒。
-
-        通过人体框高宽比判断：当 h/w 比值低于阈值时，
-        认为人体处于躺倒状态（摔倒）。
-
-        Args:
-            person_boxes: 人体框列表。
-            stream_id: 摄像头流 ID。
-
-        Returns:
-            摔倒告警结果列表。
-        """
+        """检测人员摔倒。"""
         results = []
 
         for box in person_boxes:
@@ -432,14 +436,22 @@ class DetectionService:
             aspect_ratio = h / w
             tid = box.get("track_id", -1)
 
-            if aspect_ratio < Config.FALL_ASPECT_RATIO_THRESHOLD:
+            if aspect_ratio < _cfg("FALL_ASPECT_RATIO_THRESHOLD"):
                 self._fall_counter[tid] += 1
 
-                if self._fall_counter[tid] >= Config.FALL_PERSIST_FRAMES:
+                if self._fall_counter[tid] >= _cfg("FALL_PERSIST_FRAMES"):
                     if not self._check_cooldown("FALL", stream_id):
                         continue
 
                     msg = f"检测到人员疑似摔倒（高宽比 {aspect_ratio:.2f}）"
+
+                    self._create_alert(
+                        alert_type="FALL",
+                        level="HIGH",
+                        stream_id=stream_id,
+                        description=msg,
+                    )
+
                     logger.info("Fall detected: %s", msg)
                     results.append(
                         {
@@ -453,10 +465,8 @@ class DetectionService:
                             },
                         }
                     )
-                    # 重置计数，避免重复告警
                     self._fall_counter[tid] = 0
             else:
-                # 恢复正常姿态，重置计数
                 self._fall_counter[tid] = 0
 
         return results
@@ -466,19 +476,10 @@ class DetectionService:
     # -----------------------------------------------------------------------
 
     def _check_cooldown(self, alert_type: str, stream_id: str) -> bool:
-        """检查告警冷却状态。
-
-        同一类型告警在冷却时间内不会重复触发。
-
-        Args:
-            alert_type: 告警类型。
-            stream_id: 摄像头流 ID。
-
-        Returns:
-            True 表示可以触发告警。
-        """
+        """检查告警冷却状态。"""
         now = time.time()
-        cooldown_sec = Config.ALERT_COOLDOWN_SECONDS.get(alert_type, 10)
+        cooldown_map = _cfg("ALERT_COOLDOWN_SECONDS")
+        cooldown_sec = cooldown_map.get(alert_type, 10)
         last = self._cooldown.get(alert_type, {}).get(stream_id, 0)
 
         if now - last < cooldown_sec:
@@ -488,7 +489,40 @@ class DetectionService:
         return True
 
     # -----------------------------------------------------------------------
-    # 工具：绘制标注（供 video.py 调用）
+    # 告警写入（对接 dev 分支 alerts 模块）
+    # -----------------------------------------------------------------------
+
+    def _create_alert(
+        self,
+        alert_type: str,
+        level: str,
+        stream_id: str,
+        description: str,
+        snapshot_path: str = "",
+    ):
+        """通过 apps.alerts.services.create_alert() 写入告警。
+
+        与 dev 分支刘帅华的告警模块对接，告警类型使用 dev 分支的命名：
+          - INTRUSION（区域闯入）
+          - WATER（积水）
+          - FIRE（火情）
+          - FALL（人员摔倒）
+        """
+        try:
+            from apps.alerts.services import create_alert
+
+            create_alert(
+                type=alert_type,
+                level=level,
+                stream_id=stream_id,
+                description=description,
+                snapshot_path=snapshot_path,
+            )
+        except Exception as e:
+            logger.error("Failed to create alert via service: %s", e)
+
+    # -----------------------------------------------------------------------
+    # 标注绘制
     # -----------------------------------------------------------------------
 
     def draw_overlays(
@@ -503,7 +537,7 @@ class DetectionService:
         Args:
             frame: 原始 BGR 帧。
             results: process_frame() 返回的检测结果。
-            zones: 危险区域配置（用于绘制区域多边形）。
+            zones: 危险区域配置。
             person_boxes: 人体框列表。
 
         Returns:
@@ -511,15 +545,11 @@ class DetectionService:
         """
         annotated = frame.copy()
 
-        # 绘制危险区域多边形
         if zones:
             for zone in zones:
                 polygon = _parse_polygon(zone.get("points_json", ""))
                 if polygon is not None:
-                    cv2.polylines(
-                        annotated, [polygon], True, (0, 0, 255), 2
-                    )
-                    # 区域名称
+                    cv2.polylines(annotated, [polygon], True, (0, 0, 255), 2)
                     name = zone.get("name", "")
                     if name and len(polygon) > 0:
                         pt = tuple(polygon[0][0])
@@ -533,12 +563,11 @@ class DetectionService:
                             1,
                         )
 
-        # 绘制检测结果框
         color_map = {
-            "ZONE_INTRUSION": (0, 0, 255),   # 红色
-            "FLOOD": (255, 0, 0),             # 蓝色
-            "FIRE": (0, 165, 255),            # 橙色
-            "FALL": (0, 255, 255),            # 黄色
+            "INTRUSION": (0, 0, 255),
+            "WATER": (255, 0, 0),
+            "FIRE": (0, 165, 255),
+            "FALL": (0, 255, 255),
         }
 
         for r in results:
@@ -559,3 +588,15 @@ class DetectionService:
                 )
 
         return annotated
+
+
+# 全局单例
+_detection_service: Optional[DetectionService] = None
+
+
+def get_detection_service() -> DetectionService:
+    """获取全局检测服务实例。"""
+    global _detection_service
+    if _detection_service is None:
+        _detection_service = DetectionService()
+    return _detection_service
