@@ -19,3 +19,7 @@ gunicorn~=21.2.0
 
 # dlib / face_recognition（C 队友需要，此处仅作记录）
 # 安装方式: conda install -c conda-forge dlib
+# D-李东礼：危险区域与异常检测
+opencv-python~=4.8.0
+numpy~=1.26.0
+pillow~=10.0.0

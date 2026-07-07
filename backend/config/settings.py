@@ -36,8 +36,15 @@ INSTALLED_APPS = [
     "apps.zones",
     "apps.alerts",
     "apps.events",
+    "apps.detection",  # D-李东礼：危险区域与异常检测
 ]
 
+# ── Detection config ─────────────────────────────────────────────────
+# D-李东礼：检测参数可在 Django settings 中覆盖，未设置时使用 services.py 默认值
+
+DETECTION_CONFIG = {
+    # "FLOOD_AREA_THRESHOLD": 0.20,  # 示例：覆盖默认阈值
+}
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
