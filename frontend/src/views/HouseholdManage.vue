@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { householdApi } from '@/api'
 
 const households = ref([])
@@ -12,6 +12,10 @@ const newName = ref('')
 const joinHouseholdId = ref('')
 const joinMessage = ref('')
 
+// 待审核数（用于徽标）
+const pendingCounts = ref({})
+const prevPendingCounts = ref({})
+
 // 成员管理
 const showMembersDialog = ref(false)
 const currentMembers = ref([])
@@ -21,10 +25,32 @@ const currentHouseholdId = ref(0)
 const showApplicationsDialog = ref(false)
 const currentApplications = ref([])
 
+let pollTimer = null
+
 async function loadHouseholds() {
   try {
     const data = await householdApi.list()
     households.value = data.results || data
+    // 拉取每个家庭的待审核数量
+    for (const h of households.value) {
+      if (h.is_admin) {
+        try {
+          const apps = await householdApi.getApplications(h.id)
+          const count = (apps || []).length
+          // 检测新增申请
+          if (prevPendingCounts.value[h.id] !== undefined && count > prevPendingCounts.value[h.id]) {
+            ElNotification({
+              title: '新的加入申请',
+              message: `家庭「${h.name}」有新的加入申请待审核`,
+              type: 'info',
+              duration: 6000,
+            })
+          }
+          prevPendingCounts.value[h.id] = count
+          pendingCounts.value[h.id] = count
+        } catch { pendingCounts.value[h.id] = 0 }
+      }
+    }
   } catch { /* ignore */ }
 }
 
@@ -53,6 +79,7 @@ async function deleteHousehold(household) {
       activeId.value = 0
       localStorage.removeItem('activeHouseholdId')
     }
+    delete pendingCounts.value[household.id]
     ElMessage.success('已删除')
     await loadHouseholds()
   } catch { /* ignore */ }
@@ -92,6 +119,8 @@ async function loadApplications(household) {
     const data = await householdApi.getApplications(household.id)
     currentApplications.value = data
     showApplicationsDialog.value = true
+    // 打开审核窗口时清零徽标
+    pendingCounts.value[household.id] = 0
   } catch { /* ignore */ }
 }
 
@@ -110,18 +139,24 @@ async function applyJoin() {
     await householdApi.applyJoin({ household_id: Number(joinHouseholdId.value), message: joinMessage.value })
     ElMessage.success('申请已提交，等待管理员审核')
     showJoinDialog.value = false
+    joinMessage.value = ''
   } catch { /* ignore */ }
 }
 
-const isCurrentAdmin = (h) => h.is_admin
+onMounted(() => {
+  loadHouseholds()
+  // 每15秒检查是否有新的加入申请
+  pollTimer = setInterval(loadHouseholds, 15000)
+})
 
-onMounted(loadHouseholds)
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 </script>
 
 <template>
   <div class="household-page">
     <el-tabs v-model="activeTab">
-      <!-- 我的家庭 -->
       <el-tab-pane label="我的家庭" name="my">
         <div class="toolbar">
           <el-button type="primary" @click="showCreateDialog = true">创建新家庭</el-button>
@@ -143,11 +178,14 @@ onMounted(loadHouseholds)
               <el-tag v-if="row.id === activeId" type="success" size="small">当前</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" min-width="300">
+          <el-table-column label="操作" min-width="340">
             <template #default="{ row }">
               <el-button v-if="row.id !== activeId" size="small" type="primary" @click="switchHousehold(row)">切换</el-button>
               <el-button size="small" @click="loadMembers(row)">成员</el-button>
-              <el-button v-if="row.is_admin" size="small" type="warning" @click="loadApplications(row)">审核</el-button>
+              <el-badge v-if="row.is_admin" :value="pendingCounts[row.id] || 0" :hidden="!pendingCounts[row.id]">
+                <el-button size="small" type="warning" @click="loadApplications(row)">审核</el-button>
+              </el-badge>
+              <el-button v-if="!row.is_admin" size="small" style="color:#999" disabled>审核</el-button>
               <el-button v-if="row.is_admin" size="small" type="danger" @click="deleteHousehold(row)">删除</el-button>
             </template>
           </el-table-column>
