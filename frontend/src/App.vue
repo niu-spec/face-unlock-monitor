@@ -1,11 +1,15 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElNotification } from 'element-plus'
+import { householdApi } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
 
 const isLoginPage = computed(() => route.path === '/login' || route.path === '/register')
+const pendingTotal = ref(0)  // 全局待审核总数
+let pollTimer = null
 
 function logout() {
   localStorage.removeItem('token')
@@ -13,8 +17,58 @@ function logout() {
   localStorage.removeItem('activeHouseholdId')
   localStorage.removeItem('user')
   localStorage.removeItem('households')
+  if (pollTimer) clearInterval(pollTimer)
   router.push('/login')
 }
+
+// 全局轮询：检查是否有新的加入申请
+async function checkApplications() {
+  const token = localStorage.getItem('token')
+  if (!token) return
+
+  let total = 0
+  let newApps = []
+
+  try {
+    const data = await householdApi.list()
+    const households = data.results || data
+    for (const h of households) {
+      if (h.is_admin) {
+        try {
+          const apps = await householdApi.getApplications(h.id)
+          const count = (apps || []).length
+          if (count > 0) {
+            total += count
+            newApps.push({ household: h.name, count })
+          }
+        } catch { /* ignore */ }
+      }
+    }
+  } catch { return }
+
+  // 发现新申请 → 弹窗通知
+  if (total > pendingTotal.value && pendingTotal.value > 0 && newApps.length > 0) {
+    const names = newApps.map(a => `「${a.household}」${a.count}条`).join('、')
+    ElNotification({
+      title: '新的加入申请',
+      message: `${names}`,
+      type: 'info',
+      duration: 5000,
+      onClick: () => router.push('/households'),
+    })
+  }
+
+  pendingTotal.value = total
+}
+
+onMounted(() => {
+  checkApplications()
+  pollTimer = setInterval(checkApplications, 10000)  // 每10秒检查
+})
+
+onUnmounted(() => {
+  if (pollTimer) clearInterval(pollTimer)
+})
 
 const menuItems = [
   { path: '/monitor', title: '居家监控', icon: 'Monitor' },
@@ -41,6 +95,11 @@ const activeMenu = computed(() => route.path)
         <el-menu-item v-for="item in menuItems" :key="item.path" :index="item.path">
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.title }}</span>
+          <el-badge
+            v-if="item.path === '/households' && pendingTotal > 0"
+            :value="pendingTotal"
+            style="margin-left: 8px"
+          />
         </el-menu-item>
       </el-menu>
     </el-aside>

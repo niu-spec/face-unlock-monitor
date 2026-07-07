@@ -1,6 +1,6 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
+import { ref, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { householdApi } from '@/api'
 
 const households = ref([])
@@ -14,7 +14,6 @@ const joinMessage = ref('')
 
 // 待审核数（用于徽标）
 const pendingCounts = ref({})
-const prevPendingCounts = ref({})
 
 // 成员管理
 const showMembersDialog = ref(false)
@@ -25,29 +24,15 @@ const currentHouseholdId = ref(0)
 const showApplicationsDialog = ref(false)
 const currentApplications = ref([])
 
-let pollTimer = null
-
 async function loadHouseholds() {
   try {
     const data = await householdApi.list()
     households.value = data.results || data
-    // 拉取每个家庭的待审核数量
     for (const h of households.value) {
       if (h.is_admin) {
         try {
           const apps = await householdApi.getApplications(h.id)
-          const count = (apps || []).length
-          // 检测新增申请
-          if (prevPendingCounts.value[h.id] !== undefined && count > prevPendingCounts.value[h.id]) {
-            ElNotification({
-              title: '新的加入申请',
-              message: `家庭「${h.name}」有新的加入申请待审核`,
-              type: 'info',
-              duration: 6000,
-            })
-          }
-          prevPendingCounts.value[h.id] = count
-          pendingCounts.value[h.id] = count
+          pendingCounts.value[h.id] = (apps || []).length
         } catch { pendingCounts.value[h.id] = 0 }
       }
     }
@@ -143,15 +128,7 @@ async function applyJoin() {
   } catch { /* ignore */ }
 }
 
-onMounted(() => {
-  loadHouseholds()
-  // 每15秒检查是否有新的加入申请
-  pollTimer = setInterval(loadHouseholds, 15000)
-})
-
-onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
-})
+onMounted(loadHouseholds)
 </script>
 
 <template>
