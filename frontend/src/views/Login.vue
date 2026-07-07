@@ -1,29 +1,48 @@
 <script setup>
 import { reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { authApi } from '@/api'
 
 const router = useRouter()
+const route = useRoute()
 const loading = ref(false)
 const form = reactive({
-  username: 'admin',
-  password: 'admin123',
+  phone: '',
+  password: '',
 })
 
 async function onSubmit() {
+  if (!form.phone || form.phone.length !== 11) {
+    ElMessage.warning('请输入有效的手机号')
+    return
+  }
+  if (!form.password || form.password.length < 6) {
+    ElMessage.warning('密码至少6位')
+    return
+  }
+
   loading.value = true
   try {
     const data = await authApi.login(form)
-    const token = data?.access || data?.token
-    if (token) {
-      localStorage.setItem('token', token)
+    localStorage.setItem('token', data.access)
+    localStorage.setItem('refresh', data.refresh)
+    if (data.user) {
+      localStorage.setItem('user', JSON.stringify(data.user))
     }
+    // 获取用户家庭列表，设置默认活跃家庭
+    try {
+      const me = await authApi.getMe()
+      if (me.households && me.households.length > 0) {
+        localStorage.setItem('activeHouseholdId', me.households[0].id)
+        localStorage.setItem('households', JSON.stringify(me.households))
+      }
+    } catch { /* 忽略 */ }
     ElMessage.success('登录成功')
-    router.push('/monitor')
+    const redirect = route.query.redirect || '/monitor'
+    router.push(redirect)
   } catch {
-    ElMessage.warning('后端未就绪，已进入演示模式')
-    router.push('/monitor')
+    ElMessage.error('手机号或密码错误')
   } finally {
     loading.value = false
   }
@@ -37,11 +56,11 @@ async function onSubmit() {
         <div class="title">居家智能摄像头监控</div>
       </template>
       <el-form :model="form" label-width="72px" @submit.prevent="onSubmit">
-        <el-form-item label="用户名">
-          <el-input v-model="form.username" />
+        <el-form-item label="手机号">
+          <el-input v-model="form.phone" placeholder="请输入手机号" maxlength="11" />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" show-password />
+          <el-input v-model="form.password" type="password" show-password placeholder="请输入密码" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" native-type="submit" :loading="loading" style="width: 100%">
@@ -49,6 +68,9 @@ async function onSubmit() {
           </el-button>
         </el-form-item>
       </el-form>
+      <div style="text-align: center">
+        <router-link to="/register">没有账号？立即注册</router-link>
+      </div>
     </el-card>
   </div>
 </template>

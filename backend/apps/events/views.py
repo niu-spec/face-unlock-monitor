@@ -1,26 +1,17 @@
 """Events — 视图：事件日志查询"""
 from rest_framework import viewsets, mixins
 from drf_yasg.utils import swagger_auto_schema
+from apps.households.filters import HouseholdFilterBackend
 from apps.events.models import Event
 from apps.events.serializers import EventSerializer
 
 
 class EventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.GenericViewSet):
-    """
-    事件日志 — 只读查询。
-
-    记录系统运行过程中的关键事件：
-    - 人脸识别成功 / 陌生人出现
-    - 区域闯入 / 过近 / 停留 / 尾随
-    - 上锁操作
-    - 系统事件
-
-    GET /api/events/          — 事件列表（按时间倒序）
-    GET /api/events/{id}/     — 事件详情
-    """
+    """事件日志 — 按家庭过滤（只读）"""
 
     queryset = Event.objects.all()
     serializer_class = EventSerializer
+    filter_backends = [HouseholdFilterBackend]
 
     def get_queryset(self):
         qs = super().get_queryset()

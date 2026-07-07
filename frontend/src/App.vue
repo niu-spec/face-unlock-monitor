@@ -5,7 +5,16 @@ import { useRoute, useRouter } from 'vue-router'
 const route = useRoute()
 const router = useRouter()
 
-const isLoginPage = computed(() => route.path === '/login')
+const isLoginPage = computed(() => route.path === '/login' || route.path === '/register')
+
+function logout() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('refresh')
+  localStorage.removeItem('activeHouseholdId')
+  localStorage.removeItem('user')
+  localStorage.removeItem('households')
+  router.push('/login')
+}
 
 const menuItems = [
   { path: '/monitor', title: '居家监控', icon: 'Monitor' },
@@ -13,7 +22,7 @@ const menuItems = [
   { path: '/zones', title: '危险区域', icon: 'Crop' },
   { path: '/alerts', title: '告警中心', icon: 'Bell' },
   { path: '/events', title: '事件记录', icon: 'Document' },
-  { path: '/users', title: '用户管理', icon: 'Setting' },
+  { path: '/households', title: '家庭管理', icon: 'Setting' },
 ]
 
 const activeMenu = computed(() => route.path)
@@ -39,7 +48,7 @@ const activeMenu = computed(() => route.path)
     <el-container>
       <el-header class="header">
         <span>{{ route.meta.title }}</span>
-        <el-button text type="primary" @click="router.push('/login')">退出登录</el-button>
+        <el-button text type="primary" @click="logout">退出登录</el-button>
       </el-header>
       <el-main class="main">
         <router-view />

@@ -10,15 +10,11 @@
 import logging
 from io import BytesIO
 
-import cv2
-import numpy as np
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from PIL import Image
 
-from .services import get_detection_service
-
+# Lazy imports — cv2/numpy/PIL 在 Python 3.14 上无预编译包，函数内懒加载
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +33,16 @@ def analyze_frame(request):
     Returns:
         JSON: {"success": true, "results": [...], "alerts_created": N}
     """
+    try:
+        import cv2
+        import numpy as np
+        from PIL import Image
+        from .services import get_detection_service
+    except ImportError as e:
+        return JsonResponse(
+            {"success": False, "error": f"依赖未安装: {e}"}, status=500
+        )
+
     if "image" not in request.FILES:
         return JsonResponse(
             {"success": False, "error": "缺少 image 文件"}, status=400

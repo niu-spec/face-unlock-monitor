@@ -35,6 +35,10 @@ class Alert(models.Model):
         ("ignored", "已忽略"),
     ]
 
+    household = models.ForeignKey(
+        "households.Household", on_delete=models.CASCADE, related_name="alerts",
+        verbose_name="所属家庭", null=True,
+    )
     type = models.CharField("告警类型", max_length=32, choices=TYPE_CHOICES)
     level = models.CharField("严重等级", max_length=16, choices=LEVEL_CHOICES, default="MEDIUM")
     stream_id = models.CharField("视频流ID", max_length=32, default="living_room")
