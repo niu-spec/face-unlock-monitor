@@ -13,6 +13,7 @@ django-cors-headers~=4.3.0
 
 # MySQL 驱动
 pymysql~=1.1.0
+cryptography~=44.0.0
 
 # 生产部署
 gunicorn~=21.2.0
