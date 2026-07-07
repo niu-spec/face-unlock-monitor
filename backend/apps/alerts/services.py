@@ -25,6 +25,7 @@ def create_alert(
     stream_id: str = "living_room",
     description: str = "",
     snapshot_path: str = "",
+    household_id: int = None,
 ) -> Alert:
     """
     创建告警 — 供 C/D 服务调用。
@@ -45,6 +46,7 @@ def create_alert(
         stream_id=stream_id,
         description=description,
         snapshot_path=snapshot_path,
+        household_id=household_id,
     )
     return alert
 
