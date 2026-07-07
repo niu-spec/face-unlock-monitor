@@ -15,8 +15,9 @@ async function onSubmit() {
   loading.value = true
   try {
     const data = await authApi.login(form)
-    if (data?.token) {
-      localStorage.setItem('token', data.token)
+    const token = data?.access || data?.token
+    if (token) {
+      localStorage.setItem('token', token)
     }
     ElMessage.success('登录成功')
     router.push('/monitor')
