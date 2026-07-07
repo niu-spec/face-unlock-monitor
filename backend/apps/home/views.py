@@ -2,20 +2,13 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema
+from drf_yasg.utils import swagger_auto_schema
 
 
-@extend_schema(
+@swagger_auto_schema(
+    method="get",
     tags=["居家监控"],
-    responses={
-        200: {
-            "example": {
-                "total": 2,
-                "family": 2,
-                "stranger": 0,
-            }
-        }
-    },
+    operation_description="当前画面人数统计",
 )
 @api_view(["GET"])
 @permission_classes([AllowAny])

@@ -9,6 +9,12 @@ const routes = [
     meta: { title: '登录', public: true },
   },
   {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/Register.vue'),
+    meta: { title: '注册', public: true },
+  },
+  {
     path: '/monitor',
     name: 'HomeMonitor',
     component: () => import('@/views/HomeMonitor.vue'),
@@ -39,10 +45,10 @@ const routes = [
     meta: { title: '事件记录' },
   },
   {
-    path: '/users',
-    name: 'UserManage',
-    component: () => import('@/views/UserManage.vue'),
-    meta: { title: '用户管理' },
+    path: '/households',
+    name: 'HouseholdManage',
+    component: () => import('@/views/HouseholdManage.vue'),
+    meta: { title: '家庭管理' },
   },
 ]
 
@@ -51,8 +57,21 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
-  document.title = `${to.meta.title || '居家监控'} · home-camera-monitor`
+router.beforeEach((to, from, next) => {
+  document.title = `${to.meta.title || '居家监控'} · home-camera-monitor'
+
+  const isPublic = to.meta.public === true
+  const token = localStorage.getItem('token')
+
+  if (!isPublic && !token) {
+    return next({ path: '/login', query: { redirect: to.fullPath } })
+  }
+
+  if (to.path === '/login' && token) {
+    return next({ path: '/monitor' })
+  }
+
+  next()
 })
 
 export default router

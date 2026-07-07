@@ -14,6 +14,8 @@ SECRET_KEY = os.environ.get(
 
 DEBUG = os.environ.get("DJANGO_DEBUG", "True").lower() in ("true", "1", "yes")
 
+AUTH_USER_MODEL = "accounts.User"
+
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "*").split(",")
 
 # ── Application definition ──────────────────────────────────────────
@@ -37,6 +39,7 @@ INSTALLED_APPS = [
     "apps.alerts",
     "apps.events",
     "apps.detection",  # D-李东礼：危险区域与异常检测
+    "apps.households",  # E-刘帅华：家庭管理
 ]
 
 # ── Detection config ─────────────────────────────────────────────────
@@ -52,6 +55,7 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "apps.households.middleware.ActiveHouseholdMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

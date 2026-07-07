@@ -21,6 +21,10 @@ class Event(models.Model):
         ("SYSTEM", "系统事件"),
     ]
 
+    household = models.ForeignKey(
+        "households.Household", on_delete=models.CASCADE, related_name="events",
+        verbose_name="所属家庭", null=True,
+    )
     event_type = models.CharField("事件类型", max_length=32, choices=TYPE_CHOICES)
     stream_id = models.CharField("视频流ID", max_length=32, default="living_room")
     description = models.CharField("事件描述", max_length=256)
