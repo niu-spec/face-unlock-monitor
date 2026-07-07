@@ -177,7 +177,6 @@ def me_view(request):
     return Response({
         "id": user.id,
         "phone": str(user.phone),
-        "nickname": user.nickname or "",
         "households": [
             {"id": h["household__id"], "name": h["household__name"], "role": h["role"]}
             for h in households
@@ -186,36 +185,45 @@ def me_view(request):
 
 
 @swagger_auto_schema(method="get", tags=["个人信息"], operation_description="获取个人信息")
-@swagger_auto_schema(
-    method="put", tags=["个人信息"],
-    operation_description="修改个人信息（昵称、手机号）",
-)
-@api_view(["GET", "PUT"])
+@api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def profile_view(request):
     user = request.user
-    if request.method == "GET":
-        return Response({
-            "id": user.id,
-            "phone": str(user.phone),
-            "nickname": user.nickname or "",
-        })
-    # PUT —  修改昵称和手机号
-    nickname = request.data.get("nickname", user.nickname)
-    new_phone = request.data.get("phone", None)
+    return Response({"id": user.id, "phone": str(user.phone)})
 
-    user.nickname = nickname
-    if new_phone and new_phone != str(user.phone):
-        if User.objects.filter(phone=new_phone).exclude(id=user.id).exists():
-            return Response({"error": "该手机号已被使用"}, status=status.HTTP_400_BAD_REQUEST)
-        user.phone = new_phone
-    user.save(update_fields=["nickname", "phone"] if new_phone else ["nickname"])
 
-    return Response({
-        "id": user.id,
-        "phone": str(user.phone),
-        "nickname": user.nickname or "",
-    })
+@swagger_auto_schema(
+    method="post", tags=["个人信息"],
+    operation_description="更换手机号 — 需短信验证新手机号",
+)
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def change_phone_view(request):
+    new_phone = request.data.get("phone", "")
+    sms_code = request.data.get("sms_code", "")
+
+    if not new_phone or not sms_code:
+        return Response({"error": "请提供手机号和验证码"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(phone=new_phone).exists():
+        return Response({"error": "该手机号已被使用"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 校验短信验证码
+    sms = SmsVerificationCode.objects.filter(
+        phone=new_phone, code=sms_code, is_used=False
+    ).order_by("-created_at").first()
+
+    if not sms or not sms.is_valid():
+        return Response({"error": "短信验证码无效或已过期"}, status=status.HTTP_400_BAD_REQUEST)
+
+    sms.is_used = True
+    sms.save()
+
+    user = request.user
+    user.phone = new_phone
+    user.save(update_fields=["phone"])
+
+    return Response({"success": True, "phone": str(user.phone)})
 
 
 # ── 家庭成员 CRUD ──────────────────────────────────────────────────
