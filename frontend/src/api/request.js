@@ -17,8 +17,16 @@ request.interceptors.request.use((config) => {
 request.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    const message = error.response?.data?.message || error.message || '请求失败'
-    ElMessage.error(message)
+    if (!error.config?.silent) {
+      const data = error.response?.data
+      const message =
+        data?.error ||
+        data?.detail ||
+        data?.message ||
+        error.message ||
+        '请求失败'
+      ElMessage.error(message)
+    }
     return Promise.reject(error)
   },
 )
