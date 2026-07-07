@@ -4,7 +4,7 @@
 > **模块名称**：AI 危险区域与异常检测  
 > **负责人**：李东礼（团队 D）  
 > **编制日期**：2026-07-07  
-> **版本**：v1.0
+> **版本**：v1.1（适配 Django 架构）
 
 ---
 
@@ -29,8 +29,8 @@
 
 | 功能 | 告警类型 | 责任人 |
 |------|----------|--------|
-| 危险区域闯入检测 | `ZONE_INTRUSION` | 李东礼 |
-| 积水检测 | `FLOOD` | 李东礼 |
+| 危险区域闯入检测 | `INTRUSION` | 李东礼 |
+| 积水检测 | `WATER` | 李东礼 |
 | 着火检测 | `FIRE` | 李东礼 |
 | 摔倒检测 | `FALL` | 李东礼 |
 
@@ -118,27 +118,37 @@ RTMP 帧 → 跳帧 → 缩放 480×480
 
 ```
 backend/
-├── config.py                         # 全局配置（检测阈值等）
-├── app.py                            # 应用入口（注册蓝图）
-├── models/
-│   ├── __init__.py                   # 模型导出
-│   ├── zone.py                       # 危险区域数据模型
-│   └── alert.py                      # 告警数据模型
-├── services/
-│   ├── __init__.py                   # 服务导出
-│   └── detection_service.py          # 核心检测服务 ★
-└── blueprints/
-    ├── __init__.py                   # 蓝图导出
-    └── detection.py                  # 检测 API 蓝图
+├── apps/
+│   ├── alerts/                        # 告警模块（刘帅华）
+│   │   ├── models.py                  # Alert 数据模型（Django ORM）
+│   │   ├── services.py                # create_alert() 等告警写入接口
+│   │   └── ...
+│   ├── zones/                         # 危险区域 CRUD（刘帅华）
+│   │   ├── models.py                  # Zone 数据模型（Django ORM）
+│   │   └── ...
+│   └── detection/                     # 危险区域与异常检测 ★ 本模块
+│       ├── __init__.py
+│       ├── services.py                # 核心检测服务（DetectionService）
+│       ├── views.py                   # API 视图（analyze / status）
+│       └── urls.py                    # URL 路由
+├── config/
+│   ├── settings.py                    # Django 配置（已注册 detection app）
+│   └── urls.py                        # 根路由（已添加 /api/detection/）
+└── manage.py                          # Django 入口
 ```
 
 ---
 
 ## 4. 详细实现
 
-### 4.1 配置文件（config.py）
+### 4.1 配置文件
 
-集中管理所有检测相关参数，便于调优。关键配置项：
+检测参数采用两层配置机制：
+
+1. **默认值**：定义在 [services.py](file:///c:/Users/30363/OneDrive/Desktop/camera-monitor/home-camera-monitor/backend/apps/detection/services.py) 的 `DETECTION_CONFIG` 字典中
+2. **覆盖值**：可在 Django [settings.py](file:///c:/Users/30363/OneDrive/Desktop/camera-monitor/home-camera-monitor/backend/config/settings.py) 中通过 `DETECTION_CONFIG` 字典覆盖，未设置时使用默认值
+
+关键配置项：
 
 | 配置项 | 默认值 | 说明 |
 |--------|--------|------|
@@ -184,13 +194,13 @@ class Alert(db.Model):
     updated_at      # DATETIME, 更新时间
 ```
 
-告警类型枚举：
+告警类型枚举（与 dev 分支 alerts/models.py 对齐）：
 
 | 枚举值 | 含义 | 归属模块 |
 |--------|------|----------|
 | `FACE_UNKNOWN` | 陌生人 | 人脸模块（王梓铭） |
-| `ZONE_INTRUSION` | 危险区域闯入 | 本模块 |
-| `FLOOD` | 积水 | 本模块 |
+| `INTRUSION` | 危险区域闯入 | 本模块 |
+| `WATER` | 积水 | 本模块 |
 | `FIRE` | 着火 | 本模块 |
 | `FALL` | 摔倒 | 本模块 |
 
@@ -241,7 +251,7 @@ def process_frame(
 3. 遍历所有人体框
 4. 获取该行人的角色（来自 face_roles）
 5. 若角色属于 forbidden_roles，检查矩形中心点是否在多边形内
-6. 若在内部且冷却时间已过，生成 ZONE_INTRUSION 告警
+6. 若在内部且冷却时间已过，生成 INTRUSION 告警
 ```
 
 **关键实现**：
@@ -260,7 +270,7 @@ def process_frame(
 3. 使用 cv2.inRange 过滤蓝色/青色范围
 4. 形态学开运算 + 闭运算去噪（椭圆核 5×5，各 2 次迭代）
 5. 计算积水像素占 ROI 面积比例
-6. 比例 ≥ 15% 且冷却时间已过 → 触发 FLOOD 告警
+6. 比例 ≥ 15% 且冷却时间已过 → 触发 WATER 告警
 ```
 
 **设计考量**：
@@ -333,8 +343,8 @@ def _check_cooldown(alert_type: str, stream_id: str) -> bool:
 
 | 告警类型 | BGR 颜色 | 视觉效果 |
 |----------|----------|----------|
-| `ZONE_INTRUSION` | (0, 0, 255) | 红色 |
-| `FLOOD` | (255, 0, 0) | 蓝色 |
+| `INTRUSION` | (0, 0, 255) | 红色 |
+| `WATER` | (255, 0, 0) | 蓝色 |
 | `FIRE` | (0, 165, 255) | 橙色 |
 | `FALL` | (0, 255, 255) | 黄色 |
 
@@ -349,7 +359,7 @@ def _check_cooldown(alert_type: str, stream_id: str) -> bool:
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `image` | file | 是 | 图像文件（jpg/png） |
-| `stream_id` | string | 否 | 摄像头流 ID，默认 "default" |
+| `stream_id` | string | 否 | 摄像头流 ID，默认 "living_room" |
 | `zones` | JSON string | 否 | 危险区域配置列表 |
 | `person_boxes` | JSON string | 否 | 已检测的人体框列表 |
 | `face_roles` | JSON string | 否 | 人脸识别角色映射 |
@@ -361,7 +371,7 @@ def _check_cooldown(alert_type: str, stream_id: str) -> bool:
     "success": true,
     "results": [
         {
-            "alert_type": "ZONE_INTRUSION",
+            "alert_type": "INTRUSION",
             "message": "[厨房] 检测到 child 闯入禁区",
             "bbox": [120, 200, 80, 160],
             "severity": "high",
@@ -383,7 +393,7 @@ def _check_cooldown(alert_type: str, stream_id: str) -> bool:
     "success": true,
     "status": "running",
     "service": "DetectionService",
-    "capabilities": ["ZONE_INTRUSION", "FLOOD", "FIRE", "FALL"]
+    "capabilities": ["INTRUSION", "WATER", "FIRE", "FALL"]
 }
 ```
 
@@ -392,12 +402,14 @@ def _check_cooldown(alert_type: str, stream_id: str) -> bool:
 其他模块（如 video.py）可通过 `get_detection_service()` 获取全局服务实例，直接调用 `process_frame()` 和 `draw_overlays()` 方法：
 
 ```python
-from blueprints.detection import get_detection_service
+from apps.detection.services import get_detection_service
 
 service = get_detection_service()
 results = service.process_frame(frame, stream_id, person_boxes, face_roles, zones)
 annotated = service.draw_overlays(frame, results, zones, person_boxes)
 ```
+
+告警通过 `apps.alerts.services.create_alert()` 写入数据库，与 dev 分支刘帅华的告警模块对接，无需直接操作 Alert 模型。
 
 ---
 
@@ -435,8 +447,9 @@ annotated = service.draw_overlays(frame, results, zones, person_boxes)
 ### 5.2 告警记录流程
 
 ```
-检测结果 → Alert 模型写入数据库
-         → 前端轮询 /api/alerts 获取
+检测结果 → _create_alert() → apps.alerts.services.create_alert()
+         → Alert 模型写入数据库
+         → 前端轮询 /api/alerts/ 获取
          → 告警中心展示 + 处置
 ```
 
@@ -446,17 +459,17 @@ annotated = service.draw_overlays(frame, results, zones, person_boxes)
 
 | 文件路径 | 说明 | 代码行数 |
 |----------|------|----------|
-| `backend/config.py` | 全局配置（检测参数） | 64 |
-| `backend/models/__init__.py` | 模型导出 | 4 |
-| `backend/models/zone.py` | 危险区域数据模型 | 56 |
-| `backend/models/alert.py` | 告警数据模型 | 95 |
-| `backend/services/__init__.py` | 服务导出 | 4 |
-| `backend/services/detection_service.py` | 核心检测服务 | 561 |
-| `backend/blueprints/__init__.py` | 蓝图导出 | 4 |
-| `backend/blueprints/detection.py` | 检测 API 蓝图 | 148 |
-| `backend/app.py` | 应用入口（已更新） | 修改 6 行 |
+| `backend/apps/detection/__init__.py` | 模块初始化 | 0 |
+| `backend/apps/detection/services.py` | 核心检测服务（Django 适配版） | ~400 |
+| `backend/apps/detection/views.py` | API 视图（analyze / status） | ~90 |
+| `backend/apps/detection/urls.py` | URL 路由 | 7 |
+| `backend/config/settings.py` | Django 配置（已注册 detection app + DETECTION_CONFIG） | 修改 8 行 |
+| `backend/config/urls.py` | 根路由（已添加 /api/detection/） | 修改 1 行 |
+| `backend/requirements.txt` | 依赖（已添加 opencv/numpy/pillow） | 修改 3 行 |
 
-**总计**：新增 8 个文件，修改 1 个文件，约 940 行代码。
+**总计**：新增 4 个文件，修改 3 个文件，约 500 行代码。
+
+> **架构变更说明**：v1.0 基于 Flask 蓝图，v1.1 适配为 Django app，与 dev 分支统一架构。告警类型命名同步为 `INTRUSION`/`WATER`/`FIRE`/`FALL`，告警写入通过 `apps.alerts.services.create_alert()` 对接。
 
 ---
 
