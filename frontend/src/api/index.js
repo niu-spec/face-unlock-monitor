@@ -32,6 +32,12 @@ export const memberApi = {
   remove: (id) => request.delete(`/api/auth/members/${id}/`),
 }
 
+// ── 人脸注册与识别 ────────────────────────────────────
+export const faceApi = {
+  register: (data) => request.post('/api/face/register/', data),
+  analyze: (data) => request.post('/api/face/analyze/', data),
+}
+
 // ── 区域 ──────────────────────────────────────────────
 export const zoneApi = {
   list: () => request.get('/api/zones/'),
