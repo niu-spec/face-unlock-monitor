@@ -12,6 +12,7 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
         model = FamilyMember
         fields = [
             "id",
+            "household",
             "name",
             "role",
             "role_display",
@@ -21,7 +22,7 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "household", "created_at", "updated_at"]
 
     def validate_face_encoding(self, value):
         """校验 128 维向量长度"""

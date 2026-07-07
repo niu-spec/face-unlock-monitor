@@ -1,7 +1,6 @@
 """Alerts — 序列化器"""
 from rest_framework import serializers
 from apps.alerts.models import Alert
-from apps.alerts.services import handle_alert
 
 
 class AlertSerializer(serializers.ModelSerializer):
@@ -15,6 +14,7 @@ class AlertSerializer(serializers.ModelSerializer):
         model = Alert
         fields = [
             "id",
+            "household",
             "type",
             "type_display",
             "level",
@@ -27,4 +27,4 @@ class AlertSerializer(serializers.ModelSerializer):
             "created_at",
             "handled_at",
         ]
-        read_only_fields = ["id", "created_at", "handled_at"]
+        read_only_fields = ["id", "household", "created_at", "handled_at"]

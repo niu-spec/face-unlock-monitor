@@ -1,18 +1,17 @@
 """Zones — 视图：危险区域 CRUD"""
 from rest_framework import viewsets
 from drf_yasg.utils import swagger_auto_schema
+from apps.accounts.views import HouseholdFilterMixin
 from apps.zones.models import Zone
 from apps.zones.serializers import ZoneSerializer
 
 
-class ZoneViewSet(viewsets.ModelViewSet):
+class ZoneViewSet(HouseholdFilterMixin, viewsets.ModelViewSet):
     """
     安防区域管理 — CRUD。
 
-    前端 ZoneEditor.vue 配合使用：
-    - 在视频画面上画多边形定义危险区域
-    - 设置哪些角色禁止进入（如 child）
-    - 设置安全距离和停留时间阈值
+    每个家庭看到自己的区域配置。
+    前端 ZoneEditor.vue 配合使用。
     """
 
     queryset = Zone.objects.filter(is_active=True)

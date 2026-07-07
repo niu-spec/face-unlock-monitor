@@ -12,6 +12,7 @@ class EventSerializer(serializers.ModelSerializer):
         model = Event
         fields = [
             "id",
+            "household",
             "event_type",
             "event_type_display",
             "stream_id",
@@ -19,4 +20,4 @@ class EventSerializer(serializers.ModelSerializer):
             "metadata",
             "created_at",
         ]
-        read_only_fields = ["id", "created_at"]
+        read_only_fields = ["id", "household", "created_at"]

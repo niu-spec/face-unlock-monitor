@@ -7,8 +7,43 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from drf_yasg.utils import swagger_auto_schema
 
-from apps.accounts.models import FamilyMember
+from apps.accounts.models import FamilyMember, Household, UserProfile
 from apps.accounts.serializers import FamilyMemberSerializer
+
+
+def get_household(request):
+    """从请求用户获取所属家庭。管理员(superuser)返回 None 表示可看全部。"""
+    user = request.user
+    if user.is_superuser:
+        return None
+    try:
+        return user.profile.household
+    except UserProfile.DoesNotExist:
+        return None
+
+
+class HouseholdFilterMixin:
+    """Mixin：自动按家庭过滤数据，创建时自动关联家庭。
+
+    使用方式：
+        class MyViewSet(HouseholdFilterMixin, ModelViewSet):
+            queryset = MyModel.objects.all()
+            ...
+
+    非 superuser 用户只能看到自己 household 的数据，
+    创建新记录时自动设置 household。
+    """
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        household = get_household(self.request)
+        if household:
+            qs = qs.filter(household=household)
+        return qs
+
+    def perform_create(self, serializer):
+        household = get_household(self.request)
+        serializer.save(household=household)
 
 
 @swagger_auto_schema(
@@ -51,14 +86,11 @@ def login_view(request):
     )
 
 
-class FamilyMemberViewSet(viewsets.ModelViewSet):
+class FamilyMemberViewSet(HouseholdFilterMixin, viewsets.ModelViewSet):
     """
     家庭成员管理 — CRUD。
 
-    管理员可通过此接口管理被摄像头识别的人员：
-    - 注册新成员（姓名、角色、学号）
-    - 查看成员列表
-    - 修改/删除成员
+    每个家庭只能看到和管理自己的家庭成员。
     """
 
     queryset = FamilyMember.objects.filter(is_active=True)

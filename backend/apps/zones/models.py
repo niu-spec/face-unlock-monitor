@@ -18,6 +18,12 @@ class Zone(models.Model):
         ("kitchen", "厨房"),
     ]
 
+    household = models.ForeignKey(
+        "accounts.Household",
+        on_delete=models.CASCADE,
+        related_name="zones",
+        verbose_name="所属家庭",
+    )
     name = models.CharField("区域名称", max_length=64)
     stream_id = models.CharField(
         "关联视频流",

@@ -5,19 +5,17 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from drf_yasg.utils import swagger_auto_schema
 
+from apps.accounts.views import HouseholdFilterMixin
 from apps.alerts.models import Alert
 from apps.alerts.serializers import AlertSerializer
 from apps.alerts.services import handle_alert
 
 
-class AlertViewSet(viewsets.ModelViewSet):
+class AlertViewSet(HouseholdFilterMixin, viewsets.ModelViewSet):
     """
     告警管理。
 
-    - GET  /api/alerts/              — 告警列表（支持筛选 type / status / stream_id）
-    - POST /api/alerts/              — 创建告警（C/D 内部调用）
-    - PUT  /api/alerts/{id}/handle/  — 处置告警（管理员点"已处理"）
-    - GET  /api/alerts/{id}/         — 告警详情
+    每个家庭只看到自己的告警。
     """
 
     queryset = Alert.objects.all()
@@ -43,7 +41,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=["告警管理"],
-        operation_description="内部创建告警 — C（人脸识别）/ D（异常检测）通过此接口写入告警",
+        operation_description="创建告警 — C/D 通过此接口写入告警。需传 household_id",
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
@@ -54,7 +52,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
     @swagger_auto_schema(
         tags=["告警管理"],
-        operation_description="处置告警 — 将告警标记为 handled，记录处置时间",
+        operation_description="处置告警 — 标记为 handled",
     )
     @action(detail=True, methods=["put"])
     def handle(self, request, pk=None):

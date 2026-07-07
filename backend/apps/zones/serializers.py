@@ -12,6 +12,7 @@ class ZoneSerializer(serializers.ModelSerializer):
         model = Zone
         fields = [
             "id",
+            "household",
             "name",
             "stream_id",
             "stream_id_display",
@@ -23,4 +24,4 @@ class ZoneSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "household", "created_at", "updated_at"]
