@@ -70,6 +70,10 @@ onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer)
 })
 
+// 读取本地缓存的用户信息
+const cachedUser = JSON.parse(localStorage.getItem('user') || '{}')
+const displayName = ref(cachedUser.nickname || cachedUser.phone || '')
+
 const menuItems = [
   { path: '/monitor', title: '居家监控', icon: 'Monitor' },
   { path: '/family', title: '家人注册', icon: 'UserFilled' },
@@ -77,6 +81,7 @@ const menuItems = [
   { path: '/alerts', title: '告警中心', icon: 'Bell' },
   { path: '/events', title: '事件记录', icon: 'Document' },
   { path: '/households', title: '家庭管理', icon: 'Setting' },
+  { path: '/profile', title: '个人信息', icon: 'UserFilled' },
 ]
 
 const activeMenu = computed(() => route.path)
@@ -107,7 +112,10 @@ const activeMenu = computed(() => route.path)
     <el-container>
       <el-header class="header">
         <span>{{ route.meta.title }}</span>
-        <el-button text type="primary" @click="logout">退出登录</el-button>
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="color:#666;font-size:14px">{{ displayName }}</span>
+          <el-button text type="primary" @click="logout">退出登录</el-button>
+        </div>
       </el-header>
       <el-main class="main">
         <router-view />
