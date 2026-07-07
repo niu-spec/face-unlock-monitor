@@ -16,6 +16,7 @@ urlpatterns = [
     path("api/zones/", include("apps.zones.urls")),
     path("api/alerts/", include("apps.alerts.urls")),
     path("api/events/", include("apps.events.urls")),
+    path("api/detection/", include("apps.detection.urls")),  # D-李东礼
 
     # Swagger / OpenAPI
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
