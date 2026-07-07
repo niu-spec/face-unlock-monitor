@@ -3,7 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_yasg.utils import swagger_auto_schema
 
 from apps.alerts.models import Alert
 from apps.alerts.serializers import AlertSerializer
@@ -26,7 +26,6 @@ class AlertViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         qs = super().get_queryset()
-        # 支持前端按类型、状态、视频流筛选
         alert_type = self.request.query_params.get("type")
         alert_status = self.request.query_params.get("status")
         stream_id = self.request.query_params.get("stream_id")
@@ -38,24 +37,24 @@ class AlertViewSet(viewsets.ModelViewSet):
             qs = qs.filter(stream_id=stream_id)
         return qs
 
-    @extend_schema(tags=["告警管理"])
+    @swagger_auto_schema(tags=["告警管理"])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @extend_schema(
+    @swagger_auto_schema(
         tags=["告警管理"],
-        description="内部创建告警 — C（人脸识别）/ D（异常检测）通过此接口写入告警",
+        operation_description="内部创建告警 — C（人脸识别）/ D（异常检测）通过此接口写入告警",
     )
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @extend_schema(tags=["告警管理"])
+    @swagger_auto_schema(tags=["告警管理"])
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @extend_schema(
+    @swagger_auto_schema(
         tags=["告警管理"],
-        description="处置告警 — 将告警标记为 handled，记录处置时间",
+        operation_description="处置告警 — 将告警标记为 handled，记录处置时间",
     )
     @action(detail=True, methods=["put"])
     def handle(self, request, pk=None):

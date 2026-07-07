@@ -1,6 +1,6 @@
 """Events — 视图：事件日志查询"""
 from rest_framework import viewsets, mixins
-from drf_spectacular.utils import extend_schema
+from drf_yasg.utils import swagger_auto_schema
 from apps.events.models import Event
 from apps.events.serializers import EventSerializer
 
@@ -32,10 +32,10 @@ class EventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
             qs = qs.filter(stream_id=stream_id)
         return qs
 
-    @extend_schema(tags=["事件日志"])
+    @swagger_auto_schema(tags=["事件日志"])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @extend_schema(tags=["事件日志"])
+    @swagger_auto_schema(tags=["事件日志"])
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)

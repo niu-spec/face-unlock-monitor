@@ -1,9 +1,18 @@
 """Root URL configuration with Swagger."""
 from django.contrib import admin
 from django.urls import path, include
-from drf_spectacular.views import (
-    SpectacularAPIView,
-    SpectacularSwaggerView,
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+from rest_framework.permissions import AllowAny
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="Home Camera Monitor API",
+        default_version="v1.0",
+        description="居家智能摄像头监控系统 — 业务 API 文档",
+    ),
+    public=True,
+    permission_classes=[AllowAny],
 )
 
 urlpatterns = [
@@ -16,11 +25,10 @@ urlpatterns = [
     path("api/alerts/", include("apps.alerts.urls")),
     path("api/events/", include("apps.events.urls")),
 
-    # Swagger / OpenAPI
-    path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
+    # Swagger UI
     path(
         "api/docs/",
-        SpectacularSwaggerView.as_view(url_name="schema"),
+        schema_view.with_ui("swagger", cache_timeout=0),
         name="swagger-ui",
     ),
 ]

@@ -5,28 +5,16 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
-from drf_spectacular.utils import extend_schema, OpenApiExample
+from drf_yasg.utils import swagger_auto_schema
 
 from apps.accounts.models import FamilyMember
 from apps.accounts.serializers import FamilyMemberSerializer
 
 
-@extend_schema(
+@swagger_auto_schema(
+    method="post",
     tags=["认证"],
-    request={
-        "application/json": {
-            "example": {"username": "admin", "password": "123456"}
-        }
-    },
-    responses={
-        200: {
-            "example": {
-                "access": "eyJ...",
-                "refresh": "eyJ...",
-                "user": {"id": 1, "username": "admin"},
-            }
-        }
-    },
+    operation_description="JWT 登录 — 提交 username + password，返回 access_token 和 refresh_token",
 )
 @api_view(["POST"])
 @permission_classes([AllowAny])
@@ -77,25 +65,24 @@ class FamilyMemberViewSet(viewsets.ModelViewSet):
     serializer_class = FamilyMemberSerializer
 
     def get_permissions(self):
-        """登录接口不需要认证，其他需要"""
         return [IsAuthenticated()]
 
-    @extend_schema(tags=["家庭成员"])
+    @swagger_auto_schema(tags=["家庭成员"])
     def list(self, request, *args, **kwargs):
         return super().list(request, *args, **kwargs)
 
-    @extend_schema(tags=["家庭成员"])
+    @swagger_auto_schema(tags=["家庭成员"])
     def create(self, request, *args, **kwargs):
         return super().create(request, *args, **kwargs)
 
-    @extend_schema(tags=["家庭成员"])
+    @swagger_auto_schema(tags=["家庭成员"])
     def retrieve(self, request, *args, **kwargs):
         return super().retrieve(request, *args, **kwargs)
 
-    @extend_schema(tags=["家庭成员"])
+    @swagger_auto_schema(tags=["家庭成员"])
     def update(self, request, *args, **kwargs):
         return super().update(request, *args, **kwargs)
 
-    @extend_schema(tags=["家庭成员"])
+    @swagger_auto_schema(tags=["家庭成员"])
     def destroy(self, request, *args, **kwargs):
         return super().destroy(request, *args, **kwargs)
