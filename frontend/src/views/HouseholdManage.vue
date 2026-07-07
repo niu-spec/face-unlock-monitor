@@ -198,15 +198,18 @@ onMounted(loadHouseholds)
 </script>
 
 <template>
-  <div class="household-page">
-    <el-tabs>
-      <el-tab-pane label="我的家庭" name="my">
+  <el-card shadow="never" class="household-page">
+    <template #header>
+      <div class="header">
+        <span>我的家庭</span>
         <div class="toolbar">
           <el-button type="primary" @click="showCreateDialog = true">创建新家庭</el-button>
           <el-button @click="showJoinDialog = true">申请加入</el-button>
         </div>
+      </div>
+    </template>
 
-        <el-table :data="households" v-loading="loading" style="margin-top: 16px" empty-text="暂无家庭数据">
+    <el-table :data="households" v-loading="loading" empty-text="暂无家庭数据">
           <el-table-column prop="id" label="ID" width="60" />
           <el-table-column prop="name" label="家庭名称" />
           <el-table-column label="角色" width="100">
@@ -282,8 +285,6 @@ onMounted(loadHouseholds)
           </el-table>
           <el-empty v-if="householdMembers.length === 0" description="暂无家庭成员，请去「家人注册」页面录入" />
         </div>
-      </el-tab-pane>
-    </el-tabs>
 
     <!-- 创建家庭对话框 -->
     <el-dialog v-model="showCreateDialog" title="创建新家庭" width="400px">
@@ -346,10 +347,16 @@ onMounted(loadHouseholds)
       </el-table>
       <el-empty v-if="currentApplications.length === 0" description="暂无待审核申请" />
     </el-dialog>
-  </div>
+  </el-card>
 </template>
 
 <style scoped>
 .household-page { max-width: 950px; margin: 0 auto; }
-.toolbar { display: flex; gap: 8px; }
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.toolbar { display: flex; gap: 8px; flex-shrink: 0; }
 </style>
