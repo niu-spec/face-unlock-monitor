@@ -2,7 +2,7 @@
 import { reactive, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { memberApi, householdApi } from '@/api'
+import { memberApi, householdApi, faceApi } from '@/api'
 
 const activeHouseholdName = ref('')
 const activeHouseholdId = ref(localStorage.getItem('activeHouseholdId') || '')
@@ -44,11 +44,16 @@ function onFileChange(file) {
 async function onSubmit() {
   if (!form.name.trim()) { ElMessage.warning('请输入姓名'); return }
   if (!activeHouseholdId.value) { ElMessage.warning('请先在家庭管理中切换到当前家庭'); return }
+  if (!photoFile.value) { ElMessage.warning('请上传一张清晰的单人人脸照片'); return }
 
   submitting.value = true
   try {
-    await memberApi.create({ name: form.name.trim(), role: form.role })
-    ElMessage.success('家庭成员已录入')
+    const data = new FormData()
+    data.append('name', form.name.trim())
+    data.append('role', form.role)
+    data.append('image', photoFile.value)
+    await faceApi.register(data)
+    ElMessage.success('家庭成员与人脸特征已录入')
     form.name = ''
     photoFile.value = null
     previewUrl.value = ''

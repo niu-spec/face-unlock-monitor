@@ -40,6 +40,7 @@ INSTALLED_APPS = [
     "apps.alerts",
     "apps.events",
     "apps.detection",  # D-李东礼：危险区域与异常检测
+    "apps.face",  # C-王梓铭：人脸识别与人数统计
     "apps.households",  # E-刘帅华：家庭管理
 ]
 
@@ -49,6 +50,9 @@ INSTALLED_APPS = [
 DETECTION_CONFIG = {
     # "FLOOD_AREA_THRESHOLD": 0.20,  # 示例：覆盖默认阈值
 }
+
+# 人脸特征 JSON 镜像；数据库中同时保存 FamilyMember.face_encoding。
+FACE_REGISTRY_PATH = BASE_DIR / "registered_faces.json"
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
