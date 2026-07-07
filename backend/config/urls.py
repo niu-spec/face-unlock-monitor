@@ -12,6 +12,7 @@ urlpatterns = [
 
     # API v1
     path("api/auth/", include("apps.accounts.urls")),
+    path("api/home/", include("apps.home.urls")),
     path("api/zones/", include("apps.zones.urls")),
     path("api/alerts/", include("apps.alerts.urls")),
     path("api/events/", include("apps.events.urls")),
