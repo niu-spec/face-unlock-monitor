@@ -58,7 +58,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to, from, next) => {
-  document.title = `${to.meta.title || '居家监控'} · home-camera-monitor'
+  document.title = `${to.meta.title || '居家监控'} · home-camera-monitor`
 
   const isPublic = to.meta.public === true
   const token = localStorage.getItem('token')
