@@ -1,7 +1,12 @@
 """Flask application entry point."""
 from flask import Flask, jsonify
+from flask_cors import CORS
+
+from blueprints.video import video_bp
 
 app = Flask(__name__)
+CORS(app)
+app.register_blueprint(video_bp)
 
 
 @app.route("/")
@@ -15,6 +20,11 @@ def index():
 
 @app.route("/health")
 def health():
+    return jsonify({"status": "healthy"})
+
+
+@app.route("/api/health")
+def api_health():
     return jsonify({"status": "healthy"})
 
 
