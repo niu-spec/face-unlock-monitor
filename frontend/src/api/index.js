@@ -3,6 +3,7 @@ import request from './request'
 // ── 认证 ──────────────────────────────────────────────
 export const authApi = {
   login: (data) => request.post('/api/auth/login/', data),
+  logout: (refresh) => request.post('/api/auth/logout/', { refresh }),
   register: (data) => request.post('/api/auth/register/', data),
   sendSms: (data) => request.post('/api/auth/sms/send/', data),
   getCaptcha: () => request.get('/api/auth/captcha/'),

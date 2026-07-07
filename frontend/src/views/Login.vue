@@ -24,6 +24,13 @@ async function onSubmit() {
 
   loading.value = true
   try {
+    // 先清除所有旧登录数据，避免残留旧账号信息
+    localStorage.removeItem('token')
+    localStorage.removeItem('refresh')
+    localStorage.removeItem('activeHouseholdId')
+    localStorage.removeItem('user')
+    localStorage.removeItem('households')
+
     const data = await authApi.login(form)
     localStorage.setItem('token', data.access)
     localStorage.setItem('refresh', data.refresh)
