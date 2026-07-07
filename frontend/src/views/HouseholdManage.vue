@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { householdApi, memberApi } from '@/api'
 
 const households = ref([])
+const loading = ref(false)
 const activeId = ref(Number(localStorage.getItem('activeHouseholdId')) || 0)
 const showCreateDialog = ref(false)
 const showJoinDialog = ref(false)
@@ -26,9 +27,13 @@ const currentHouseholdId = ref(0)
 const pendingCounts = ref({})
 
 async function loadHouseholds() {
+  loading.value = true
   try {
     const data = await householdApi.list()
     households.value = data.results || data
+    if (households.value.length === 0) {
+      ElMessage.info('您还没有加入任何家庭，请创建或申请加入一个家庭')
+    }
     for (const h of households.value) {
       if (h.is_admin) {
         try {
@@ -37,7 +42,12 @@ async function loadHouseholds() {
         } catch { pendingCounts.value[h.id] = 0 }
       }
     }
-  } catch { /* ignore */ }
+  } catch (err) {
+    ElMessage.error('加载家庭列表失败，请检查网络或重新登录')
+    console.error('加载家庭列表失败:', err)
+  } finally {
+    loading.value = false
+  }
 }
 
 function switchHousehold(household) {
@@ -53,10 +63,17 @@ function enterHousehold(household) {
 }
 
 async function loadHouseholdMembers(householdId) {
+  // 确保 activeHouseholdId 已更新，以便 interceptor 发送正确的 header
+  localStorage.setItem('activeHouseholdId', householdId)
+  activeId.value = householdId
   try {
     const data = await memberApi.list()
     householdMembers.value = data.results || data
-  } catch { householdMembers.value = [] }
+  } catch (err) {
+    ElMessage.error('加载家庭成员失败，请确认该家庭中有成员数据')
+    console.error('加载家庭成员失败:', err)
+    householdMembers.value = []
+  }
 }
 
 async function createHousehold() {
@@ -67,7 +84,10 @@ async function createHousehold() {
     showCreateDialog.value = false
     newName.value = ''
     await loadHouseholds()
-  } catch { /* ignore */ }
+  } catch (err) {
+    ElMessage.error('创建家庭失败，请重试')
+    console.error('创建家庭失败:', err)
+  }
 }
 
 async function deleteHousehold(household) {
@@ -91,7 +111,13 @@ async function loadMembers(household) {
     const data = await householdApi.getMembers(household.id)
     currentMembers.value = data
     showMembersDialog.value = true
-  } catch { /* ignore */ }
+    if (data.length === 0) {
+      ElMessage.info('该家庭暂无成员')
+    }
+  } catch (err) {
+    ElMessage.error('加载成员列表失败，请重试')
+    console.error('加载成员列表失败:', err)
+  }
 }
 
 function startEditMember(member) {
@@ -180,7 +206,7 @@ onMounted(loadHouseholds)
           <el-button @click="showJoinDialog = true">申请加入</el-button>
         </div>
 
-        <el-table :data="households" style="margin-top: 16px">
+        <el-table :data="households" v-loading="loading" style="margin-top: 16px" empty-text="暂无家庭数据">
           <el-table-column prop="id" label="ID" width="60" />
           <el-table-column prop="name" label="家庭名称" />
           <el-table-column label="角色" width="100">
@@ -208,6 +234,8 @@ onMounted(loadHouseholds)
             </template>
           </el-table-column>
         </el-table>
+
+        <el-empty v-if="!loading && households.length === 0" description="暂无家庭，请创建新家庭或申请加入已有家庭" />
 
         <!-- 进入家庭后的成员管理面板 -->
         <div v-if="enteredHousehold" style="margin-top: 24px">

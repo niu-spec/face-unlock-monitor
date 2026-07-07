@@ -1,8 +1,8 @@
 <script setup>
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElNotification } from 'element-plus'
-import { householdApi } from '@/api'
+import { householdApi, authApi } from '@/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,13 +11,44 @@ const isLoginPage = computed(() => route.path === '/login' || route.path === '/r
 const pendingTotal = ref(0)  // 全局待审核总数
 let pollTimer = null
 
-function logout() {
+// 从 localStorage 读取用户信息，确保登录/退出后都能正确显示
+function getUserDisplayName() {
+  const cachedUser = JSON.parse(localStorage.getItem('user') || '{}')
+  return cachedUser.phone || ''
+}
+const displayName = ref(getUserDisplayName())
+
+// 监听路由变化：从登录页 → 主页时刷新 displayName
+watch(() => route.path, (newPath) => {
+  if (newPath !== '/login' && newPath !== '/register') {
+    displayName.value = getUserDisplayName()
+  }
+})
+
+async function logout() {
+  // 先调用后端注销接口，让 refresh token 进入黑名单
+  const refresh = localStorage.getItem('refresh')
+  if (refresh) {
+    try {
+      await authApi.logout(refresh)
+    } catch { /* 后端调用失败不影响前端清理 */ }
+  }
+
+  // 清除所有 localStorage 数据
   localStorage.removeItem('token')
   localStorage.removeItem('refresh')
   localStorage.removeItem('activeHouseholdId')
   localStorage.removeItem('user')
   localStorage.removeItem('households')
-  if (pollTimer) clearInterval(pollTimer)
+
+  // 清除状态
+  displayName.value = ''
+  pendingTotal.value = 0
+
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
   router.push('/login')
 }
 
@@ -61,18 +92,37 @@ async function checkApplications() {
   pendingTotal.value = total
 }
 
-onMounted(() => {
+function startPolling() {
+  if (pollTimer) return
   checkApplications()
   pollTimer = setInterval(checkApplications, 10000)  // 每10秒检查
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+// 监听 token 变化（登录/退出）来控制轮询
+watch(() => localStorage.getItem('token'), (newToken) => {
+  if (newToken) {
+    startPolling()
+  } else {
+    stopPolling()
+  }
+}, { immediate: false })
+
+onMounted(() => {
+  if (localStorage.getItem('token')) {
+    startPolling()
+  }
 })
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
+  stopPolling()
 })
-
-// 读取本地缓存的用户信息
-const cachedUser = JSON.parse(localStorage.getItem('user') || '{}')
-const displayName = ref(cachedUser.phone || '')
 
 const menuItems = [
   { path: '/monitor', title: '居家监控', icon: 'Monitor' },

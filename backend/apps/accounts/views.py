@@ -162,6 +162,27 @@ def login_view(request):
     })
 
 
+# ── 退出登录（Token 黑名单） ─────────────────────────────────────
+
+@swagger_auto_schema(
+    method="post",
+    tags=["认证"],
+    operation_description="退出登录 — 将 refresh token 加入黑名单，使其无法再用于刷新",
+)
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    """退出登录：黑名单 refresh token，前端需同时清除本地 token"""
+    refresh_token = request.data.get("refresh")
+    if refresh_token:
+        try:
+            token = RefreshToken(refresh_token)
+            token.blacklist()
+        except Exception:
+            pass  # token 已失效或格式错误也是 ok 的
+    return Response({"success": True, "message": "已退出登录"})
+
+
 # ── 当前用户信息 ───────────────────────────────────────────────────
 
 @swagger_auto_schema(method="get", tags=["认证"], operation_description="获取当前用户信息")

@@ -20,7 +20,9 @@ async function loadHouseholdInfo() {
     const list = data.results || data
     const h = list.find(h => h.id === Number(activeHouseholdId.value))
     if (h) activeHouseholdName.value = h.name
-  } catch { /* ignore */ }
+  } catch (err) {
+    console.error('加载家庭信息失败:', err)
+  }
 }
 
 async function loadMembers() {
@@ -28,7 +30,10 @@ async function loadMembers() {
   try {
     const data = await memberApi.list()
     members.value = data.results || data
-  } catch { /* ignore */ }
+  } catch (err) {
+    ElMessage.error('加载家庭成员列表失败')
+    console.error('加载家庭成员失败:', err)
+  }
 }
 
 function onFileChange(file) {

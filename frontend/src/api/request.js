@@ -21,11 +21,13 @@ request.interceptors.request.use((config) => {
 request.interceptors.response.use(
   (response) => response.data,
   (error) => {
-    // 401 → 清除登录状态，跳转登录页
+    // 401 → 清除所有登录状态，跳转登录页
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
       localStorage.removeItem('refresh')
       localStorage.removeItem('activeHouseholdId')
+      localStorage.removeItem('user')
+      localStorage.removeItem('households')
       if (window.location.pathname !== '/login' && window.location.pathname !== '/register') {
         window.location.href = '/login'
       }
