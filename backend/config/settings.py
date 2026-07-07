@@ -45,7 +45,6 @@ INSTALLED_APPS = [
 DETECTION_CONFIG = {
     # "FLOOD_AREA_THRESHOLD": 0.20,  # 示例：覆盖默认阈值
 }
-
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
