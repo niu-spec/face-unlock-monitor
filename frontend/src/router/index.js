@@ -50,6 +50,12 @@ const routes = [
     component: () => import('@/views/HouseholdManage.vue'),
     meta: { title: '家庭管理' },
   },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: () => import('@/views/Profile.vue'),
+    meta: { title: '个人信息' },
+  },
 ]
 
 const router = createRouter({
