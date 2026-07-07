@@ -72,7 +72,7 @@ onUnmounted(() => {
 
 // 读取本地缓存的用户信息
 const cachedUser = JSON.parse(localStorage.getItem('user') || '{}')
-const displayName = ref(cachedUser.nickname || cachedUser.phone || '')
+const displayName = ref(cachedUser.phone || '')
 
 const menuItems = [
   { path: '/monitor', title: '居家监控', icon: 'Monitor' },

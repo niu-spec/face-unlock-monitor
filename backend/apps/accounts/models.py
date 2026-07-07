@@ -32,7 +32,6 @@ class User(AbstractUser):
 
     username = None
     phone = models.CharField("手机号", max_length=16, unique=True, db_index=True)
-    nickname = models.CharField("昵称", max_length=64, blank=True, default="")
 
     USERNAME_FIELD = "phone"
     REQUIRED_FIELDS = []
