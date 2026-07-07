@@ -17,7 +17,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from PIL import Image
 
-from .services import DetectionService, get_detection_service
+from .services import get_detection_service
 
 logger = logging.getLogger(__name__)
 

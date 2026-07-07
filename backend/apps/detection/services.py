@@ -16,7 +16,7 @@ import json
 import time
 import logging
 from collections import defaultdict
-from typing import Any, Optional
+from typing import Optional
 
 import cv2
 import numpy as np
