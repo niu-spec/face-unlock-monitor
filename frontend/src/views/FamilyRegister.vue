@@ -7,7 +7,6 @@ import { memberApi } from '@/api'
 const form = reactive({
   name: '',
   role: 'adult',
-  student_id: '',
 })
 
 const previewUrl = ref('')
@@ -24,7 +23,7 @@ async function onSubmit() {
 
   submitting.value = true
   try {
-    const data = { name: form.name.trim(), role: form.role, student_id: form.student_id }
+    const data = { name: form.name.trim(), role: form.role }
     // 如果后续需要上传人脸照片，可以在这里转 base64
     if (photoFile.value) {
       // 预留：将照片转 base64 传给 face_encoding
@@ -37,7 +36,6 @@ async function onSubmit() {
     await memberApi.create(data)
     ElMessage.success('家庭成员已录入')
     form.name = ''
-    form.student_id = ''
     photoFile.value = null
     previewUrl.value = ''
   } catch { /* error handled by interceptor */ }
@@ -59,9 +57,6 @@ async function onSubmit() {
           <el-radio value="elder">老人</el-radio>
           <el-radio value="guest">访客</el-radio>
         </el-radio-group>
-      </el-form-item>
-      <el-form-item label="学号/工号">
-        <el-input v-model="form.student_id" placeholder="可选" />
       </el-form-item>
       <el-form-item label="人脸照片">
         <el-upload
