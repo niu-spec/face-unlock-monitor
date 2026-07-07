@@ -30,7 +30,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
     "corsheaders",
-    "drf_spectacular",
+    "drf_yasg",
     # Local apps
     "apps.accounts",
     "apps.zones",
@@ -83,7 +83,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.mysql",
         "NAME": os.environ.get("DB_NAME", "home_camera_monitor"),
         "USER": os.environ.get("DB_USER", "root"),
-        "PASSWORD": os.environ.get("DB_PASSWORD", ""),
+        "PASSWORD": os.environ.get("DB_PASSWORD", "Root@1234"),
         "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
         "PORT": os.environ.get("DB_PORT", "3306"),
         "OPTIONS": {
@@ -132,7 +132,7 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 20,
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # Swagger schema 由 drf-yasg 处理，不需要 DEFAULT_SCHEMA_CLASS
 }
 
 # ── SimpleJWT ────────────────────────────────────────────────────────
@@ -143,11 +143,16 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
 
-# ── drf-spectacular (Swagger) ────────────────────────────────────────
+# ── drf-yasg (Swagger) ───────────────────────────────────────────────
 
-SPECTACULAR_SETTINGS = {
-    "TITLE": "Home Camera Monitor API",
-    "DESCRIPTION": "居家智能摄像头监控系统 — 业务 API 文档",
-    "VERSION": "1.0.0",
-    "SERVE_INCLUDE_SCHEMA": False,
+SWAGGER_SETTINGS = {
+    "SECURITY_DEFINITIONS": {
+        "Bearer": {
+            "type": "apiKey",
+            "name": "Authorization",
+            "in": "header",
+            "description": "JWT Token: Bearer <your_token>",
+        }
+    },
+    "USE_SESSION_AUTH": False,
 }
