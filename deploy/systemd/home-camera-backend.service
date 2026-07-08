@@ -1,0 +1,18 @@
+[Unit]
+Description=Home Camera Monitor backend service
+Wants=network-online.target home-mediamtx-ensure.service
+After=network-online.target home-mediamtx-ensure.service
+
+[Service]
+Type=simple
+WorkingDirectory=/service/backend
+Environment=BACKEND_DIR=/service/backend
+Environment=BACKEND_BIND=127.0.0.1:8000
+Environment=GUNICORN_WORKERS=2
+Environment=GUNICORN_TIMEOUT=120
+ExecStart=/bin/bash /service/deploy/start_backend.sh
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
