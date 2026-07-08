@@ -11,7 +11,7 @@ npm run dev
 
 默认地址：http://localhost:5173/
 
-开发模式下，`/api` 请求由 Vite 代理到 `http://localhost:5000`（Django）。
+开发模式下，`/api` 与 `/video_feed` 请求由 Vite 代理到 `http://localhost:8000`（Django）。
 
 ## 页面路由
 
@@ -23,7 +23,9 @@ npm run dev
 | `/zones` | 危险区域画框 |
 | `/alerts` | 告警中心 |
 | `/events` | 事件记录 |
-| `/users` | 用户管理 |
+| `/users` | 用户管理（账户概览，跳转个人信息/家庭管理） |
+| `/households` | 家庭管理 |
+| `/profile` | 个人信息（换绑手机号） |
 
 ## 目录结构
 
