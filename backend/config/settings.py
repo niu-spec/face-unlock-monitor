@@ -92,10 +92,10 @@ DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.mysql",
         "NAME": os.environ.get("DB_NAME", "home_camera_monitor"),
-        "USER": os.environ.get("DB_USER", "root"),
-        "PASSWORD": os.environ.get("DB_PASSWORD", "Root@1234"),
+        "USER": os.environ.get("DB_USER", "homecam"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", ""),
         "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
-        "PORT": os.environ.get("DB_PORT", "3306"),
+        "PORT": os.environ.get("DB_PORT", "3307"),
         "OPTIONS": {
             "charset": "utf8mb4",
         },

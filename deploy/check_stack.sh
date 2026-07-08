@@ -2,6 +2,9 @@
 set -euo pipefail
 
 failures=0
+BACKEND_URL="${BACKEND_URL:-http://127.0.0.1:8010}"
+BACKEND_PORT="${BACKEND_PORT:-8010}"
+DB_PORT="${DB_PORT:-3307}"
 
 check() {
   local name="$1"
@@ -23,14 +26,17 @@ check "RTMP port 9090 is listening" \
 check "RTSP port 8554 is listening" \
   bash -c "ss -lnt | grep -q ':8554'"
 
-check "Backend port 8000 is listening on localhost" \
-  bash -c "ss -lnt | grep -q '127.0.0.1:8000'"
+check "MySQL port $DB_PORT is listening" \
+  bash -c "ss -lnt | grep -q ':$DB_PORT'"
+
+check "Backend port $BACKEND_PORT is listening on localhost" \
+  bash -c "ss -lnt | grep -q '127.0.0.1:$BACKEND_PORT'"
 
 check "Video status API responds" \
-  curl -fsS --max-time 5 http://127.0.0.1:8000/api/video/status
+  curl -fsS --max-time 5 "$BACKEND_URL/api/video/status"
 
 check "Stream source API responds" \
-  curl -fsS --max-time 5 http://127.0.0.1:8000/api/video/streams/1/source
+  curl -fsS --max-time 5 "$BACKEND_URL/api/video/streams/1/source"
 
 if [ "$failures" -gt 0 ]; then
   echo "$failures check(s) failed"

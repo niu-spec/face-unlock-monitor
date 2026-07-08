@@ -108,7 +108,7 @@ GET /video_feed/1
 <img src="/video_feed/1" />
 ```
 
-浏览器不要直接访问 RTSP 地址，生产环境由 Nginx 将 `/video_feed/` 和 `/api/video/` 反代到 Django/Gunicorn，例如 `127.0.0.1:8000`。
+浏览器不要直接访问 RTSP 地址，生产环境由 Nginx 将 `/video_feed/` 和 `/api/video/` 反代到视频流 Django/Gunicorn，例如 `127.0.0.1:8010`。`127.0.0.1:8000` 保留给 mini-rednote 主业务后端。
 
 ## 5. C/D/E/A 联调方式
 
@@ -171,8 +171,8 @@ ffmpeg -rtsp_transport tcp -i rtsp://127.0.0.1:8554/stream/1 -t 3 -f null -
 Django 状态检查：
 
 ```bash
-curl http://127.0.0.1:8000/api/video/status
-curl http://127.0.0.1:8000/api/video/streams/1/source
+curl http://127.0.0.1:8010/api/video/status
+curl http://127.0.0.1:8010/api/video/streams/1/source
 ```
 
 公网检查：

@@ -11,9 +11,17 @@ if [ ! -d "$BACKEND_DIR" ] && [ -d /service/backend ]; then
   BACKEND_DIR=/service/backend
 fi
 
-BIND_ADDR="${BACKEND_BIND:-127.0.0.1:8000}"
+BIND_ADDR="${BACKEND_BIND:-127.0.0.1:8010}"
 WORKERS="${GUNICORN_WORKERS:-2}"
 TIMEOUT="${GUNICORN_TIMEOUT:-120}"
+DB_ENV_FILE="${DB_ENV_FILE:-/root/home_camera_monitor_db.env}"
+
+if [ -f "$DB_ENV_FILE" ]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$DB_ENV_FILE"
+  set +a
+fi
 
 cd "$BACKEND_DIR"
 
