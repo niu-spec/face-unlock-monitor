@@ -30,5 +30,5 @@ export function toZoneStreamId(videoStreamId) {
 }
 
 export function videoFeedPath(streamId) {
-  return `/video_feed/${toVideoStreamId(streamId)}`
+  return `/video_feed/${toVideoStreamId(streamId)}?ts=${Date.now()}`
 }

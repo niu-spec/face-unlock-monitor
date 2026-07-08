@@ -9,7 +9,7 @@ context: |
     - 后端: Django 4.2 + DRF + SimpleJWT（:8000）
     - 流媒体: OBS → RTMP(:9090) → MediaMTX → RTSP(:8554) → Django OpenCV
     - 数据库: MySQL（home_camera_monitor）
-    - AI: OpenCV / dlib / face_recognition（待接入 process_frame）
+    - AI: OpenCV / dlib / face_recognition（apps/face 已集成；detection 待完善）
 
   分支规范:
     - main: 稳定发布

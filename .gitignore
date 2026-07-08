@@ -3,6 +3,9 @@ __pycache__/
 *.py[cod]
 venv/
 .venv/
+backend/.env
+frontend/.env.local
+frontend/.env.*.local
 .miniconda/
 miniconda3/
 *.egg-info/

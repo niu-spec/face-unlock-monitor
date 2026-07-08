@@ -1,0 +1,12 @@
+# Conda env for Windows (Python 3.10 + dlib)
+# Create:  conda env create -f environment.yml
+# Update:  conda env update -f environment.yml
+name: home-camera
+channels:
+  - conda-forge
+dependencies:
+  - python=3.10
+  - dlib=19.24.6=cpu_py310h6715ef7_2
+  - pip
+  - pip:
+      - -r requirements.txt

@@ -15,6 +15,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import FamilyMember
+from apps.households.filters import resolve_active_household_id
 from .services import get_face_service
 
 
@@ -42,7 +43,7 @@ class FaceRegisterView(APIView):
         responses={201: "注册成功", 400: "图片或参数无效"},
     )
     def post(self, request):
-        household_id = getattr(request, "active_household_id", None)
+        household_id = resolve_active_household_id(request)
         if not household_id:
             return Response({"error": "请先选择当前家庭"}, status=status.HTTP_400_BAD_REQUEST)
         name = str(request.data.get("name", "")).strip()
@@ -94,7 +95,7 @@ class FaceAnalyzeView(APIView):
         try:
             frame = _decode_request_image(request)
             stream_id = str(request.data.get("stream_id", "image_test"))
-            household_id = getattr(request, "active_household_id", None)
+            household_id = resolve_active_household_id(request)
             output, presence, events = get_face_service().process_frame(
                 frame, stream_id=stream_id, household_id=household_id
             )

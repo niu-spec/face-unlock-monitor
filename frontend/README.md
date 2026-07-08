@@ -1,38 +1,57 @@
-# 居家监控前端
+# Frontend (Vue3 + Vite)
 
-Vue3 + Vite + Element Plus 单页应用，通过 REST API 与 Django 业务后端联调。
+REST client for the Django backend. See [docs/DEV_SETUP.md](../docs/DEV_SETUP.md) for full setup.
 
-## 开发
+## Dev server
 
 ```bash
 npm install
 npm run dev
 ```
 
-默认地址：http://localhost:5173/
+Or from project root: `.\scripts\start_frontend.ps1`
 
-开发模式下，`/api` 与 `/video_feed` 请求由 Vite 代理到 `http://localhost:8000`（Django）。
+Default: http://localhost:5173/
 
-## 页面路由
+Vite proxies `/api` and `/video_feed` to Django at `http://localhost:8000` (see `vite.config.js`).
 
-| 路径 | 页面 |
+## Environment
+
+Copy `.env.development.example` to `.env.development`:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_API_TARGET` | `http://localhost:8000` | API proxy target |
+| `VITE_VIDEO_FEED_TARGET` | same as API | Video feed proxy (can point to cloud MediaMTX) |
+
+## Routes
+
+| Path | Page |
 |------|------|
-| `/login` | 登录 |
-| `/monitor` | 居家监控（实时画面 + 人数统计） |
-| `/family` | 家人人脸录入 |
-| `/zones` | 危险区域画框 |
-| `/alerts` | 告警中心 |
-| `/events` | 事件记录 |
-| `/users` | 用户管理（账户概览，跳转个人信息/家庭管理） |
-| `/households` | 家庭管理 |
-| `/profile` | 个人信息（换绑手机号） |
+| `/login` | Login |
+| `/register` | Register |
+| `/monitor` | Home monitor (live feed + person stats) |
+| `/family` | Family face registration |
+| `/zones` | Danger zone editor |
+| `/alerts` | Alert center |
+| `/events` | Event log |
+| `/users` | User hub |
+| `/households` | Household management |
+| `/profile` | Profile (phone binding) |
 
-## 目录结构
+## API client
+
+- Axios wrapper: `src/api/request.js`
+- Auto headers: `Authorization: Bearer <token>`, `X-Active-Household-Id`
+- Stream ID mapping: `src/constants/streams.js` (video `1`/`2` ↔ business `living_room`/`kitchen`)
+
+## Structure
 
 ```
 src/
-├── api/           # Axios 封装与接口定义
-├── components/    # 公共组件（如 PersonStats）
-├── views/         # 页面
-└── router/        # 路由配置
+├── api/           # Axios + API modules
+├── components/    # Shared components
+├── constants/     # Stream ID mapping
+├── views/         # Pages
+└── router/        # Vue Router
 ```
