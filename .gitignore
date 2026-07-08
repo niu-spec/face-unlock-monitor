@@ -26,6 +26,7 @@ dist/
 backend/dat/*.dat
 backend/registered_faces.json
 backend/snapshots/
+backend/ci_test.sqlite3
 
 # Logs
 *.log

@@ -102,6 +102,15 @@ DATABASES = {
     }
 }
 
+# GitLab CI / 本地 pytest 使用 SQLite，无需 MySQL
+if os.environ.get("CI"):
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": BASE_DIR / "ci_test.sqlite3",
+        }
+    }
+
 # ── Password validation ──────────────────────────────────────────────
 
 AUTH_PASSWORD_VALIDATORS = [

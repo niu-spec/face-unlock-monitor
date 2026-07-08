@@ -88,6 +88,7 @@ python manage.py seed_demo_data    # 可选演示数据
 - [frontend/README.md](frontend/README.md) — 前端路由
 - [总体架构说明](docs/总体架构说明.md)
 - [OpenSpec 使用说明](docs/OpenSpec使用说明.md)
+- [CI/CD 使用说明](docs/CI-CD使用说明.md) — GitLab Pipeline
 
 ## 团队
 
