@@ -130,8 +130,8 @@ const menuItems = [
   { path: '/zones', title: '危险区域', icon: 'Crop' },
   { path: '/alerts', title: '告警中心', icon: 'Bell' },
   { path: '/events', title: '事件记录', icon: 'Document' },
+  { path: '/users', title: '用户管理', icon: 'User' },
   { path: '/households', title: '家庭管理', icon: 'Setting' },
-  { path: '/profile', title: '个人信息', icon: 'UserFilled' },
 ]
 
 const activeMenu = computed(() => route.path)
