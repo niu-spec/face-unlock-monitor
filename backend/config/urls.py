@@ -27,6 +27,7 @@ urlpatterns = [
     path("api/events/", include("apps.events.urls")),
     path("api/detection/", include("apps.detection.urls")),  # D-李东礼
     path("api/face/", include("apps.face.urls")),            # C-王梓铭
+    path("", include("apps.video_stream.urls")),              # B-苏哲勋：视频流
     path("api/", include("apps.households.urls")),            # E-刘帅华：家庭/摄像头
 
     # Swagger UI

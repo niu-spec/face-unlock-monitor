@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -e
 
-# Restart MediaMTX for OBS RTMP ingest and Flask/OpenCV RTSP reading.
+# Restart MediaMTX for OBS RTMP ingest and Django/OpenCV RTSP reading.
 # Do not bind host port 8888 because BaoTa panel commonly uses it.
 
 docker rm -f home-mediamtx 2>/dev/null || true
