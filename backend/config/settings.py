@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "apps.detection",  # D-李东礼：危险区域与异常检测
     "apps.face",  # C-王梓铭：人脸识别与人数统计
     "apps.households",  # E-刘帅华：家庭管理
+    "apps.video_stream",  # B-苏哲勋：MediaMTX + RTSP 视频预览
 ]
 
 # ── Detection config ─────────────────────────────────────────────────
