@@ -25,7 +25,11 @@ def video_feed(request, stream_id):
     return StreamingHttpResponse(
         gen_frames(stream_id),
         content_type="multipart/x-mixed-replace; boundary=frame",
-        headers={"Cache-Control": "no-cache"},
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

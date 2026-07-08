@@ -12,9 +12,10 @@ RTMP_PUBLIC_BASE_URL = os.getenv(
     "RTMP_PUBLIC_BASE_URL", "rtmp://152.136.29.158:9090/stream"
 )
 FRAME_SKIP = int(os.getenv("VIDEO_FRAME_SKIP", "5"))
-MJPEG_FPS = int(os.getenv("MJPEG_FPS", "10"))
+MJPEG_FPS = int(os.getenv("MJPEG_FPS", "12"))
 JPEG_QUALITY = int(os.getenv("MJPEG_JPEG_QUALITY", "75"))
 RECONNECT_DELAY_SECONDS = float(os.getenv("RTSP_RECONNECT_DELAY", "1"))
+RTSP_DRAIN_GRABS = int(os.getenv("RTSP_DRAIN_GRABS", "5"))
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 workers = {}
@@ -80,24 +81,42 @@ class CameraWorker:
         self.stream_id = stream_id
         self.stream_url = build_rtsp_url(stream_id)
         self.frame_skip = max(1, frame_skip)
+        self.drain_grabs = max(1, RTSP_DRAIN_GRABS)
         self.latest_frame = None
+        self.latest_processed_frame = None
         self.last_error = None
         self.last_frame_at = None
+        self.last_processed_at = None
+        self.last_processed_error = None
+        self.frame_seq = 0
+        self.latest_processed_seq = 0
         self.running = False
         self._lock = threading.Lock()
         self._start_lock = threading.Lock()
-        self._thread = None
+        self._read_thread = None
+        self._process_thread = None
 
     def start(self):
         with self._start_lock:
             if self.running:
                 return
             self.running = True
-            self._thread = threading.Thread(target=self._read_loop, daemon=True)
-            self._thread.start()
+            self._read_thread = threading.Thread(target=self._read_loop, daemon=True)
+            self._process_thread = threading.Thread(target=self._process_loop, daemon=True)
+            self._read_thread.start()
+            self._process_thread.start()
+
+    def _read_latest_frame(self, capture):
+        for _ in range(self.drain_grabs):
+            if not capture.grab():
+                return False, None
+
+        ok, frame = capture.retrieve()
+        if not ok or frame is None:
+            return False, None
+        return True, frame
 
     def _read_loop(self):
-        frame_index = 0
         while self.running:
             capture = None
             try:
@@ -108,32 +127,28 @@ class CameraWorker:
                     pass
 
                 if not capture.isOpened():
-                    self.last_error = "RTSP stream not available"
+                    with self._lock:
+                        self.last_error = "RTSP stream not available"
                     time.sleep(RECONNECT_DELAY_SECONDS)
                     continue
 
-                self.last_error = None
+                with self._lock:
+                    self.last_error = None
                 while self.running:
-                    ok, frame = capture.read()
-                    if not ok or frame is None:
-                        self.last_error = "failed to read frame"
+                    ok, frame = self._read_latest_frame(capture)
+                    if not ok:
+                        with self._lock:
+                            self.last_error = "failed to read latest RTSP frame"
                         break
 
-                    frame_index += 1
-                    if frame_index % self.frame_skip != 0:
-                        continue
-
-                    try:
-                        processed_frame = process_frame(frame, self.stream_id)
-                    except Exception as exc:
-                        self.last_error = f"process_frame failed: {exc}"
-                        processed_frame = frame
-
                     with self._lock:
-                        self.latest_frame = processed_frame
+                        self.latest_frame = frame
+                        self.frame_seq += 1
                         self.last_frame_at = time.time()
+                        self.last_error = None
             except Exception as exc:
-                self.last_error = f"RTSP worker error: {exc}"
+                with self._lock:
+                    self.last_error = f"RTSP worker error: {exc}"
             finally:
                 if capture is not None:
                     try:
@@ -143,10 +158,40 @@ class CameraWorker:
 
             time.sleep(RECONNECT_DELAY_SECONDS)
 
+    def _process_loop(self):
+        processed_seq = 0
+        while self.running:
+            with self._lock:
+                frame_seq = self.frame_seq
+                frame = None if self.latest_frame is None else self.latest_frame.copy()
+
+            if frame is None or frame_seq - processed_seq < self.frame_skip:
+                time.sleep(0.02)
+                continue
+
+            processed_seq = frame_seq
+            try:
+                processed_frame = process_frame(frame, self.stream_id)
+                with self._lock:
+                    self.latest_processed_frame = processed_frame
+                    self.latest_processed_seq = frame_seq
+                    self.last_processed_at = time.time()
+                    self.last_processed_error = None
+            except Exception as exc:
+                with self._lock:
+                    self.last_processed_error = f"process_frame failed: {exc}"
+
+            time.sleep(0.001)
+
     def get_latest_frame(self):
         with self._lock:
             if self.latest_frame is None:
                 return None
+            if (
+                self.latest_processed_frame is not None
+                and self.latest_processed_seq == self.frame_seq
+            ):
+                return self.latest_processed_frame.copy()
             return self.latest_frame.copy()
 
     def to_status(self):
@@ -154,6 +199,9 @@ class CameraWorker:
             has_frame = self.latest_frame is not None
             last_frame_at = self.last_frame_at
             last_error = self.last_error
+            frame_seq = self.frame_seq
+            last_processed_at = self.last_processed_at
+            last_processed_error = self.last_processed_error
 
         return {
             "stream_url": self.stream_url,
@@ -161,6 +209,9 @@ class CameraWorker:
             "has_frame": has_frame,
             "last_frame_at": last_frame_at,
             "last_error": last_error,
+            "frame_seq": frame_seq,
+            "last_processed_at": last_processed_at,
+            "last_processed_error": last_processed_error,
         }
 
 
