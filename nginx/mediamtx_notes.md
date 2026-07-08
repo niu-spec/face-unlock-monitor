@@ -14,7 +14,7 @@ OBS 仍使用 RTMP：
 
 ## 后端内部读取
 
-Flask/OpenCV 统一读取 RTSP：
+Django/OpenCV 统一读取 RTSP：
 
 ```text
 rtsp://127.0.0.1:8554/stream/1
@@ -33,5 +33,5 @@ rtsp://127.0.0.1:8554/stream/1
 
 - `docker ps` 中可见 `home-mediamtx`
 - OBS 推流后 `docker logs home-mediamtx` 出现 `stream/1` online
-- Flask `/api/video/status` 可访问
+- Django `/api/video/status` 可访问
 - 浏览器 `/video_feed/1` 可看到摄像头画面

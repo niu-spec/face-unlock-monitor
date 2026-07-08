@@ -5,10 +5,7 @@ import time
 
 import cv2
 import numpy as np
-from flask import Blueprint, Response, current_app, jsonify, stream_with_context
 
-
-video_bp = Blueprint("video", __name__)
 
 RTSP_BASE_URL = os.getenv("RTSP_BASE_URL", "rtsp://127.0.0.1:8554/stream")
 RTMP_PUBLIC_BASE_URL = os.getenv(
@@ -26,8 +23,7 @@ def build_rtsp_url(stream_id):
 
 
 def build_public_rtmp_url(stream_id):
-    base_url = current_app.config.get("RTMP_BASE_URL", RTMP_PUBLIC_BASE_URL)
-    return f"{base_url.rstrip('/')}/{stream_id}"
+    return f"{RTMP_PUBLIC_BASE_URL.rstrip('/')}/{stream_id}"
 
 
 def process_frame(frame, stream_id):
@@ -149,6 +145,13 @@ def get_worker(stream_id):
         return worker
 
 
+def get_workers_status():
+    return {
+        stream_id: worker.to_status()
+        for stream_id, worker in workers.items()
+    }
+
+
 def gen_frames(stream_id):
     worker = get_worker(stream_id)
     empty_frame = placeholder_frame("waiting for RTSP frame")
@@ -160,49 +163,3 @@ def gen_frames(stream_id):
         if jpeg_bytes:
             yield multipart_frame(jpeg_bytes)
         time.sleep(0.05)
-
-
-@video_bp.get("/video_feed/<stream_id>")
-def video_feed(stream_id):
-    if not STREAM_ID_PATTERN.match(stream_id):
-        return jsonify({"code": 400, "message": "invalid stream_id"}), 400
-
-    return Response(
-        stream_with_context(gen_frames(stream_id)),
-        mimetype="multipart/x-mixed-replace; boundary=frame",
-        headers={"Cache-Control": "no-cache"},
-    )
-
-
-@video_bp.get("/api/video/status")
-def video_status():
-    return jsonify(
-        {
-            "code": 200,
-            "message": "video blueprint running",
-            "rtsp_base_url": RTSP_BASE_URL,
-            "rtmp_public_base_url": RTMP_PUBLIC_BASE_URL,
-            "workers": {
-                stream_id: worker.to_status()
-                for stream_id, worker in workers.items()
-            },
-        }
-    )
-
-
-@video_bp.get("/api/video/streams/<stream_id>/source")
-def video_source(stream_id):
-    if not STREAM_ID_PATTERN.match(stream_id):
-        return jsonify({"code": 400, "message": "invalid stream_id"}), 400
-
-    return jsonify(
-        {
-            "code": 200,
-            "stream_id": stream_id,
-            "stream_url": build_rtsp_url(stream_id),
-            "rtsp_url": build_rtsp_url(stream_id),
-            "rtmp_url": build_public_rtmp_url(stream_id),
-            "mjpeg_url": f"/video_feed/{stream_id}",
-            "frame_skip": FRAME_SKIP,
-        }
-    )
