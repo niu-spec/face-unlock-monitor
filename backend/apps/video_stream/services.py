@@ -16,6 +16,7 @@ MJPEG_FPS = int(os.getenv("MJPEG_FPS", "12"))
 JPEG_QUALITY = int(os.getenv("MJPEG_JPEG_QUALITY", "75"))
 RECONNECT_DELAY_SECONDS = float(os.getenv("RTSP_RECONNECT_DELAY", "1"))
 RTSP_DRAIN_GRABS = int(os.getenv("RTSP_DRAIN_GRABS", "5"))
+STALE_FRAME_SECONDS = float(os.getenv("STALE_FRAME_SECONDS", "3"))
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 workers = {}
@@ -188,6 +189,11 @@ class CameraWorker:
             if self.latest_frame is None:
                 return None
             if (
+                self.last_frame_at is None
+                or time.time() - self.last_frame_at > STALE_FRAME_SECONDS
+            ):
+                return None
+            if (
                 self.latest_processed_frame is not None
                 and self.latest_processed_seq == self.frame_seq
             ):
@@ -196,7 +202,12 @@ class CameraWorker:
 
     def to_status(self):
         with self._lock:
-            has_frame = self.latest_frame is not None
+            is_fresh = (
+                self.latest_frame is not None
+                and self.last_frame_at is not None
+                and time.time() - self.last_frame_at <= STALE_FRAME_SECONDS
+            )
+            has_frame = is_fresh
             last_frame_at = self.last_frame_at
             last_error = self.last_error
             frame_seq = self.frame_seq
@@ -207,6 +218,7 @@ class CameraWorker:
             "stream_url": self.stream_url,
             "status": "running" if self.running else "stopped",
             "has_frame": has_frame,
+            "stale_frame_seconds": STALE_FRAME_SECONDS,
             "last_frame_at": last_frame_at,
             "last_error": last_error,
             "frame_seq": frame_seq,

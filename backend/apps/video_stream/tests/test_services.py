@@ -55,6 +55,7 @@ class VideoStreamWorkerTests(TestCase):
 
         with worker._lock:
             worker.latest_frame = raw
+            worker.last_frame_at = services.time.time()
             worker.frame_seq = 10
             worker.latest_processed_frame = stale_processed
             worker.latest_processed_seq = 9
@@ -62,6 +63,25 @@ class VideoStreamWorkerTests(TestCase):
         frame = worker.get_latest_frame()
 
         self.assertTrue(np.array_equal(frame, raw))
+
+    def test_get_latest_frame_returns_none_after_stale_timeout(self):
+        worker = services.CameraWorker("1")
+        with worker._lock:
+            worker.latest_frame = np.ones((2, 2, 3), dtype=np.uint8)
+            worker.last_frame_at = services.time.time() - services.STALE_FRAME_SECONDS - 0.1
+
+        self.assertIsNone(worker.get_latest_frame())
+
+    def test_status_marks_stale_frame_as_no_frame(self):
+        worker = services.CameraWorker("1")
+        with worker._lock:
+            worker.latest_frame = np.ones((2, 2, 3), dtype=np.uint8)
+            worker.last_frame_at = services.time.time() - services.STALE_FRAME_SECONDS - 0.1
+
+        status = worker.to_status()
+
+        self.assertFalse(status["has_frame"])
+        self.assertEqual(status["stale_frame_seconds"], services.STALE_FRAME_SECONDS)
 
     def test_gen_frames_returns_waiting_placeholder_when_no_frame(self):
         class EmptyWorker:
