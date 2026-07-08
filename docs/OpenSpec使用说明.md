@@ -3,7 +3,8 @@
 > **项目**：home-camera-monitor  
 > **负责人**：A 牛雨昊（初始化与维护）  
 > **仓库路径**：`openspec/`、`.cursor/commands/`  
-> **本地环境**：[DEV_SETUP.md](DEV_SETUP.md)（conda + dlib + 启动脚本）
+> **本地环境**：[DEV_SETUP.md](DEV_SETUP.md)（conda + dlib + 启动脚本）  
+> **组员（非 Cursor）**：[OpenSpec组员上手指南.md](OpenSpec组员上手指南.md)
 
 ---
 
@@ -41,7 +42,15 @@ openspec/
 
 ---
 
-## 3. Cursor 命令
+## 3. 组员怎么用（不用 Cursor）
+
+不使用 Cursor 的组员，请直接阅读 **[OpenSpec组员上手指南.md](OpenSpec组员上手指南.md)**。
+
+核心流程：`git pull` → 读 `tasks.md` → 让 Agent 按规格写代码 → 勾选 tasks → push PR。
+
+---
+
+## 4. Cursor 命令
 
 在 Cursor 聊天框输入（不是终端）：
 
@@ -55,7 +64,7 @@ openspec/
 
 ---
 
-## 4. 已完成的 change 记录
+## 5. 已完成的 change 记录
 
 | Change | 日期 | 说明 | 关联 commit |
 |--------|------|------|-------------|
@@ -65,7 +74,7 @@ openspec/
 
 ---
 
-## 5. 进行中的 change（组员使用）
+## 6. 进行中的 change（组员使用）
 
 ### `ai-video-integration` — C/D 负责
 
@@ -82,7 +91,7 @@ openspec/
 
 ---
 
-## 6. 各成员如何开始新功能
+## 7. 各成员如何开始新功能
 
 以 E 新增 API 为例：
 
@@ -101,7 +110,7 @@ AI 会生成 proposal → design → specs → tasks，审核后：
 
 ---
 
-## 7. 答辩演示建议
+## 8. 答辩演示建议
 
 1. 打开 `openspec/specs/` 展示 7 个 capability
 2. 打开 `openspec/changes/archive/` 展示完整 propose → archive 记录
@@ -110,7 +119,7 @@ AI 会生成 proposal → design → specs → tasks，审核后：
 
 ---
 
-## 8. 本地 CLI（可选）
+## 9. 本地 CLI（可选）
 
 ```powershell
 npm install -g @fission-ai/openspec@latest
