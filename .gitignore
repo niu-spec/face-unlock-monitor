@@ -3,6 +3,8 @@ __pycache__/
 *.py[cod]
 venv/
 .venv/
+.miniconda/
+miniconda3/
 *.egg-info/
 .env
 
