@@ -120,9 +120,12 @@ systemctl is-enabled home-camera-backend.service
 
 ```text
 BACKEND_BIND=127.0.0.1:8010
+GUNICORN_WORKERS=1
+GUNICORN_WORKER_CLASS=gthread
+GUNICORN_THREADS=8
 ```
 
-注意：`8000` 是 mini-rednote 主业务后端，`8010` 是 home-camera-monitor 视频流后端，不要再让视频流后端绑定 `8000`。
+注意：`8000` 是 mini-rednote 主业务后端，`8010` 是 home-camera-monitor 视频流后端，不要再让视频流后端绑定 `8000`。视频流后端保持 1 个 Gunicorn 进程，多浏览器访问通过线程共享同一个 `CameraWorker.latest_frame`，避免多个进程重复拉同一路 RTSP。
 
 ## 7. Nginx 反代
 

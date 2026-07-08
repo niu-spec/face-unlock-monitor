@@ -8,8 +8,10 @@ Type=simple
 WorkingDirectory=/service/backend
 Environment=BACKEND_DIR=/service/backend
 Environment=BACKEND_BIND=127.0.0.1:8010
-Environment=GUNICORN_WORKERS=2
-Environment=GUNICORN_TIMEOUT=120
+Environment=GUNICORN_WORKERS=1
+Environment=GUNICORN_THREADS=8
+Environment=GUNICORN_WORKER_CLASS=gthread
+Environment=GUNICORN_TIMEOUT=300
 EnvironmentFile=-/root/home_camera_monitor_db.env
 ExecStart=/bin/bash /service/deploy/start_backend.sh
 Restart=always

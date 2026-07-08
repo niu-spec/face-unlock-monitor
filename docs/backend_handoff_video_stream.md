@@ -31,6 +31,8 @@ rtsp://127.0.0.1:8554/stream/1
 
 当前 `/video_feed/1` 可播放摄像头画面，浏览器预览延迟约 5 秒。当前 `apps/video_stream/services.py` 仍是 OpenCV 拉 RTSP 版本，暂不切换为 FFmpeg 子进程 raw frame 版。
 
+部署时视频流后端建议使用 1 个 Gunicorn worker + 多线程，例如 `GUNICORN_WORKERS=1`、`GUNICORN_WORKER_CLASS=gthread`、`GUNICORN_THREADS=8`。这样同一 `stream_id` 在同一进程内只保留一个 `CameraWorker`，多个浏览器访问共享 `latest_frame`，避免重复创建 RTSP 连接。
+
 ## 2. OBS 配置
 
 直播配置：

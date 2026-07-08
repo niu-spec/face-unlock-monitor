@@ -12,8 +12,10 @@ if [ ! -d "$BACKEND_DIR" ] && [ -d /service/backend ]; then
 fi
 
 BIND_ADDR="${BACKEND_BIND:-127.0.0.1:8010}"
-WORKERS="${GUNICORN_WORKERS:-2}"
-TIMEOUT="${GUNICORN_TIMEOUT:-120}"
+WORKERS="${GUNICORN_WORKERS:-1}"
+THREADS="${GUNICORN_THREADS:-8}"
+WORKER_CLASS="${GUNICORN_WORKER_CLASS:-gthread}"
+TIMEOUT="${GUNICORN_TIMEOUT:-300}"
 DB_ENV_FILE="${DB_ENV_FILE:-/root/home_camera_monitor_db.env}"
 
 if [ -f "$DB_ENV_FILE" ]; then
@@ -39,11 +41,21 @@ fi
 
 if [ -f manage.py ]; then
   python manage.py check
-  exec gunicorn -w "$WORKERS" -b "$BIND_ADDR" --timeout "$TIMEOUT" "config.wsgi:application"
+  exec gunicorn -w "$WORKERS" \
+    --worker-class "$WORKER_CLASS" \
+    --threads "$THREADS" \
+    -b "$BIND_ADDR" \
+    --timeout "$TIMEOUT" \
+    "config.wsgi:application"
 fi
 
 if [ -f app.py ]; then
-  exec gunicorn -w "$WORKERS" -b "$BIND_ADDR" --timeout "$TIMEOUT" "app:app"
+  exec gunicorn -w "$WORKERS" \
+    --worker-class "$WORKER_CLASS" \
+    --threads "$THREADS" \
+    -b "$BIND_ADDR" \
+    --timeout "$TIMEOUT" \
+    "app:app"
 fi
 
 echo "No Django manage.py or Flask app.py found in $BACKEND_DIR" >&2
