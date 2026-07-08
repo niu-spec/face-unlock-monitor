@@ -1,30 +1,30 @@
-# Django 核心
+# Django core
 django~=4.2.0
 djangorestframework~=3.14.0
 
-# JWT 认证
+# JWT
 djangorestframework-simplejwt~=5.3.0
 
-# Swagger / OpenAPI 文档（config/urls.py 使用 drf_yasg）
+# Swagger / OpenAPI (drf_yasg in config/urls.py)
 drf-yasg~=1.21.7
 
 # CORS
 django-cors-headers~=4.3.0
 
-# MySQL 驱动
+# MySQL
 pymysql~=1.1.0
 cryptography~=44.0.0
 
-# 生产部署
+# Production
 gunicorn~=21.2.0
 
-# dlib / face_recognition（C 队友需要，此处仅作记录）
-# 安装方式: conda install -c conda-forge dlib
-# D-李东礼：危险区域与异常检测
+# AI dependencies
+# dlib must be installed via conda first: conda env create -f environment.yml
+# Or run: ..\scripts\setup_backend.ps1 from project root
 opencv-python~=4.8.0
 numpy~=1.26.0
 pillow~=10.0.0
 
-# C-王梓铭：人脸检测、128维编码与匹配
+# Face recognition (requires conda dlib on Windows)
 face-recognition~=1.3.0
 setuptools<81

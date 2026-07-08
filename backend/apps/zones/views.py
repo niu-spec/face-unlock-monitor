@@ -1,7 +1,7 @@
 """Zones — 视图：危险区域 CRUD"""
 from rest_framework import viewsets
 from drf_yasg.utils import swagger_auto_schema
-from apps.households.filters import HouseholdFilterBackend
+from apps.households.filters import HouseholdFilterBackend, resolve_active_household_id
 from apps.zones.models import Zone
 from apps.zones.serializers import ZoneSerializer
 
@@ -14,7 +14,11 @@ class ZoneViewSet(viewsets.ModelViewSet):
     filter_backends = [HouseholdFilterBackend]
 
     def perform_create(self, serializer):
-        serializer.save(household_id=self.request.active_household_id)
+        household_id = resolve_active_household_id(self.request)
+        if not household_id:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError({"error": "请先选择当前家庭"})
+        serializer.save(household_id=household_id)
 
     @swagger_auto_schema(tags=["安防区域"])
     def list(self, request, *args, **kwargs):

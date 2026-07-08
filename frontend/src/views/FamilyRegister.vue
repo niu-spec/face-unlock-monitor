@@ -3,6 +3,7 @@ import { reactive, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import { memberApi, householdApi, faceApi } from '@/api'
+import request from '@/api/request'
 
 const activeHouseholdName = ref('')
 const activeHouseholdId = ref(localStorage.getItem('activeHouseholdId') || '')
@@ -47,19 +48,40 @@ async function onSubmit() {
   if (!photoFile.value) { ElMessage.warning('请上传一张清晰的单人人脸照片'); return }
 
   submitting.value = true
+  const data = new FormData()
+  data.append('name', form.name.trim())
+  data.append('role', form.role)
+  data.append('household_id', activeHouseholdId.value)
+  data.append('image', photoFile.value)
+
   try {
-    const data = new FormData()
-    data.append('name', form.name.trim())
-    data.append('role', form.role)
-    data.append('image', photoFile.value)
-    await faceApi.register(data)
+    await request.post('/api/face/register/', data, { silent: true })
     ElMessage.success('家庭成员与人脸特征已录入')
     form.name = ''
     photoFile.value = null
     previewUrl.value = ''
     loadMembers()
-  } catch { /* ignore */ }
-  finally { submitting.value = false }
+  } catch (err) {
+    const msg = err?.response?.data?.error || err?.response?.data?.detail || ''
+    if (typeof msg === 'string' && (msg.includes('face_recognition') || msg.includes('dlib'))) {
+      try {
+        await memberApi.create({
+          name: form.name.trim(),
+          role: form.role,
+          household_id: Number(activeHouseholdId.value),
+        })
+        ElMessage.warning('成员已保存；本地未安装人脸识别库，人脸特征需在服务器环境补录')
+        form.name = ''
+        photoFile.value = null
+        previewUrl.value = ''
+        loadMembers()
+      } catch {
+        /* interceptor shows error */
+      }
+    }
+  } finally {
+    submitting.value = false
+  }
 }
 
 async function removeMember(member) {

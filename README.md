@@ -21,66 +21,73 @@ Smart home camera monitoring system with RTMP streaming, Django business backend
 | 层次 | 技术 |
 |------|------|
 | 前端 | Vue3 + Vite + Element Plus + Vue Router + Axios |
-| 业务后端 | Django 4.2 + Django REST Framework + JWT + Swagger |
-| AI 模块 | OpenCV + dlib + face_recognition（各 feature 分支开发，HTTP 接入） |
-| 数据库 | MySQL |
-| 流媒体 | Nginx-RTMP |
+| 业务后端 | Django 4.2 + DRF + SimpleJWT + Swagger（:8000） |
+| AI 模块 | OpenCV + dlib + face_recognition（Django apps 内集成） |
+| 数据库 | MySQL（`home_camera_monitor`） |
+| 流媒体 | OBS → RTMP(:9090) → MediaMTX → RTSP → Django MJPEG |
 | 部署 | gunicorn + Nginx 反代 |
 
 ## 项目结构
 
 ```
 home-camera-monitor/
-├── frontend/          # Vue3 前端
-├── backend/           # Django 业务后端（认证 / 区域 / 告警 / 事件）
-├── nginx/             # Nginx-RTMP 配置
+├── frontend/          # Vue3 前端 (:5173)
+├── backend/           # Django 后端 (:8000)
+├── nginx/             # MediaMTX / Nginx 反代说明
 ├── deploy/            # 部署脚本
-├── docs/              # 项目文档
-└── scripts/           # 工具脚本
+├── docs/              # 项目文档（含 DEV_SETUP.md）
+└── scripts/           # setup / start / 工具脚本
 ```
 
 ## 快速开始
 
-### 后端（Django）
+完整步骤见 **[docs/DEV_SETUP.md](docs/DEV_SETUP.md)**。
 
-```bash
+### 1. 后端（conda + Python 3.10 + dlib）
+
+```powershell
+.\scripts\setup_backend.ps1      # 首次：创建 conda 环境 home-camera
+.\scripts\start_backend.ps1        # 启动 Django :8000
+```
+
+### 2. 前端
+
+```powershell
+.\scripts\start_frontend.ps1       # 启动 Vite :5173
+```
+
+### 3. 数据库（首次）
+
+```powershell
+conda activate home-camera
 cd backend
-python -m venv venv
-venv\Scripts\activate        # Windows
-pip install -r requirements.txt
-
-# 配置 MySQL 环境变量（按需修改）
-set DB_PASSWORD=your_password
-
+$env:DB_PASSWORD = "your_password"
 python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver 5000
+python manage.py seed_demo_data    # 可选演示数据
 ```
 
-- API 文档：http://localhost:5000/api/docs/
-- 管理后台：http://localhost:5000/admin/
+| 地址 | URL |
+|------|-----|
+| 前端 | http://localhost:5173 |
+| Swagger | http://localhost:8000/api/docs/ |
+| Admin | http://localhost:8000/admin/ |
 
-### 前端
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-访问 http://localhost:5173/ ，Vite 开发服务器会将 `/api` 代理到后端 `5000` 端口。
-
-### 推流地址
+### 推流与预览
 
 ```
-推流：rtmp://{服务器IP}:9090/live/living_room
-观看：http://{服务器IP}/video_feed/living_room   # AI 模块接入后可用
+推流：rtmp://{服务器IP}:9090/stream/1
+预览：http://localhost:5173 → /video_feed/1（Vite 代理）
 ```
+
+详见 [nginx/README.md](nginx/README.md)。
 
 ## 文档
 
+- [本地开发环境指南](docs/DEV_SETUP.md) — **修 bug 前必读**
+- [backend/README.md](backend/README.md) — 后端 / dlib 环境
+- [frontend/README.md](frontend/README.md) — 前端路由
 - [总体架构说明](docs/总体架构说明.md)
-- [项目任务分工表](docs/项目任务分工表.pdf)
+- [OpenSpec 使用说明](docs/OpenSpec使用说明.md)
 
 ## 团队
 

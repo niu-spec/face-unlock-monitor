@@ -2,7 +2,8 @@
 
 > **项目**：home-camera-monitor  
 > **负责人**：A 牛雨昊（初始化与维护）  
-> **仓库路径**：`openspec/`、`.cursor/commands/`
+> **仓库路径**：`openspec/`、`.cursor/commands/`  
+> **本地环境**：[DEV_SETUP.md](DEV_SETUP.md)（conda + dlib + 启动脚本）
 
 ---
 

@@ -11,6 +11,13 @@ def resolve_active_household_id(request):
         return cached
 
     household_id = request.headers.get("X-Active-Household-Id")
+    if not household_id:
+        data = getattr(request, "data", None)
+        if data is not None:
+            household_id = data.get("household_id")
+        if not household_id and hasattr(request, "POST"):
+            household_id = request.POST.get("household_id")
+
     if not household_id or not getattr(request.user, "is_authenticated", False):
         return None
 
