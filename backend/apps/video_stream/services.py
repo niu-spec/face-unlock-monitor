@@ -12,7 +12,7 @@ RTMP_PUBLIC_BASE_URL = os.getenv(
     "RTMP_PUBLIC_BASE_URL", "rtmp://152.136.29.158:9090/stream"
 )
 FRAME_SKIP = int(os.getenv("VIDEO_FRAME_SKIP", "5"))
-MJPEG_FPS = int(os.getenv("MJPEG_FPS", "12"))
+MJPEG_FPS = int(os.getenv("MJPEG_FPS", "10"))
 JPEG_QUALITY = int(os.getenv("MJPEG_JPEG_QUALITY", "75"))
 RECONNECT_DELAY_SECONDS = float(os.getenv("RTSP_RECONNECT_DELAY", "1"))
 RTSP_DRAIN_GRABS = int(os.getenv("RTSP_DRAIN_GRABS", "5"))
@@ -85,6 +85,9 @@ class CameraWorker:
         self.drain_grabs = max(1, RTSP_DRAIN_GRABS)
         self.latest_frame = None
         self.latest_processed_frame = None
+        self.latest_jpeg = None
+        self.latest_jpeg_seq = 0
+        self.latest_jpeg_at = None
         self.last_error = None
         self.last_frame_at = None
         self.last_processed_at = None
@@ -96,6 +99,7 @@ class CameraWorker:
         self._start_lock = threading.Lock()
         self._read_thread = None
         self._process_thread = None
+        self._encode_thread = None
 
     def start(self):
         with self._start_lock:
@@ -104,8 +108,10 @@ class CameraWorker:
             self.running = True
             self._read_thread = threading.Thread(target=self._read_loop, daemon=True)
             self._process_thread = threading.Thread(target=self._process_loop, daemon=True)
+            self._encode_thread = threading.Thread(target=self._encode_loop, daemon=True)
             self._read_thread.start()
             self._process_thread.start()
+            self._encode_thread.start()
 
     def _read_latest_frame(self, capture):
         for _ in range(self.drain_grabs):
@@ -184,21 +190,64 @@ class CameraWorker:
 
             time.sleep(0.001)
 
-    def get_latest_frame(self):
+    def _get_output_frame_snapshot(self):
         with self._lock:
             if self.latest_frame is None:
-                return None
+                return None, None
             if (
                 self.last_frame_at is None
                 or time.time() - self.last_frame_at > STALE_FRAME_SECONDS
             ):
-                return None
+                return None, None
             if (
                 self.latest_processed_frame is not None
                 and self.latest_processed_seq == self.frame_seq
             ):
-                return self.latest_processed_frame.copy()
-            return self.latest_frame.copy()
+                return self.latest_processed_frame.copy(), self.frame_seq
+            return self.latest_frame.copy(), self.frame_seq
+
+    def _encode_loop(self):
+        encoded_seq = 0
+        frame_interval = 1.0 / max(1, MJPEG_FPS)
+
+        while self.running:
+            frame, frame_seq = self._get_output_frame_snapshot()
+            if frame is None:
+                with self._lock:
+                    self.latest_jpeg = None
+                    self.latest_jpeg_seq = 0
+                    self.latest_jpeg_at = None
+                time.sleep(frame_interval)
+                continue
+
+            if frame_seq == encoded_seq:
+                time.sleep(frame_interval)
+                continue
+
+            jpeg_bytes = encode_frame(frame)
+            if jpeg_bytes:
+                with self._lock:
+                    self.latest_jpeg = jpeg_bytes
+                    self.latest_jpeg_seq = frame_seq
+                    self.latest_jpeg_at = time.time()
+                encoded_seq = frame_seq
+
+            time.sleep(frame_interval)
+
+    def get_latest_frame(self):
+        frame, _ = self._get_output_frame_snapshot()
+        return frame
+
+    def get_latest_jpeg(self):
+        with self._lock:
+            if (
+                self.latest_jpeg is None
+                or self.latest_jpeg_at is None
+                or self.last_frame_at is None
+                or time.time() - self.last_frame_at > STALE_FRAME_SECONDS
+            ):
+                return None
+            return self.latest_jpeg
 
     def to_status(self):
         with self._lock:
@@ -211,6 +260,8 @@ class CameraWorker:
             last_frame_at = self.last_frame_at
             last_error = self.last_error
             frame_seq = self.frame_seq
+            latest_jpeg_at = self.latest_jpeg_at
+            latest_jpeg_seq = self.latest_jpeg_seq
             last_processed_at = self.last_processed_at
             last_processed_error = self.last_processed_error
 
@@ -222,6 +273,8 @@ class CameraWorker:
             "last_frame_at": last_frame_at,
             "last_error": last_error,
             "frame_seq": frame_seq,
+            "latest_jpeg_at": latest_jpeg_at,
+            "latest_jpeg_seq": latest_jpeg_seq,
             "last_processed_at": last_processed_at,
             "last_processed_error": last_processed_error,
         }
@@ -253,8 +306,7 @@ def gen_frames(stream_id):
 
     try:
         while True:
-            frame = worker.get_latest_frame()
-            jpeg_bytes = encode_frame(frame) if frame is not None else empty_jpeg
+            jpeg_bytes = worker.get_latest_jpeg() or empty_jpeg
             if jpeg_bytes:
                 yield multipart_frame(jpeg_bytes)
             time.sleep(frame_interval)
