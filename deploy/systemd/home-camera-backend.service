@@ -5,15 +5,16 @@ After=network-online.target home-mediamtx-ensure.service
 
 [Service]
 Type=simple
-WorkingDirectory=/service/backend
-Environment=BACKEND_DIR=/service/backend
+WorkingDirectory=/service/home-camera-monitor/backend
+Environment=BACKEND_DIR=/service/home-camera-monitor/backend
 Environment=BACKEND_BIND=127.0.0.1:8010
-Environment=GUNICORN_WORKERS=1
-Environment=GUNICORN_THREADS=8
-Environment=GUNICORN_WORKER_CLASS=gthread
-Environment=GUNICORN_TIMEOUT=300
+Environment=BACKEND_HOST=127.0.0.1
+Environment=BACKEND_PORT=8010
+Environment=WORKERS=1
+Environment=THREADS=16
+Environment=TIMEOUT=300
 EnvironmentFile=-/root/home_camera_monitor_db.env
-ExecStart=/bin/bash /service/deploy/start_backend.sh
+ExecStart=/bin/bash /service/home-camera-monitor/deploy/start_backend.sh
 Restart=always
 RestartSec=5
 

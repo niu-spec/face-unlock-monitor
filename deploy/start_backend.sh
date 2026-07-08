@@ -7,15 +7,16 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="${BACKEND_DIR:-$REPO_ROOT/backend}"
-if [ ! -d "$BACKEND_DIR" ] && [ -d /service/backend ]; then
-  BACKEND_DIR=/service/backend
+if [ ! -d "$BACKEND_DIR" ] && [ -d /service/home-camera-monitor/backend ]; then
+  BACKEND_DIR=/service/home-camera-monitor/backend
 fi
 
-BIND_ADDR="${BACKEND_BIND:-127.0.0.1:8010}"
-WORKERS="${GUNICORN_WORKERS:-1}"
-THREADS="${GUNICORN_THREADS:-8}"
-WORKER_CLASS="${GUNICORN_WORKER_CLASS:-gthread}"
-TIMEOUT="${GUNICORN_TIMEOUT:-300}"
+BACKEND_HOST="${BACKEND_HOST:-127.0.0.1}"
+BACKEND_PORT="${BACKEND_PORT:-8010}"
+BIND_ADDR="${BACKEND_BIND:-$BACKEND_HOST:$BACKEND_PORT}"
+WORKERS="${WORKERS:-1}"
+THREADS="${THREADS:-16}"
+TIMEOUT="${TIMEOUT:-300}"
 DB_ENV_FILE="${DB_ENV_FILE:-/root/home_camera_monitor_db.env}"
 
 if [ -f "$DB_ENV_FILE" ]; then
@@ -41,21 +42,23 @@ fi
 
 if [ -f manage.py ]; then
   python manage.py check
-  exec gunicorn -w "$WORKERS" \
-    --worker-class "$WORKER_CLASS" \
+  exec python3 -m gunicorn config.wsgi:application \
+    --workers "$WORKERS" \
     --threads "$THREADS" \
-    -b "$BIND_ADDR" \
+    --bind "$BIND_ADDR" \
     --timeout "$TIMEOUT" \
-    "config.wsgi:application"
+    --access-logfile - \
+    --error-logfile -
 fi
 
 if [ -f app.py ]; then
-  exec gunicorn -w "$WORKERS" \
-    --worker-class "$WORKER_CLASS" \
+  exec python3 -m gunicorn app:app \
+    --workers "$WORKERS" \
     --threads "$THREADS" \
-    -b "$BIND_ADDR" \
+    --bind "$BIND_ADDR" \
     --timeout "$TIMEOUT" \
-    "app:app"
+    --access-logfile - \
+    --error-logfile -
 fi
 
 echo "No Django manage.py or Flask app.py found in $BACKEND_DIR" >&2

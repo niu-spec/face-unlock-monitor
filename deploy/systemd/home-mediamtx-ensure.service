@@ -6,7 +6,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/bin/bash /service/deploy/mediamtx_run.sh
+ExecStart=/bin/bash /service/home-camera-monitor/deploy/mediamtx_run.sh
 RemainAfterExit=yes
 TimeoutStartSec=120
 
