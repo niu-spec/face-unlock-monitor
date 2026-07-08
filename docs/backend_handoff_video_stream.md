@@ -1,4 +1,4 @@
-# B 组流媒体与 Flask 视频流交接说明
+# B 组流媒体与 Django 视频流交接说明
 
 负责人：B 苏哲勋
 
@@ -9,7 +9,7 @@ OBS 摄像头
   -> RTMP 推流
   -> MediaMTX
   -> RTSP
-  -> Flask / OpenCV
+  -> Django / OpenCV
   -> /video_feed/1
 ```
 
@@ -29,7 +29,7 @@ OBS 摄像头
 rtsp://127.0.0.1:8554/stream/1
 ```
 
-当前 `/video_feed/1` 可播放摄像头画面，浏览器预览延迟约 5 秒。当前 `video.py` 仍是 OpenCV 拉 RTSP 版本，暂不切换为 FFmpeg 子进程 raw frame 版。
+当前 `/video_feed/1` 可播放摄像头画面，浏览器预览延迟约 5 秒。当前 `apps/video_stream/services.py` 仍是 OpenCV 拉 RTSP 版本，暂不切换为 FFmpeg 子进程 raw frame 版。
 
 ## 2. OBS 配置
 
@@ -108,7 +108,7 @@ GET /video_feed/1
 <img src="/video_feed/1" />
 ```
 
-浏览器不要直接访问 RTSP 地址，生产环境由 Nginx 将 `/video_feed/` 反代到 Flask `127.0.0.1:5000`。
+浏览器不要直接访问 RTSP 地址，生产环境由 Nginx 将 `/video_feed/` 和 `/api/video/` 反代到 Django/Gunicorn，例如 `127.0.0.1:8000`。
 
 ## 5. C/D/E/A 联调方式
 
@@ -121,7 +121,7 @@ A 前端：
 C 人脸识别：
 
 - 不要从浏览器截图做人脸识别。
-- 直接接入 `backend/blueprints/video.py` 中的 OpenCV frame。
+- 直接接入 `backend/apps/video_stream/services.py` 中的 OpenCV frame。
 - frame 是 BGR 格式 `numpy.ndarray`。
 - 在 `process_frame(frame, stream_id)` 位置接入人脸处理。
 
@@ -139,7 +139,7 @@ E 业务/数据库：
 F 文档：
 
 - 记录方案由 Nginx-RTMP 调整为 MediaMTX。
-- 记录当前已完成 OBS 摄像头推流、MediaMTX 转发、Flask 预览。
+- 记录当前已完成 OBS 摄像头推流、MediaMTX 转发、Django 预览。
 - 记录当前延迟约 5 秒，后续优化方向是 FFmpeg latest_frame、WebRTC 或异步 AI 线程。
 
 ## 6. 常用排查命令
@@ -168,11 +168,11 @@ RTSP 读取检查：
 ffmpeg -rtsp_transport tcp -i rtsp://127.0.0.1:8554/stream/1 -t 3 -f null -
 ```
 
-Flask 状态检查：
+Django 状态检查：
 
 ```bash
-curl http://127.0.0.1:5000/api/video/status
-curl http://127.0.0.1:5000/api/video/streams/1/source
+curl http://127.0.0.1:8000/api/video/status
+curl http://127.0.0.1:8000/api/video/streams/1/source
 ```
 
 公网检查：
