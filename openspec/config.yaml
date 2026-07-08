@@ -1,0 +1,46 @@
+schema: spec-driven
+
+context: |
+  项目: home-camera-monitor（居家智能摄像头监控）
+  仓库: https://github.com/niu-spec/home-camera-monitor
+
+  技术栈:
+    - 前端: Vue3 + Vite + Element Plus（:5173，代理到 Django :8000）
+    - 后端: Django 4.2 + DRF + SimpleJWT（:8000）
+    - 流媒体: OBS → RTMP(:9090) → MediaMTX → RTSP(:8554) → Django OpenCV
+    - 数据库: MySQL（home_camera_monitor）
+    - AI: OpenCV / dlib / face_recognition（待接入 process_frame）
+
+  分支规范:
+    - main: 稳定发布
+    - dev: 集成分支
+    - feature/frontend, feature/business, feature/face, feature/detection 等
+
+  流 ID 约定（双轨）:
+    - 视频层: 1=客厅, 2=厨房 → /video_feed/{id}
+    - 业务层: living_room, kitchen → zones/alerts/events API
+    - 前端映射: frontend/src/constants/streams.js
+
+  API 约定:
+    - Django 路由要求尾部斜杠 /
+    - Swagger: /api/docs/
+    - JWT 登录: POST /api/auth/login/
+
+  团队:
+    - A 牛雨昊: 前端 + Git/部署
+    - B 苏哲勋: 流媒体
+    - C 王梓铭: 人脸识别
+    - D 李东礼: 危险区域检测 + 异常检测
+    - E 刘帅华: Django 业务
+    - F 刘澎潮: 文档
+
+rules:
+  proposal:
+    - 使用中文撰写，保留英文 capability 名称（kebab-case）
+    - 明确标注已实现 vs 待实现
+  specs:
+    - 每个 requirement 至少一个 #### Scenario
+    - 使用 SHALL/MUST 表述规范性需求
+  tasks:
+    - 单任务可在 2 小时内完成
+    - 文档类任务与代码类任务分开编号
