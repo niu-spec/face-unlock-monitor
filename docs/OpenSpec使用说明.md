@@ -60,7 +60,7 @@ openspec/
 |--------|------|------|-------------|
 | `bootstrap-from-docs` | 2026-07-08 | 从架构文档提炼 6 个 capability spec | f55be66 |
 | `frontend-zone-stream-alignment` | 2026-07-08 | 流 ID 对齐 + ZoneEditor Canvas | 57a0cc1 |
-| `user-manage-page` | 2026-07-08 | 用户管理聚合页 `/users` | 见 dev 最新 commit |
+| `user-manage-page` | 2026-07-08 | 用户管理聚合页 `/users` | bb7f280 |
 
 ---
 
