@@ -26,20 +26,6 @@ Zone polygons SHALL be stored as JSON arrays of `{x, y}` points in a 640×480 co
 - **WHEN** a user draws a 4-vertex polygon on the 640×480 canvas for the kitchen stream
 - **THEN** `points_json` contains exactly those vertex coordinates
 
-### Requirement: Canvas zone editor
-
-The frontend SHALL provide a Canvas-based editor where users click to add polygon vertices, undo the last point, and clear all points.
-
-#### Scenario: Draw polygon on video background
-
-- **WHEN** a user opens ZoneEditor for stream `kitchen` and clicks 4 points on the canvas overlay
-- **THEN** the polygon is rendered on top of the live video background from `/video_feed/2`
-
-#### Scenario: Edit existing zone
-
-- **WHEN** a user clicks a zone row in the table
-- **THEN** the polygon vertices load onto the canvas for editing
-
 ### Requirement: Role-based zone restriction
 
 Each zone SHALL support `forbidden_roles` (e.g. `["child"]`) to define which family member roles trigger intrusion alerts.
@@ -48,4 +34,27 @@ Each zone SHALL support `forbidden_roles` (e.g. `["child"]`) to define which fam
 
 - **WHEN** a zone named「厨房」has `forbidden_roles=["child"]`
 - **THEN** the detection module SHALL treat child entry into that polygon as an intrusion event
+
+### Requirement: Canvas polygon editor with video overlay
+
+The ZoneEditor page SHALL render a 640×480 canvas over a live video background from `/video_feed/{id}` and allow click-to-add polygon vertices.
+
+#### Scenario: Draw new zone on kitchen stream
+
+- **WHEN** user selects kitchen camera and clicks 4 points on the canvas
+- **THEN** a closed polygon is displayed and can be saved via zoneApi
+
+#### Scenario: Edit zone from table row
+
+- **WHEN** user clicks an existing zone row
+- **THEN** polygon vertices load onto the canvas for modification
+
+### Requirement: Stream-filtered zone list
+
+The ZoneEditor SHALL filter displayed zones by the currently selected camera stream.
+
+#### Scenario: Switch camera filter
+
+- **WHEN** user switches from living room to kitchen stream
+- **THEN** only zones with matching `stream_id` are shown in the table
 

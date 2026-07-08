@@ -45,6 +45,12 @@ const routes = [
     meta: { title: '事件记录' },
   },
   {
+    path: '/users',
+    name: 'UserManage',
+    component: () => import('@/views/UserManage.vue'),
+    meta: { title: '用户管理' },
+  },
+  {
     path: '/households',
     name: 'HouseholdManage',
     component: () => import('@/views/HouseholdManage.vue'),

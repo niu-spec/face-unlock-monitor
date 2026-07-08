@@ -34,6 +34,11 @@ context: |
     - E 刘帅华: Django 业务
     - F 刘澎潮: 文档
 
+  团队 OpenSpec 约定:
+    - 每个 feature PR 关联一个 change（propose → apply → archive）
+    - 进行中 change: ai-video-integration（C/D 负责）
+    - 使用说明: docs/OpenSpec使用说明.md
+
 rules:
   proposal:
     - 使用中文撰写，保留英文 capability 名称（kebab-case）
