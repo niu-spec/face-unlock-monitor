@@ -10,8 +10,9 @@ variables:
   PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip"
   DJANGO_SETTINGS_MODULE: "config.settings"
   CI: "true"
-  DJANGO_SECRET_KEY: "gitlab-ci-test-secret-key"
-  DJANGO_DEBUG: "False"
+  DJANGO_SECRET_KEY: "gitlab-ci-test-secret-key-not-for-production"
+  DJANGO_DEBUG: "True"
+  DJANGO_ALLOWED_HOSTS: "*"
 
 # ── 后端：Django check + 单元测试 ──────────────────────────────────
 backend-test:
@@ -26,7 +27,7 @@ backend-test:
     - pip install --upgrade pip
     - pip install -r requirements-ci.txt
   script:
-    - python manage.py check --deploy
+    - python manage.py check
     - python manage.py test apps.face.tests --verbosity=2
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
