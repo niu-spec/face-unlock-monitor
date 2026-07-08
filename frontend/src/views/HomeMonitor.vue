@@ -2,13 +2,18 @@
 import { ref } from 'vue'
 import PersonStats from '@/components/PersonStats.vue'
 import { videoFeedUrl } from '@/api'
+import { CAMERA_STREAMS, DEFAULT_STREAM_ID } from '@/constants/streams'
 
-const streams = [
-  { id: 'living_room', label: '客厅' },
-  { id: 'kitchen', label: '厨房' },
-]
+const activeStream = ref(DEFAULT_STREAM_ID)
+const videoError = ref(false)
 
-const activeStream = ref('living_room')
+function onVideoError() {
+  videoError.value = true
+}
+
+function onVideoLoad() {
+  videoError.value = false
+}
 </script>
 
 <template>
@@ -20,14 +25,24 @@ const activeStream = ref('living_room')
             <div class="card-header">
               <span>实时画面</span>
               <el-radio-group v-model="activeStream" size="small">
-                <el-radio-button v-for="item in streams" :key="item.id" :value="item.id">
+                <el-radio-button v-for="item in CAMERA_STREAMS" :key="item.id" :value="item.id">
                   {{ item.label }}
                 </el-radio-button>
               </el-radio-group>
             </div>
           </template>
           <div class="video-box">
-            <img :src="videoFeedUrl(activeStream)" alt="实时画面" />
+            <img
+              :key="activeStream"
+              :src="videoFeedUrl(activeStream)"
+              alt="实时画面"
+              @error="onVideoError"
+              @load="onVideoLoad"
+            />
+            <div v-if="videoError" class="video-fallback">
+              视频流未就绪（推流码 {{ activeStream }}）<br />
+              请确认 MediaMTX 与 OBS 已启动
+            </div>
           </div>
         </el-card>
       </el-col>
@@ -46,6 +61,7 @@ const activeStream = ref('living_room')
 }
 
 .video-box {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -59,5 +75,20 @@ const activeStream = ref('living_room')
   width: 100%;
   max-height: 480px;
   object-fit: contain;
+}
+
+.video-fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  color: #909399;
+  font-size: 13px;
+  line-height: 1.6;
+  background: rgba(0, 0, 0, 0.65);
+  pointer-events: none;
 }
 </style>

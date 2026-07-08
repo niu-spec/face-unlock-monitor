@@ -69,4 +69,4 @@ export const homeApi = {
   presence: () => request.get('/api/home/presence/', { silent: true }),
 }
 
-export const videoFeedUrl = (streamId) => `/video_feed/${streamId}`
+export { videoFeedPath as videoFeedUrl } from '@/constants/streams'

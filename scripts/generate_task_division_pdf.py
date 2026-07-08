@@ -19,58 +19,59 @@ MEMBER_OUTPUT_DIR = os.path.join(ROOT, "docs", "成员任务")
 REPO_URL = "https://github.com/niu-spec/home-camera-monitor"
 FONT_PATH = r"C:\Windows\Fonts\msyh.ttc"
 FONT_NAME = "MicrosoftYaHei"
+DOCUMENT_DATE = date(2026, 7, 7)
 
 TEAM = {
     "A": ("牛雨昊", "组长/前端/Git/部署"),
-    "B": ("苏哲勋", "流媒体/Flask骨架"),
+    "B": ("苏哲勋", "流媒体/MediaMTX/视频拉流"),
     "C": ("王梓铭", "AI人脸/人员统计"),
     "D": ("李东礼", "AI危险区域/异常检测"),
-    "E": ("刘帅华", "Flask业务/数据库"),
+    "E": ("刘帅华", "Django业务/数据库/Swagger"),
     "F": ("刘澎潮", "专职文档"),
 }
 
 BRANCH_INFO = {
     "A": ("feature/frontend\nfeature/infra", "frontend/ deploy/"),
-    "B": ("feature/nginx\nfeature/flask-core", "nginx/ backend/video.py"),
-    "C": ("feature/face", "face_service home.py"),
-    "D": ("feature/detection", "detection_service.py"),
-    "E": ("feature/business", "models/ alerts zones"),
+    "B": ("feature/nginx\nfeature/django-video-stream", "apps/video_stream/ nginx/ deploy/"),
+    "C": ("feature/face", "apps/face/"),
+    "D": ("feature/detection", "apps/detection/"),
+    "E": ("feature/business", "apps/households/ accounts/ alerts/ zones/ events/"),
     "F": ("—（不写代码）", "飞书文档"),
 }
 
 TASKS = {
     "A": [
         ["1", "Vue3 工程初始化", "Element Plus + Router + Axios", "npm run dev 可访问", "7/7", "P0"],
-        ["2", "HomeMonitor.vue", "多路摄像头 MJPEG；嵌入 PersonStats", "可看客厅/厨房画面", "7/11", "P0"],
+        ["2", "HomeMonitor.vue", "多路摄像头 MJPEG；嵌入 PersonStats", "可看实时画面", "7/11", "P0"],
         ["3", "PersonStats.vue", "展示 total/family/stranger 人数", "数字随识别更新", "7/11", "P0"],
         ["4", "FamilyRegister.vue", "录入家人+角色(adult/child)+拍照", "注册成功", "7/10", "P0"],
         ["5", "ZoneEditor.vue", "Canvas 画厨房等区域；设 forbidden_roles", "区域可保存", "7/10", "P0"],
         ["6", "AlertCenter.vue", "告警列表；按类型筛选", "可处置告警", "7/12", "P0"],
         ["7", "EventLog.vue", "事件/识别记录时间线", "可查历史", "7/13", "P1"],
-        ["8", "Login.vue + api封装", "JWT 登录；vite proxy", "联调通过", "7/9", "P0"],
-        ["9", "snapshot_service", "告警截图保存", "alert 含截图路径", "7/11", "P0"],
-        ["10", "logs/replay API", "日志查询+事件回放", "可回看截图", "7/13", "P1"],
+        ["8", "Login/Register + api", "JWT 登录；vite proxy /api+/video_feed", "联调通过", "7/9", "P0"],
+        ["9", "HouseholdManage.vue", "家庭创建/切换/成员管理", "多家庭数据隔离", "7/11", "P0"],
+        ["10", "Profile.vue", "个人信息/换绑手机号", "短信验证可用", "7/11", "P1"],
         ["11", "deploy 脚本", "服务器一键部署", "deploy 实测通过", "7/10", "P0"],
         ["12", "Git 管理", "PR 审查；dev→main 合并；分支保护", "中期/结题 tag", "7/11/15", "P0"],
     ],
     "B": [
-        ["1", "云服务器+RTMP", "Ubuntu；9090/80 端口", "推流成功", "7/6", "P0"],
-        ["2", "nginx.conf", "RTMP live；HTTP 反代", "VLC 可拉流", "7/7", "P0"],
-        ["3", "app.py 骨架", "Blueprint 注册；CORS", "import 无错", "7/7", "P0"],
-        ["4", "video.py", "拉 RTMP；MJPEG 输出", "/video_feed 可看", "7/8", "P0"],
-        ["5", "多摄像头", "living_room / kitchen 两路", "前端可切换", "7/9", "P0"],
-        ["6", "gen_frames 框架", "预留 AI hook 给 C/D", "帧上可画框", "7/10", "P0"],
+        ["1", "云服务器+RTMP", "Ubuntu；9090/8554/80 端口", "推流成功", "7/6", "P0"],
+        ["2", "MediaMTX 部署", "Docker 容器；RTMP 1935→9090", "OBS 可推流", "7/7", "P0"],
+        ["3", "video_stream 模块", "Django app；OpenCV 拉 RTSP", "manage.py 可启动", "7/7", "P0"],
+        ["4", "MJPEG 输出", "StreamingHttpResponse", "/video_feed/{id} 可看", "7/8", "P0"],
+        ["5", "多路流支持", "stream/1 等推流码", "前端可切换", "7/9", "P0"],
+        ["6", "process_frame hook", "预留 AI 接入点给 C/D", "帧上可画框", "7/10", "P0"],
         ["7", "生产 Nginx 反代", "80 统一入口", "部署可访问", "7/13", "P1"],
     ],
     "C": [
         ["1", "dlib 环境+模型", "dat/ 两个模型文件", "import 成功", "7/6-7/7", "P0"],
-        ["2", "face_service", "检测+128维编码+比对", "静态图 demo", "7/8", "P0"],
-        ["3", "家人注册 API", "POST /api/face/register 含 role", "Swagger 可测", "7/9", "P0"],
+        ["2", "apps/face/services", "检测+128维编码+比对", "静态图 demo", "7/8", "P0"],
+        ["3", "家人注册 API", "POST /api/face/register/ 含 role", "Swagger 可测", "7/9", "P0"],
         ["4", "实时识别", "视频流绿框家人/红框陌生人", "标注正确", "7/10", "P0"],
         ["5", "人数统计", "统计帧内人脸数；分家人/陌生人", "count 准确", "7/10", "P0"],
-        ["6", "home/presence API", "GET 返回 total/family/stranger", "A 前端可轮询", "7/11", "P0"],
+        ["6", "home/presence API", "GET /api/home/presence/", "A 前端可轮询", "7/11", "P0"],
         ["7", "陌生人告警", "未注册脸→FACE_UNKNOWN", "告警中心可见", "7/11", "P0"],
-        ["8", "registered_faces.json", "member_id→encoding+role", "重启数据仍在", "7/9", "P0"],
+        ["8", "face_encoding 持久化", "DB + registered_faces.json", "重启数据仍在", "7/9", "P0"],
     ],
     "D": [
         ["1", "检测方案文档", "积水/着火/跌倒算法说明给 F", "写入 v1.0", "7/7", "P0"],
@@ -83,15 +84,15 @@ TASKS = {
         ["8", "【可选】YOLO", "替换 HOG 提升检人精度", "准确率提升", "7/14", "P2"],
     ],
     "E": [
-        ["1", "config.py + models", "MySQL 连接；family_member/zone/alert", "建表成功", "7/7", "P0"],
-        ["2", "family_member 表", "name/role/face 关联", "CRUD 可用", "7/9", "P0"],
-        ["3", "zone 表", "含 forbidden_roles 字段", "厨房禁区可配", "7/9", "P0"],
-        ["4", "auth/login", "JWT 登录", "A 可登录", "7/9", "P0"],
+        ["1", "Django settings + models", "MySQL；User/Household/Zone/Alert", "migrate 成功", "7/7", "P0"],
+        ["2", "households 多家庭", "家庭/成员/加入申请/摄像头", "数据隔离可用", "7/9", "P0"],
+        ["3", "zone 表", "含 forbidden_roles/points_json", "厨房禁区可配", "7/9", "P0"],
+        ["4", "auth/login", "JWT + 短信注册/登录", "A 可登录", "7/9", "P0"],
         ["5", "zones CRUD", "GET/POST/PUT/DELETE", "A 画框可存", "7/9", "P0"],
         ["6", "alert_service", "create_alert 供 C/D 调用", "统一写库", "7/10", "P0"],
         ["7", "alerts API", "列表/处置/分页/按类型筛选", "告警中心联调", "7/11", "P0"],
         ["8", "events API", "识别/告警事件记录", "EventLog 展示", "7/11", "P0"],
-        ["9", "Swagger /api/docs", "flask-restx 文档", "可访问", "7/11", "P1"],
+        ["9", "Swagger /api/docs", "drf-yasg 文档", "可访问", "7/11", "P1"],
         ["10", "MySQL 生产部署", "服务器建库", "生产可用", "7/13", "P0"],
     ],
     "F": [
@@ -105,11 +106,11 @@ TASKS = {
 }
 
 SCHEDULE = [
-    ["7/6", "启动", "Vue init\nGit", "租服务器", "装dlib", "异常方案", "models", "文档模板"],
+    ["7/6", "启动", "Vue init\nGit", "租服务器\nMediaMTX", "装dlib", "异常方案", "Django models", "文档模板"],
     ["7/7", "环境", "前端骨架", "RTMP通", "模型demo", "方案给F", "zone表", "v1.0草稿"],
-    ["7/8", "立项", "监控页原型", "video.py", "人脸demo", "—", "素材给F", "提交v1.0"],
+    ["7/8", "立项", "监控页原型", "video_stream", "人脸demo", "—", "素材给F", "提交v1.0"],
     ["7/9", "联调", "Login+api", "MJPEG", "face/register", "—", "login+zones", "日报"],
-    ["7/10", "核心", "FamilyRegister\nZoneEditor", "gen_frames", "识别+数人", "HOG", "alerts", "日报"],
+    ["7/10", "核心", "FamilyRegister\nZoneEditor", "process_frame", "识别+数人", "HOG", "alerts", "日报"],
     ["7/11", "中期", "HomeMonitor\nPersonStats", "联调", "presence API", "厨房禁区", "Swagger", "v2.0"],
     ["7/12", "异常①", "AlertCenter", "Nginx反代", "—", "积水+着火", "告警CRUD", "日报"],
     ["7/13", "异常②", "EventLog\n部署", "生产环境", "—", "摔倒检测", "DB部署", "v3.0草稿"],
@@ -121,24 +122,31 @@ SCHEDULE_COL = {"A": 2, "B": 3, "C": 4, "D": 5, "E": 6, "F": 7}
 
 PERSON_APIS = {
     "A": [
-        ["/api/logs", "GET", "监控日志"],
-        ["/api/replay/{id}", "GET", "事件回放"],
+        ["/api/households/", "CRUD", "家庭管理（联调）"],
+        ["/api/events/", "GET", "事件记录展示"],
     ],
     "B": [
-        ["/video_feed/{id}", "GET", "MJPEG 实时画面"],
+        ["/video_feed/{stream_id}", "GET", "MJPEG 实时画面（Django）"],
+        ["/api/video/status", "GET", "视频流 worker 状态"],
+        ["/api/video/streams/{id}/source", "GET", "RTSP/RTMP/MJPEG 地址"],
     ],
     "C": [
-        ["/api/face/register", "POST", "{member_id,name,role,image}"],
-        ["/api/home/presence", "GET", "{total,family,stranger,members[]}"],
+        ["/api/face/register/", "POST", "{name,role,image}"],
+        ["/api/face/analyze/", "POST", "单帧人脸分析"],
+        ["/api/home/presence/", "GET", "{total,family,stranger}"],
     ],
-    "D": [],
+    "D": [
+        ["/api/detection/analyze/", "POST", "单帧异常/区域检测"],
+        ["/api/detection/status/", "GET", "检测模块状态"],
+    ],
     "E": [
-        ["/api/auth/login", "POST", "JWT 登录"],
-        ["/api/zones", "CRUD", "含 forbidden_roles"],
-        ["/api/alerts", "GET/POST", "告警列表/内部写入"],
-        ["/api/alerts/{id}/handle", "PUT", "告警处置"],
-        ["/api/events", "GET", "事件记录"],
-        ["/api/docs", "GET", "Swagger"],
+        ["/api/auth/login/", "POST", "JWT 登录"],
+        ["/api/households/", "CRUD", "家庭管理与多租户"],
+        ["/api/zones/", "CRUD", "含 forbidden_roles"],
+        ["/api/alerts/", "GET/POST", "告警列表/内部写入"],
+        ["/api/alerts/{id}/handle/", "PUT", "告警处置"],
+        ["/api/events/", "GET", "事件记录"],
+        ["/api/docs/", "GET", "Swagger（drf-yasg）"],
     ],
     "F": [],
 }
@@ -298,7 +306,17 @@ def append_overview_sections(story, styles):
     story.append(Paragraph(
         "通过家庭摄像头实时监控家中画面：<b>人脸识别</b>（识别家人/陌生人）、"
         "<b>人员统计</b>（当前在家人数）、<b>危险区域</b>（如厨房禁止小孩进入）、"
-        "<b>异常检测</b>（积水、着火、摔倒）。技术栈：Vue3 + Flask + Nginx-RTMP + MySQL。",
+        "<b>异常检测</b>（积水、着火、摔倒）。"
+        "技术栈：Vue3 + Django + MediaMTX + OpenCV + MySQL。",
+        styles["body"],
+    ))
+
+    story.append(Paragraph("1.0 当前架构（v1.2）", styles["h2"]))
+    story.append(Paragraph(
+        "<b>展示层</b>：Vue3 前端（5173）→ REST API + MJPEG<br/>"
+        "<b>业务层</b>：Django + DRF（8000）— accounts / households / zones / alerts / events / face / detection / video_stream<br/>"
+        "<b>流媒体</b>：OBS/摄像头 → RTMP(9090) → MediaMTX → RTSP(8554) → Django OpenCV → /video_feed/{stream_id}<br/>"
+        "<b>数据层</b>：MySQL（多家庭数据隔离）",
         styles["body"],
     ))
 
@@ -333,7 +351,7 @@ def build_story(styles):
     s.append(Paragraph("home-camera-monitor 项目任务分工表", styles["title"]))
     s.append(Paragraph(
         f"应用场景：<b>居家智能摄像头监控</b>　|　{REPO_URL}<br/>"
-        f"团队：牛雨昊、苏哲勋、王梓铭、李东礼、刘帅华、刘澎潮　|　{date.today()}",
+        f"团队：牛雨昊、苏哲勋、王梓铭、李东礼、刘帅华、刘澎潮　|　{DOCUMENT_DATE}",
         styles["subtitle"],
     ))
 
@@ -361,27 +379,28 @@ def build_story(styles):
     s.append(Paragraph("四、API 接口清单", styles["h1"]))
     s.append(tbl([
         ["接口", "方法", "负责人", "说明"],
-        ["/video_feed/{id}", "GET", "苏哲勋", "MJPEG 实时画面"],
-        ["/api/face/register", "POST", "王梓铭", "{member_id,name,role,image}"],
-        ["/api/home/presence", "GET", "王梓铭", "{total,family,stranger,members[]}"],
-        ["/api/auth/login", "POST", "刘帅华", "JWT 登录"],
-        ["/api/zones", "CRUD", "刘帅华", "含 forbidden_roles"],
-        ["/api/alerts", "GET/POST", "刘帅华", "告警列表/内部写入"],
-        ["/api/alerts/{id}/handle", "PUT", "刘帅华", "告警处置"],
-        ["/api/events", "GET", "刘帅华", "事件记录"],
-        ["/api/logs", "GET", "牛雨昊", "监控日志"],
-        ["/api/replay/{id}", "GET", "牛雨昊", "事件回放"],
-        ["/api/docs", "GET", "刘帅华", "Swagger"],
+        ["/video_feed/{stream_id}", "GET", "苏哲勋", "MJPEG 实时画面（Django video_stream）"],
+        ["/api/video/status", "GET", "苏哲勋", "视频流 worker 状态"],
+        ["/api/face/register/", "POST", "王梓铭", "{name,role,image}"],
+        ["/api/home/presence/", "GET", "王梓铭", "{total,family,stranger}"],
+        ["/api/detection/analyze/", "POST", "李东礼", "单帧区域/异常检测"],
+        ["/api/auth/login/", "POST", "刘帅华", "JWT 登录"],
+        ["/api/households/", "CRUD", "刘帅华", "家庭管理与多租户"],
+        ["/api/zones/", "CRUD", "刘帅华", "含 forbidden_roles"],
+        ["/api/alerts/", "GET/POST", "刘帅华", "告警列表/内部写入"],
+        ["/api/alerts/{id}/handle/", "PUT", "刘帅华", "告警处置"],
+        ["/api/events/", "GET", "刘帅华", "事件记录"],
+        ["/api/docs/", "GET", "刘帅华", "Swagger（drf-yasg）"],
     ], [3 * cm, 1.2 * cm, 1.3 * cm, 6 * cm], styles))
 
     s.append(Paragraph("4.1 告警类型", styles["h2"]))
     s.append(tbl([
         ["type", "含义", "检测模块", "负责人"],
-        ["FACE_UNKNOWN", "陌生人", "face_service", "王梓铭"],
-        ["ZONE_INTRUSION", "危险区域闯入", "detection+face", "李东礼"],
-        ["FLOOD", "积水", "detection_service", "李东礼"],
-        ["FIRE", "着火", "detection_service", "李东礼"],
-        ["FALL", "摔倒", "detection_service", "李东礼"],
+        ["FACE_UNKNOWN", "陌生人", "apps/face", "王梓铭"],
+        ["INTRUSION", "危险区域闯入", "apps/detection+face", "李东礼"],
+        ["WATER", "积水", "apps/detection", "李东礼"],
+        ["FIRE", "着火", "apps/detection", "李东礼"],
+        ["FALL", "摔倒", "apps/detection", "李东礼"],
     ], [2.5 * cm, 2 * cm, 3 * cm, 1.5 * cm], styles))
 
     s.append(PageBreak())
@@ -413,7 +432,7 @@ def build_person_story(styles, code):
     s.append(Paragraph(f"个人任务清单 — {name}", styles["title"]))
     s.append(Paragraph(
         f"代号 {code}　|　{role}　|　{REPO_URL}<br/>"
-        f"Git 分支：{branches.replace(chr(10), '、')}　|　目录：{dirs}　|　{date.today()}",
+        f"Git 分支：{branches.replace(chr(10), '、')}　|　目录：{dirs}　|　{DOCUMENT_DATE}",
         styles["subtitle"],
     ))
 
@@ -449,11 +468,11 @@ def build_person_story(styles, code):
     s.append(Spacer(1, 8))
     s.append(Paragraph("结题演示中与你相关的环节", styles["h2"]))
     demo_map = {
-        "A": "监控主页、人数面板、告警中心、事件回放、部署演示",
-        "B": "视频推流与 MJPEG 拉流保障",
+        "A": "监控主页、家庭管理、人数面板、告警中心、事件记录、部署演示",
+        "B": "MediaMTX 推流与 Django MJPEG 视频预览",
         "C": "家人注册、实时识别、陌生人告警、人数统计",
         "D": "厨房禁区闯入、积水/着火/摔倒异常检测",
-        "E": "登录鉴权、区域配置、告警 CRUD、Swagger 文档",
+        "E": "登录鉴权、家庭/区域/告警 CRUD、Swagger 文档",
         "F": "演示视频拍摄与结题文档提交",
     }
     s.append(Paragraph(demo_map[code], styles["body"]))
