@@ -1,11 +1,15 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import PersonStats from '@/components/PersonStats.vue'
-import { videoFeedUrl } from '@/api'
+import { videoFeedUrl, webrtcPreviewUrl } from '@/api'
 import { CAMERA_STREAMS, DEFAULT_STREAM_ID } from '@/constants/streams'
 
 const activeStream = ref(DEFAULT_STREAM_ID)
+const previewMode = ref('webrtc')
 const videoError = ref(false)
+
+const webrtcUrl = computed(() => webrtcPreviewUrl(activeStream.value))
+const mjpegUrl = computed(() => videoFeedUrl(activeStream.value))
 
 function onVideoError() {
   videoError.value = true
@@ -13,6 +17,10 @@ function onVideoError() {
 
 function onVideoLoad() {
   videoError.value = false
+}
+
+function openWebRtcWindow() {
+  window.open(webrtcUrl.value, '_blank', 'noopener,noreferrer')
 }
 </script>
 
@@ -24,25 +32,60 @@ function onVideoLoad() {
           <template #header>
             <div class="card-header">
               <span>实时画面</span>
-              <el-radio-group v-model="activeStream" size="small">
-                <el-radio-button v-for="item in CAMERA_STREAMS" :key="item.id" :value="item.id">
-                  {{ item.label }}
-                </el-radio-button>
-              </el-radio-group>
+              <div class="header-actions">
+                <el-radio-group v-model="activeStream" size="small">
+                  <el-radio-button v-for="item in CAMERA_STREAMS" :key="item.id" :value="item.id">
+                    {{ item.label }}
+                  </el-radio-button>
+                </el-radio-group>
+                <el-radio-group v-model="previewMode" size="small">
+                  <el-radio-button value="webrtc">WebRTC</el-radio-button>
+                  <el-radio-button value="mjpeg">MJPEG 备用</el-radio-button>
+                </el-radio-group>
+              </div>
             </div>
           </template>
+
           <div class="video-box">
+            <iframe
+              v-if="previewMode === 'webrtc'"
+              :key="`webrtc-${activeStream}`"
+              :src="webrtcUrl"
+              title="WebRTC 实时画面"
+              allow="autoplay; fullscreen"
+              class="video-frame"
+            />
             <img
-              :key="activeStream"
-              :src="videoFeedUrl(activeStream)"
-              alt="实时画面"
+              v-else
+              :key="`mjpeg-${activeStream}`"
+              :src="mjpegUrl"
+              alt="MJPEG 实时画面"
+              class="video-frame"
               @error="onVideoError"
               @load="onVideoLoad"
             />
-            <div v-if="videoError" class="video-fallback">
+            <div v-if="previewMode === 'mjpeg' && videoError" class="video-fallback">
               视频流未就绪（推流码 {{ activeStream }}）<br />
-              请确认 MediaMTX 与 OBS 已启动
+              请确认 MediaMTX 与 OBS 已启动，或切换回 WebRTC 预览
             </div>
+          </div>
+
+          <div class="video-footer">
+            <span v-if="previewMode === 'webrtc'" class="video-hint">
+              低延迟 WebRTC 预览 · AI 识别结果见右侧人数统计
+            </span>
+            <span v-else class="video-hint">
+              MJPEG 备用预览（延迟较高，含 AI 标注框）
+            </span>
+            <el-button
+              v-if="previewMode === 'webrtc'"
+              link
+              type="primary"
+              size="small"
+              @click="openWebRtcWindow"
+            >
+              新窗口打开
+            </el-button>
           </div>
         </el-card>
       </el-col>
@@ -58,6 +101,15 @@ function onVideoLoad() {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .video-box {
@@ -71,10 +123,12 @@ function onVideoLoad() {
   overflow: hidden;
 }
 
-.video-box img {
+.video-frame {
   width: 100%;
-  max-height: 480px;
+  height: 480px;
+  border: none;
   object-fit: contain;
+  background: #000;
 }
 
 .video-fallback {
@@ -90,5 +144,18 @@ function onVideoLoad() {
   line-height: 1.6;
   background: rgba(0, 0, 0, 0.65);
   pointer-events: none;
+}
+
+.video-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  gap: 8px;
+}
+
+.video-hint {
+  color: #909399;
+  font-size: 12px;
 }
 </style>

@@ -69,4 +69,4 @@ export const homeApi = {
   presence: () => request.get('/api/home/presence/', { silent: true }),
 }
 
-export { videoFeedPath as videoFeedUrl } from '@/constants/streams'
+export { videoFeedPath as videoFeedUrl, webrtcPreviewUrl } from '@/constants/streams'
