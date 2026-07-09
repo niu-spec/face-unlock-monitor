@@ -1,0 +1,25 @@
+[Unit]
+Description=Home Camera Monitor Backend
+After=network.target docker.service home-mediamtx-ensure.service
+Wants=docker.service home-mediamtx-ensure.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/service/home-camera-monitor/backend
+EnvironmentFile=-/service/home-camera-monitor/backend/.env.production
+Environment=RTSP_BASE_URL=rtsp://127.0.0.1:8554/stream
+Environment=RTMP_PUBLIC_BASE_URL=rtmp://152.136.29.158:9090/stream
+Environment=VIDEO_FRAME_SKIP=5
+Environment=BACKEND_BIND=127.0.0.1:8010
+Environment=WORKERS=1
+Environment=THREADS=16
+Environment=TIMEOUT=300
+ExecStart=/service/home-camera-monitor/deploy/start_backend.sh
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
