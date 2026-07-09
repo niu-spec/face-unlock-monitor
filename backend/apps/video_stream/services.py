@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import threading
@@ -5,6 +6,8 @@ import time
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 RTSP_BASE_URL = os.getenv("RTSP_BASE_URL", "rtsp://127.0.0.1:8554/stream")
@@ -38,22 +41,68 @@ def _to_business_stream_id(stream_id: str) -> str:
     return _VIDEO_TO_BUSINESS_STREAM.get(stream_id, stream_id)
 
 
-def process_frame(frame, stream_id):
-    """处理单帧：AI 检测 + 标注绘制。
+def _resolve_household_id_for_stream(stream_id: str) -> int | None:
+    """尽力根据业务流 ID 找到对应家庭 ID。"""
+    try:
+        from apps.households.models import Camera
 
-    调用检测模块（李东礼）进行危险区域闯入、积水、着火、摔倒检测，
-    并将结果绘制到帧上用于 MJPEG 输出。
-    """
-    # AI HOOK — 对接检测模块
+        return Camera.objects.filter(
+            stream_id=stream_id,
+            is_active=True,
+            household_id__isnull=False,
+        ).values_list("household_id", flat=True).first()
+    except Exception as exc:
+        logger.warning("根据视频流 %s 查询家庭失败: %s", stream_id, exc)
+        return None
+
+
+def _map_face_roles_to_people(presence: dict, person_boxes: list[dict]) -> dict[int, str]:
+    """通过人脸中心点是否落入人体框，将人脸角色关联到人体框。"""
+    roles: dict[int, str] = {}
+    for face in presence.get("faces", []):
+        box = face.get("box") or {}
+        if not box:
+            continue
+        cx = (int(box.get("left", 0)) + int(box.get("right", 0))) // 2
+        cy = (int(box.get("top", 0)) + int(box.get("bottom", 0))) // 2
+        for person in person_boxes:
+            x, y, w, h = person["x"], person["y"], person["w"], person["h"]
+            if x <= cx <= x + w and y <= cy <= y + h:
+                roles[int(person.get("track_id", -1))] = face.get("role", "stranger")
+                break
+    return roles
+
+
+def process_frame(frame, stream_id):
+    """在 MJPEG 编码前执行实时 AI 处理链。"""
+    biz_stream_id = _to_business_stream_id(str(stream_id))
+    original = frame.copy()
+    output = frame
+    person_boxes: list[dict] = []
+    face_roles: dict[int, str] = {}
+    zones = None
+
     try:
         from apps.detection.services import get_detection_service
+        from apps.face.services import get_face_service
         from apps.zones.models import Zone
 
-        service = get_detection_service()
-        # 视频层 ID → 业务层 ID 转换（符合 OpenSpec 双轨约定）
-        biz_stream_id = _to_business_stream_id(stream_id)
-        # 获取当前流的活跃危险区域
+        detection_service = get_detection_service()
+        person_boxes = detection_service.detect_people(original)
+
+        household_id = _resolve_household_id_for_stream(biz_stream_id)
+        output, presence, _events = get_face_service().process_frame(
+            original,
+            stream_id=biz_stream_id,
+            household_id=household_id,
+            annotate=True,
+            persist_alert=True,
+        )
+        face_roles = _map_face_roles_to_people(presence, person_boxes)
+
         zones_qs = Zone.objects.filter(stream_id=biz_stream_id, is_active=True)
+        if household_id is not None:
+            zones_qs = zones_qs.filter(household_id=household_id)
         zones = [
             {
                 "id": z.id,
@@ -65,25 +114,24 @@ def process_frame(frame, stream_id):
             for z in zones_qs
         ]
 
-        # TODO: 从人脸模块获取 face_roles 和 person_boxes 后传入
-        results = service.process_frame(
-            frame=frame,
+        results = detection_service.process_frame(
+            frame=original,
             stream_id=biz_stream_id,
+            person_boxes=person_boxes,
+            face_roles=face_roles,
             zones=zones if zones else None,
         )
-        # 绘制检测标注
-        frame = service.draw_overlays(frame, results, zones=zones if zones else None)
-    except Exception as e:
-        # 检测失败不影响视频流正常输出
-        import logging
-
-        logging.getLogger(__name__).warning(
-            "Detection pipeline error for %s: %s", stream_id, e
+        output = detection_service.draw_overlays(
+            output,
+            results,
+            zones=zones if zones else None,
+            person_boxes=person_boxes,
         )
+    except Exception as exc:
+        logger.warning("视频流 %s 的 AI 处理链执行失败: %s", stream_id, exc)
 
-    # 叠加流标识
     cv2.putText(
-        frame,
+        output,
         f"stream {stream_id}",
         (20, 40),
         cv2.FONT_HERSHEY_SIMPLEX,
@@ -92,9 +140,7 @@ def process_frame(frame, stream_id):
         2,
         cv2.LINE_AA,
     )
-    return frame
-
-
+    return output
 def encode_frame(frame):
     ok, buffer = cv2.imencode(".jpg", frame)
     if not ok:

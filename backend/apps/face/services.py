@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
 import threading
+import time
 from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +15,8 @@ from typing import Any
 
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def _load_face_recognition():
@@ -60,6 +64,7 @@ class FaceRecognitionService:
         self._lock = threading.RLock()
         self._members: dict[str, dict[str, Any]] = {}
         self._last_unknown_alert: dict[str, float] = {}
+        self._last_db_sync = 0.0
         self._presence = self._empty_presence()
         self._load_registry()
 
@@ -102,6 +107,53 @@ class FaceRecognitionService:
         )
         os.replace(temporary, self.registry_path)
 
+    def sync_members_from_database(self, force: bool = False) -> None:
+        """从 FamilyMember.face_encoding 刷新内存中的人脸特征库。"""
+        try:
+            from django.conf import settings
+
+            refresh_seconds = float(
+                getattr(settings, "FACE_DB_REFRESH_SECONDS", 10)
+            )
+        except Exception:
+            refresh_seconds = 10.0
+
+        now = time.time()
+        if not force and now - self._last_db_sync < refresh_seconds:
+            return
+
+        try:
+            from apps.accounts.models import FamilyMember
+
+            rows = FamilyMember.objects.filter(
+                is_active=True,
+                face_encoding__isnull=False,
+            ).values("id", "name", "role", "household_id", "face_encoding")
+
+            members: dict[str, dict[str, Any]] = {}
+            for row in rows:
+                encoding = row.get("face_encoding") or []
+                if len(encoding) != 128:
+                    continue
+                member_id = str(row["id"])
+                members[member_id] = {
+                    "name": str(row.get("name") or member_id),
+                    "role": str(row.get("role") or "adult"),
+                    "household_id": row.get("household_id"),
+                    "encoding": [float(value) for value in encoding],
+                }
+
+            with self._lock:
+                if members:
+                    self._members = members
+                    self._save_registry()
+                self._last_db_sync = now
+        except Exception as exc:
+            self._last_db_sync = now
+            if "no such table" in str(exc).lower():
+                logger.debug("人脸特征库数据表尚未就绪: %s", exc)
+            else:
+                logger.warning("从数据库同步人脸特征库失败: %s", exc)
     @staticmethod
     def decode_image_bytes(value: bytes) -> np.ndarray:
         frame = cv2.imdecode(np.frombuffer(value, dtype=np.uint8), cv2.IMREAD_COLOR)
@@ -189,6 +241,7 @@ class FaceRecognitionService:
         """Return annotated frame, presence snapshot, and FACE_UNKNOWN events."""
         if frame is None or frame.size == 0:
             raise ValueError("视频帧为空")
+        self.sync_members_from_database()
         face_recognition = _load_face_recognition()
         scale = self.resize_scale
         analysis = cv2.resize(frame, None, fx=scale, fy=scale) if scale != 1 else frame
@@ -297,10 +350,10 @@ class FaceRecognitionService:
                 household_id=household_id,
             )
         except Exception:
-            # The frame pipeline must keep running if the database is temporarily unavailable.
+            # 数据库临时不可用时，视频帧处理链仍要继续运行。
             import logging
 
-            logging.getLogger(__name__).exception("Failed to persist FACE_UNKNOWN alert")
+            logging.getLogger(__name__).exception("持久化 FACE_UNKNOWN 告警失败")
 
     def get_presence(self) -> dict[str, Any]:
         with self._lock:
