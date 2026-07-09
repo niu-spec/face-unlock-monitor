@@ -8,8 +8,8 @@
 
 由团队成员 D（李东礼）负责实现和维护。
 
-告警通过 apps.alerts.services.create_alert() 写入数据库，
-与 dev 分支的告警模块（刘帅华）对接。
+告警通过 HTTP POST /api/alerts/ 写入，符合 OpenSpec design.md 约定，
+不与 dev 分支的告警模块产生 import 耦合。
 
 行人检测：优先使用 YOLOv8n，若不可用则自动降级为 HOG。
 """
@@ -17,6 +17,7 @@
 import json
 import time
 import logging
+import urllib.request
 from collections import defaultdict
 from typing import Optional
 
@@ -574,26 +575,42 @@ class DetectionService:
         description: str,
         snapshot_path: str = "",
     ):
-        """通过 apps.alerts.services.create_alert() 写入告警。
+        """通过 HTTP POST /api/alerts/ 写入告警。
 
-        与 dev 分支刘帅华的告警模块对接，告警类型使用 dev 分支的命名：
+        符合 OpenSpec design.md 约定：AI 模块通过 HTTP POST 创建告警，
+        不直接操作数据库，也不 import 其他模块的 service 函数。
+
+        告警类型：
           - INTRUSION（区域闯入）
           - WATER（积水）
           - FIRE（火情）
           - FALL（人员摔倒）
         """
         try:
-            from apps.alerts.services import create_alert
+            payload = json.dumps(
+                {
+                    "type": alert_type,
+                    "level": level,
+                    "stream_id": stream_id,
+                    "description": description,
+                    "snapshot_path": snapshot_path,
+                }
+            ).encode("utf-8")
 
-            create_alert(
-                type=alert_type,
-                level=level,
-                stream_id=stream_id,
-                description=description,
-                snapshot_path=snapshot_path,
+            req = urllib.request.Request(
+                "http://127.0.0.1:8000/api/alerts/",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+                method="POST",
             )
+
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status != 201:
+                    logger.warning(
+                        "Alert POST returned status %d: %s", resp.status, alert_type
+                    )
         except Exception as e:
-            logger.error("Failed to create alert via service: %s", e)
+            logger.error("Failed to POST alert to /api/alerts/: %s", e)
 
     # -----------------------------------------------------------------------
     # 标注绘制
