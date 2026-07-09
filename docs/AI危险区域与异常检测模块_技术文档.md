@@ -4,7 +4,7 @@
 > **模块名称**：AI 危险区域与异常检测  
 > **负责人**：李东礼（团队 D）  
 > **编制日期**：2026-07-07  
-> **版本**：v1.1（适配 Django 架构）
+> **版本**：v1.2（YOLOv8n 行人检测）
 
 ---
 
@@ -67,7 +67,7 @@
 ```
 RTMP 帧 → 跳帧 → 缩放 480×480
     → 人脸检测识别 + 人数统计（dlib）      ← 王梓铭
-    → 行人检测 + 危险区域判断（HOG）       ← 李东礼
+    → 行人检测（YOLOv8n 优先）+ 危险区域判断   ← 李东礼
     → 异常检测：积水 / 着火 / 跌倒          ← 李东礼
     → 画框标注 → MJPEG 输出
 ```
@@ -80,7 +80,8 @@ RTMP 帧 → 跳帧 → 缩放 480×480
 
 | 技术 | 用途 | 选型理由 |
 |------|------|----------|
-| OpenCV HOG | 行人检测 | 项目统一选用，无需额外模型文件，运行轻量 |
+| YOLOv8n | 行人检测（优先） | 准确率 ~90%，模型仅 6MB，ultralytics 自动下载，远优于 HOG |
+| OpenCV HOG | 行人检测（降级） | YOLO 不可用时自动降级，无需模型文件，运行轻量 |
 | OpenCV HSV | 颜色分割（积水/火焰） | 计算效率高，适合实时视频处理 |
 | cv2.pointPolygonTest | 多边形碰撞检测 | OpenCV 内置，精确判断点是否在多边形内 |
 | 高宽比分析 | 摔倒检测 | 无需训练模型，基于人体几何特征，简单有效 |
@@ -161,7 +162,11 @@ backend/
 | `FIRE_BRIGHTNESS_THRESHOLD` | 180 | 火焰亮度 V 通道阈值 |
 | `FALL_ASPECT_RATIO_THRESHOLD` | 1.3 | 高宽比阈值（低于此值判定为摔倒） |
 | `FALL_PERSIST_FRAMES` | 5 | 摔倒持续帧数（防误报） |
-| `HOG_CONFIDENCE_THRESHOLD` | 0.5 | HOG 行人检测置信度阈值 |
+| `YOLO_MODEL` | `yolov8n.pt` | YOLO 模型文件（首次运行时自动下载） |
+| `YOLO_CONFIDENCE_THRESHOLD` | 0.5 | YOLO 检测置信度阈值 |
+| `YOLO_IOU_THRESHOLD` | 0.45 | YOLO NMS IOU 阈值 |
+| `YOLO_PERSON_CLASS_ID` | 0 | COCO 数据集中 person 类别 ID |
+| `HOG_CONFIDENCE_THRESHOLD` | 0.5 | HOG 行人检测置信度阈值（降级时使用） |
 | `ALERT_COOLDOWN_SECONDS` | 见配置 | 各类型告警冷却时间 |
 
 ### 4.2 数据模型
@@ -210,12 +215,14 @@ class Alert(db.Model):
 
 ```python
 class DetectionService:
-    def __init__(self)           # 初始化 HOG 检测器 + 冷却计数器
+    def __init__(self)           # 初始化 YOLO（HOG 降级） + 冷却计数器
     def process_frame(...)       # 公共入口：执行全部检测
     def draw_overlays(...)       # 标注绘制
-    def _detect_pedestrians(...) # HOG 行人检测
+    def _detect_pedestrians(...) # YOLO 行人检测（HOG 降级）
+    def _detect_pedestrians_yolo(...) # YOLOv8n 检测
+    def _detect_pedestrians_hog(...)  # HOG 检测（降级方案）
     def _detect_zone_intrusion(...) # 危险区域闯入
-    def _detect_flood(...)       # 积水检测
+    def _detect_water(...)       # 积水检测
     def _detect_fire(...)        # 着火检测
     def _detect_fall(...)        # 摔倒检测
     def _check_cooldown(...)     # 告警冷却检查
@@ -236,7 +243,7 @@ def process_frame(
 
 **设计要点**：
 
-- `person_boxes` 参数可选：若传入则复用外部检测结果（如人脸模块已做行人检测），否则内部 HOG 自行检测，避免重复计算
+- `person_boxes` 参数可选：若传入则复用外部检测结果（如人脸模块已做行人检测），否则内部 YOLO 自行检测，避免重复计算
 - `face_roles` 用于危险区域闯入的角色匹配（如判断是否为 `child`）
 - `zones` 参数可选：无区域配置时跳过闯入检测
 - 返回统一格式的检测结果列表，每个结果包含 `alert_type`、`message`、`bbox`、`severity` 等字段
@@ -332,7 +339,58 @@ def _check_cooldown(alert_type: str, stream_id: str) -> bool:
 
 以 `{alert_type: {stream_id: timestamp}}` 二级字典存储各类型、各摄像头流的最近告警时间，按类型独立冷却。
 
-#### 4.3.8 标注绘制（draw_overlays）
+#### 4.3.8 YOLO 行人检测（v1.2 新增）
+
+v1.2 将行人检测器从 HOG 升级为 **YOLOv8n**，采用双检测器策略：
+
+**初始化流程**：
+
+```
+1. 尝试导入 ultralytics.YOLO
+2. 若成功，加载 yolov8n.pt（首次运行时自动下载 ~6MB）
+3. 若失败（ultralytics 未安装 / 模型加载异常），自动降级为 HOG
+4. 记录当前使用的检测器类型到日志
+```
+
+**YOLO 推理流程**：
+
+```
+1. 调用 self._yolo(frame, conf=0.5, iou=0.45, classes=[0])
+2. 过滤 class_id=0（COCO 数据集的 person 类别）
+3. 将 xyxy 格式转换为 {x, y, w, h} 格式
+4. 附加 confidence 分数到 box 字典中
+```
+
+**输出格式**（与 HOG 完全兼容）：
+
+```python
+{
+    "x": int,          # 左上角 x
+    "y": int,          # 左上角 y
+    "w": int,          # 宽度
+    "h": int,          # 高度
+    "track_id": i,     # 框序号（HOG 兼容）
+    "confidence": 0.85 # YOLO 置信度（新增字段）
+}
+```
+
+**性能对比**：
+
+| 指标 | HOG | YOLOv8n |
+|------|-----|---------|
+| 行人检测准确率 | ~60-70% | ~90%+ |
+| 模型文件大小 | 无（内置） | ~6MB（自动下载） |
+| 推理速度（CPU） | 快 | 中等 |
+| 误报率 | 较高 | 低 |
+| 漏检率 | 较高 | 低 |
+
+**设计考量**：
+
+- `_detect_pedestrians()` 作为统一入口，内部根据 `self._detector_type` 自动路由到 YOLO 或 HOG
+- 下游模块（闯入检测、摔倒检测）完全无感知，无需任何修改
+- `confidence` 字段为可选字段，不影响现有逻辑
+
+#### 4.3.9 标注绘制（draw_overlays）
 
 提供 `draw_overlays()` 方法供 video.py 在 MJPEG 输出前调用，在帧上绘制：
 
@@ -465,11 +523,11 @@ annotated = service.draw_overlays(frame, results, zones, person_boxes)
 | `backend/apps/detection/urls.py` | URL 路由 | 7 |
 | `backend/config/settings.py` | Django 配置（已注册 detection app + DETECTION_CONFIG） | 修改 8 行 |
 | `backend/config/urls.py` | 根路由（已添加 /api/detection/） | 修改 1 行 |
-| `backend/requirements.txt` | 依赖（已添加 opencv/numpy/pillow） | 修改 3 行 |
+| `backend/requirements.txt` | 依赖（已添加 opencv/numpy/pillow/ultralytics） | 修改 1 行 |
 
 **总计**：新增 4 个文件，修改 3 个文件，约 500 行代码。
 
-> **架构变更说明**：v1.0 基于 Flask 蓝图，v1.1 适配为 Django app，与 dev 分支统一架构。告警类型命名同步为 `INTRUSION`/`WATER`/`FIRE`/`FALL`，告警写入通过 `apps.alerts.services.create_alert()` 对接。
+> **架构变更说明**：v1.0 基于 Flask 蓝图，v1.1 适配为 Django app，与 dev 分支统一架构。告警类型命名同步为 `INTRUSION`/`WATER`/`FIRE`/`FALL`，告警写入通过 `apps.alerts.services.create_alert()` 对接。v1.2 行人检测器从 HOG 升级为 YOLOv8n，HOG 保留作为降级方案。
 
 ---
 
@@ -488,7 +546,7 @@ annotated = service.draw_overlays(frame, results, zones, person_boxes)
 ### 8.1 参数调优
 
 - 积水/着火面积阈值需根据实际摄像头安装角度和室内环境微调
-- HOG 行人检测在密集场景下可能漏检，可考虑后续升级为 YOLO 等深度学习方案
+- YOLO 置信度阈值（`YOLO_CONFIDENCE_THRESHOLD`）可根据实际场景在 0.3~0.7 之间调整
 
 ### 8.2 功能扩展
 
@@ -498,8 +556,9 @@ annotated = service.draw_overlays(frame, results, zones, person_boxes)
 
 ### 8.3 性能优化
 
-- 当前 HOG 行人检测每帧执行，若帧率较高可考虑跳帧策略
+- YOLO 推理在 CPU 上较 HOG 慢，建议配合跳帧策略（当前 `FRAME_SKIP=3`）
 - 积水/着火检测可降低分辨率后执行，减少计算开销
+- 可考虑使用 ONNX 或 OpenVINO 加速 YOLO 推理
 
 ---
 
