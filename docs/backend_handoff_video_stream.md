@@ -2,6 +2,8 @@
 
 负责人：B 苏哲勋
 
+> **WebRTC 低延迟预览 + 完整端口/OBS/排查说明**：见 [video-stream-webrtc-integration.md](video-stream-webrtc-integration.md)
+
 当前可用链路：
 
 ```text
