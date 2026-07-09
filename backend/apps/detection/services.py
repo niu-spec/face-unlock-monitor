@@ -1,6 +1,6 @@
 """检测服务模块 — 危险区域与异常检测（Django 版）。
 
-‘负责：
+负责：
   - 危险区域闯入检测（YOLO 行人检测 + 多边形碰撞）
   - 积水检测（HSV 颜色 + 形态分析）
   - 着火检测（HSV 火焰颜色 + 亮度分析）
@@ -194,7 +194,7 @@ class DetectionService:
             stream_id: 摄像头流 ID（如 "living_room"）。
             person_boxes: 已检测的人体框列表，
                 [{'x', 'y', 'w', 'h', 'track_id'}, ...]。
-                若为 None，则内部使用 HOG 自行检测。
+                若为 None，则内部使用 YOLO 自行检测（HOG 降级）。
             face_roles: 人脸识别结果，{track_id: role}，
                 role 为 'adult' / 'child' / 'stranger'。
             zones: 危险区域配置列表，每项含
