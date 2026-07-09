@@ -84,7 +84,8 @@ python manage.py seed_demo_data    # 可选演示数据
 ## 文档
 
 - [本地开发环境指南](docs/DEV_SETUP.md) — **修 bug 前必读**
-- [backend/README.md](backend/README.md) — 后端 / dlib 环境
+- [backend_handoff_video_stream.md](docs/backend_handoff_video_stream.md) — 流媒体交接（B 组）
+- [video-stream-webrtc-integration.md](docs/video-stream-webrtc-integration.md) — WebRTC 低延迟预览 + MJPEG 备用配置
 - [frontend/README.md](frontend/README.md) — 前端路由
 - [总体架构说明](docs/总体架构说明.md)
 - [OpenSpec 使用说明](docs/OpenSpec使用说明.md)
