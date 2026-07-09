@@ -1,7 +1,7 @@
 """检测服务模块 — 危险区域与异常检测（Django 版）。
 
 负责：
-  - 危险区域闯入检测（HOG 行人检测 + 多边形碰撞）
+  - 危险区域闯入检测（YOLO 行人检测 + 多边形碰撞）
   - 积水检测（HSV 颜色 + 形态分析）
   - 着火检测（HSV 火焰颜色 + 亮度分析）
   - 摔倒检测（人体框高宽比分析）
@@ -10,6 +10,8 @@
 
 告警通过 apps.alerts.services.create_alert() 写入数据库，
 与 dev 分支的告警模块（刘帅华）对接。
+
+行人检测：优先使用 YOLOv8n，若不可用则自动降级为 HOG。
 """
 
 import json
@@ -20,6 +22,13 @@ from typing import Optional
 
 import cv2
 import numpy as np
+
+try:
+    from ultralytics import YOLO
+
+    _YOLO_AVAILABLE = True
+except ImportError:
+    _YOLO_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +57,12 @@ DETECTION_CONFIG = {
     # --- 摔倒（FALL）---
     "FALL_ASPECT_RATIO_THRESHOLD": 1.3,
     "FALL_PERSIST_FRAMES": 5,
-    # --- HOG 行人检测 ---
+    # --- YOLO 行人检测（优先）---
+    "YOLO_MODEL": "yolov8n.pt",
+    "YOLO_CONFIDENCE_THRESHOLD": 0.5,
+    "YOLO_IOU_THRESHOLD": 0.45,
+    "YOLO_PERSON_CLASS_ID": 0,
+    # --- HOG 行人检测（YOLO 不可用时降级）---
     "HOG_WIN_STRIDE": (4, 4),
     "HOG_PADDING": (8, 8),
     "HOG_SCALE": 1.05,
@@ -133,14 +147,33 @@ class DetectionService:
     """
 
     def __init__(self):
-        """初始化 HOG 行人检测器及告警冷却计时器。"""
-        self._hog = cv2.HOGDescriptor()
-        self._hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+        """初始化 YOLO 行人检测器（HOG 降级）及告警冷却计时器。"""
+        self._detector_type = "HOG"  # 默认降级
+        self._yolo = None
+
+        if _YOLO_AVAILABLE:
+            try:
+                model_path = _cfg("YOLO_MODEL")
+                self._yolo = YOLO(model_path)
+                self._detector_type = "YOLO"
+                logger.info("YOLO model loaded: %s", model_path)
+            except Exception as e:
+                logger.warning("YOLO init failed, falling back to HOG: %s", e)
+
+        if self._detector_type == "HOG":
+            self._hog = cv2.HOGDescriptor()
+            self._hog.setSVMDetector(
+                cv2.HOGDescriptor_getDefaultPeopleDetector()
+            )
+            logger.info("HOG pedestrian detector initialized (fallback)")
 
         self._cooldown: dict[str, dict[str, float]] = defaultdict(dict)
         self._fall_counter: dict[int, int] = defaultdict(int)
 
-        logger.info("DetectionService initialized (Django + HOG + HSV)")
+        logger.info(
+            "DetectionService initialized (detector=%s, Django)",
+            self._detector_type,
+        )
 
     # -----------------------------------------------------------------------
     # 公共入口
@@ -161,7 +194,7 @@ class DetectionService:
             stream_id: 摄像头流 ID（如 "living_room"）。
             person_boxes: 已检测的人体框列表，
                 [{'x', 'y', 'w', 'h', 'track_id'}, ...]。
-                若为 None，则内部使用 HOG 自行检测。
+                若为 None，则内部使用 YOLO 自行检测（HOG 降级）。
             face_roles: 人脸识别结果，{track_id: role}，
                 role 为 'adult' / 'child' / 'stranger'。
             zones: 危险区域配置列表，每项含
@@ -199,11 +232,52 @@ class DetectionService:
         return results
 
     # -----------------------------------------------------------------------
-    # 行人检测（HOG）
+    # 行人检测（YOLO 优先，HOG 降级）
     # -----------------------------------------------------------------------
 
     def _detect_pedestrians(self, frame: np.ndarray) -> list[dict]:
-        """使用 HOG 检测器检测行人。"""
+        """YOLO 行人检测，不可用时自动降级为 HOG。"""
+        if self._detector_type == "YOLO" and self._yolo is not None:
+            return self._detect_pedestrians_yolo(frame)
+        return self._detect_pedestrians_hog(frame)
+
+    def _detect_pedestrians_yolo(self, frame: np.ndarray) -> list[dict]:
+        """使用 YOLOv8n 检测行人（class_id=0 即 person）。"""
+        results = self._yolo(
+            frame,
+            conf=_cfg("YOLO_CONFIDENCE_THRESHOLD"),
+            iou=_cfg("YOLO_IOU_THRESHOLD"),
+            classes=[_cfg("YOLO_PERSON_CLASS_ID")],
+            verbose=False,
+        )
+
+        boxes = []
+        if results and len(results) > 0:
+            result = results[0]
+            if result.boxes is not None:
+                for i, box in enumerate(result.boxes.xyxy):
+                    x1, y1, x2, y2 = box.tolist()
+                    x, y = int(x1), int(y1)
+                    w, h = int(x2 - x1), int(y2 - y1)
+                    conf = (
+                        float(result.boxes.conf[i])
+                        if result.boxes.conf is not None
+                        else 1.0
+                    )
+                    boxes.append(
+                        {
+                            "x": x,
+                            "y": y,
+                            "w": w,
+                            "h": h,
+                            "track_id": i,
+                            "confidence": round(conf, 3),
+                        }
+                    )
+        return boxes
+
+    def _detect_pedestrians_hog(self, frame: np.ndarray) -> list[dict]:
+        """使用 HOG 检测器检测行人（降级方案）。"""
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         rects, weights = self._hog.detectMultiScale(
             gray,
