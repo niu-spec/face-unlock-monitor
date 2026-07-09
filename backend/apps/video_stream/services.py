@@ -27,8 +27,47 @@ def build_public_rtmp_url(stream_id):
 
 
 def process_frame(frame, stream_id):
-    # AI HOOK:
-    # processed_frame, events = ai_pipeline.process_frame(frame, stream_id)
+    """处理单帧：AI 检测 + 标注绘制。
+
+    调用检测模块（李东礼）进行危险区域闯入、积水、着火、摔倒检测，
+    并将结果绘制到帧上用于 MJPEG 输出。
+    """
+    # AI HOOK — 对接检测模块
+    try:
+        from apps.detection.services import get_detection_service
+        from apps.zones.models import Zone
+
+        service = get_detection_service()
+        # 获取当前流的活跃危险区域
+        zones_qs = Zone.objects.filter(stream_id=stream_id, is_active=True)
+        zones = [
+            {
+                "id": z.id,
+                "name": z.name,
+                "points_json": z.points_json,
+                "forbidden_roles": z.forbidden_roles,
+                "is_active": z.is_active,
+            }
+            for z in zones_qs
+        ]
+
+        # TODO: 从人脸模块获取 face_roles 和 person_boxes 后传入
+        results = service.process_frame(
+            frame=frame,
+            stream_id=stream_id,
+            zones=zones if zones else None,
+        )
+        # 绘制检测标注
+        frame = service.draw_overlays(frame, results, zones=zones if zones else None)
+    except Exception as e:
+        # 检测失败不影响视频流正常输出
+        import logging
+
+        logging.getLogger(__name__).warning(
+            "Detection pipeline error for %s: %s", stream_id, e
+        )
+
+    # 叠加流标识
     cv2.putText(
         frame,
         f"stream {stream_id}",
