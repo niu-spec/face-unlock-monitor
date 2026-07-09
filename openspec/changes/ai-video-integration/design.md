@@ -28,6 +28,9 @@ def process_frame(frame, stream_id):
 ### 告警写入
 
 AI 模块通过 HTTP POST `/api/alerts/` 与 `/api/events/`，不直接写数据库。
+**同进程模块（如 detection → alerts）允许直调 service 函数**，因为 `AlertViewSet`
+要求 `IsAuthenticated`，同进程内无 JWT 会导致 HTTP POST 返回 401。
+跨进程（如前端 → API）仍走 HTTP POST。
 
 ## Open Questions
 
