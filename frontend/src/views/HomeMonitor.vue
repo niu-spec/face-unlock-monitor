@@ -4,11 +4,11 @@ import PersonStats from '@/components/PersonStats.vue'
 import { videoFeedUrl } from '@/api'
 
 const streams = [
-  { id: 'living_room', label: '客厅' },
-  { id: 'kitchen', label: '厨房' },
+  { id: '1', label: '摄像头 1' },
+  { id: '2', label: '摄像头 2' },
 ]
 
-const activeStream = ref('living_room')
+const activeStream = ref('1')
 </script>
 
 <template>

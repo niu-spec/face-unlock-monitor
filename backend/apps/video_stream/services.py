@@ -23,6 +23,57 @@ workers = {}
 workers_lock = threading.Lock()
 
 
+def _close_old_db_connections():
+    try:
+        from django.db import close_old_connections
+
+        close_old_connections()
+    except Exception:
+        pass
+
+
+def _detect_person_boxes(frame):
+    from apps.detection.services import get_detection_service
+
+    service = get_detection_service()
+    return service._detect_pedestrians(frame)
+
+
+def _draw_person_boxes(frame, person_boxes):
+    for box in person_boxes:
+        x = int(box.get("x", 0))
+        y = int(box.get("y", 0))
+        w = int(box.get("w", 0))
+        h = int(box.get("h", 0))
+        if w <= 0 or h <= 0:
+            continue
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 255), 2)
+        cv2.putText(
+            frame,
+            "person",
+            (x, max(20, y - 8)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.6,
+            (0, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+
+def _draw_diagnostic(frame, text, color):
+    cv2.rectangle(frame, (10, 10), (430, 58), (0, 0, 0), -1)
+    cv2.putText(
+        frame,
+        text[:42],
+        (20, 44),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        color,
+        2,
+        cv2.LINE_AA,
+    )
+
+
 def build_rtsp_url(stream_id):
     return f"{RTSP_BASE_URL.rstrip('/')}/{stream_id}"
 
@@ -32,19 +83,58 @@ def build_public_rtmp_url(stream_id):
 
 
 def process_frame(frame, stream_id):
-    # AI HOOK:
-    # processed_frame, events = ai_pipeline.process_frame(frame, stream_id)
-    cv2.putText(
-        frame,
-        f"stream {stream_id}",
-        (20, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (0, 255, 0),
-        2,
-        cv2.LINE_AA,
-    )
-    return frame
+    _close_old_db_connections()
+    try:
+        from apps.face.services import get_face_service
+
+        face_frame, presence, _events = get_face_service().process_frame(
+            frame,
+            stream_id=stream_id,
+            annotate=True,
+            persist_alert=True,
+        )
+        output = face_frame
+        person_boxes = []
+        detection_error = None
+        try:
+            from apps.detection.services import get_detection_service
+
+            person_boxes = _detect_person_boxes(face_frame)
+            detection_service = get_detection_service()
+            detection_results = detection_service.process_frame(
+                face_frame,
+                stream_id=stream_id,
+                person_boxes=person_boxes,
+                face_roles={
+                    face["track_id"]: face["role"]
+                    for face in presence.get("faces", [])
+                    if "track_id" in face and "role" in face
+                },
+            )
+            output = detection_service.draw_overlays(
+                face_frame,
+                detection_results,
+                person_boxes=person_boxes,
+            )
+            _draw_person_boxes(output, person_boxes)
+        except Exception as exc:
+            detection_error = type(exc).__name__
+
+        diagnostic = f"AI ok faces:{presence.get('total', 0)} persons:{len(person_boxes)}"
+        if detection_error:
+            diagnostic = f"{diagnostic} det:{detection_error}"
+        _draw_diagnostic(
+            output,
+            diagnostic,
+            (0, 255, 0),
+        )
+        return output
+    except Exception as exc:
+        output = frame.copy()
+        _draw_diagnostic(output, f"AI err {type(exc).__name__}", (0, 0, 255))
+        return output
+    finally:
+        _close_old_db_connections()
 
 
 def encode_frame(frame):

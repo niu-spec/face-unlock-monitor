@@ -1,5 +1,5 @@
 from unittest import TestCase
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 
@@ -132,3 +132,32 @@ class VideoStreamWorkerTests(TestCase):
 
         self.assertIn(b"cached-jpeg", chunk)
         self.assertEqual(encode.call_count, 1)
+
+    @patch("apps.face.services.get_face_service")
+    @patch("apps.detection.services.get_detection_service")
+    @patch.object(services, "_detect_person_boxes")
+    def test_process_frame_updates_presence_and_draws_ai_diagnostic(
+        self, detect_person_boxes, get_detection_service, get_face_service
+    ):
+        frame = np.zeros((120, 160, 3), dtype=np.uint8)
+        face_service = Mock()
+        face_service.process_frame.return_value = (
+            frame.copy(),
+            {"total": 1, "faces": [{"track_id": 0, "role": "adult"}]},
+            [],
+        )
+        get_face_service.return_value = face_service
+        detect_person_boxes.return_value = [
+            {"x": 10, "y": 20, "w": 30, "h": 40, "track_id": 0}
+        ]
+        detection_service = Mock()
+        detection_service.process_frame.return_value = []
+        detection_service.draw_overlays.side_effect = lambda output, *_args, **_kwargs: output
+        get_detection_service.return_value = detection_service
+
+        output = services.process_frame(frame, "1")
+
+        self.assertIsNot(output, frame)
+        face_service.process_frame.assert_called_once()
+        detection_service.process_frame.assert_called_once()
+        self.assertGreater(output.sum(), 0)

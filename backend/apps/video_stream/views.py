@@ -13,6 +13,15 @@ from .services import (
 )
 
 
+def _get_presence_snapshot():
+    try:
+        from apps.face.services import get_face_service
+
+        return get_face_service().get_presence()
+    except Exception as exc:
+        return {"error": type(exc).__name__}
+
+
 def _invalid_stream_response():
     return JsonResponse({"code": 400, "message": "invalid stream_id"}, status=400)
 
@@ -42,6 +51,7 @@ def video_status(request):
             "rtsp_base_url": RTSP_BASE_URL,
             "rtmp_public_base_url": RTMP_PUBLIC_BASE_URL,
             "workers": get_workers_status(),
+            "presence": _get_presence_snapshot(),
         }
     )
 
