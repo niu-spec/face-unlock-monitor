@@ -235,6 +235,11 @@ class DetectionService:
     # 行人检测（YOLO 优先，HOG 降级）
     # -----------------------------------------------------------------------
 
+    def detect_people(self, frame: np.ndarray) -> list[dict]:
+        """返回 YOLO 检出的人体框；YOLO 不可用时自动使用 HOG 降级。"""
+        if frame is None or frame.size == 0:
+            return []
+        return self._detect_pedestrians(frame)
     def _detect_pedestrians(self, frame: np.ndarray) -> list[dict]:
         """YOLO 行人检测，不可用时自动降级为 HOG。"""
         if self._detector_type == "YOLO" and self._yolo is not None:
@@ -597,7 +602,7 @@ class DetectionService:
                 snapshot_path=snapshot_path,
             )
         except Exception as e:
-            logger.error("Failed to create alert via service: %s", e)
+            logger.error("通过告警服务写入告警失败: %s", e)
 
     # -----------------------------------------------------------------------
     # 标注绘制
@@ -648,6 +653,29 @@ class DetectionService:
             "FALL": (0, 255, 255),
         }
 
+        if person_boxes:
+            for box in person_boxes:
+                x, y, w, h = box["x"], box["y"], box["w"], box["h"]
+                cv2.rectangle(annotated, (x, y), (x + w, y + h), (255, 255, 0), 2)
+                cv2.putText(
+                    annotated,
+                    "person",
+                    (x, max(20, y - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    (255, 255, 0),
+                    1,
+                )
+            cv2.putText(
+                annotated,
+                f"persons: {len(person_boxes)}",
+                (20, 72),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8,
+                (255, 255, 0),
+                2,
+                cv2.LINE_AA,
+            )
         for r in results:
             alert_type = r.get("alert_type", "")
             color = color_map.get(alert_type, (0, 255, 0))
