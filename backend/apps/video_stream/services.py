@@ -26,6 +26,18 @@ def build_public_rtmp_url(stream_id):
     return f"{RTMP_PUBLIC_BASE_URL.rstrip('/')}/{stream_id}"
 
 
+# 视频层 → 业务层 stream_id 映射（OpenSpec config.yaml 双轨约定）
+_VIDEO_TO_BUSINESS_STREAM = {
+    "1": "living_room",
+    "2": "kitchen",
+}
+
+
+def _to_business_stream_id(stream_id: str) -> str:
+    """将视频层 ID (1/2) 转换为业务层 ID (living_room/kitchen)。"""
+    return _VIDEO_TO_BUSINESS_STREAM.get(stream_id, stream_id)
+
+
 def process_frame(frame, stream_id):
     """处理单帧：AI 检测 + 标注绘制。
 
@@ -38,8 +50,10 @@ def process_frame(frame, stream_id):
         from apps.zones.models import Zone
 
         service = get_detection_service()
+        # 视频层 ID → 业务层 ID 转换（符合 OpenSpec 双轨约定）
+        biz_stream_id = _to_business_stream_id(stream_id)
         # 获取当前流的活跃危险区域
-        zones_qs = Zone.objects.filter(stream_id=stream_id, is_active=True)
+        zones_qs = Zone.objects.filter(stream_id=biz_stream_id, is_active=True)
         zones = [
             {
                 "id": z.id,
@@ -54,7 +68,7 @@ def process_frame(frame, stream_id):
         # TODO: 从人脸模块获取 face_roles 和 person_boxes 后传入
         results = service.process_frame(
             frame=frame,
-            stream_id=stream_id,
+            stream_id=biz_stream_id,
             zones=zones if zones else None,
         )
         # 绘制检测标注
