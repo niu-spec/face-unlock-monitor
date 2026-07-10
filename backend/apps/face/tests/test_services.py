@@ -123,3 +123,71 @@ class FaceRecognitionServiceTests(TestCase):
         annotated = FaceRecognitionService.draw_face_boxes(self.frame, presence)
 
         self.assertFalse(np.array_equal(annotated, self.frame))
+
+from apps.face.liveness import FACE_SPOOF, LivenessDetectionService
+
+
+def _liveness_presence(left=20, top=20, right=80, bottom=80):
+    return {
+        "faces": [
+            {
+                "known": True,
+                "name": "tester",
+                "role": "adult",
+                "box": {"left": left, "top": top, "right": right, "bottom": bottom},
+            }
+        ]
+    }
+
+
+def _liveness_pattern_frame(offset=0):
+    frame = np.zeros((120, 120, 3), dtype=np.uint8)
+    y, x = np.indices((60, 60))
+    pattern = ((x * 3 + y * 5 + offset) % 255).astype(np.uint8)
+    frame[20:80, 20:80, 0] = pattern
+    frame[20:80, 20:80, 1] = np.roll(pattern, shift=offset % 7, axis=1)
+    frame[20:80, 20:80, 2] = 255 - pattern
+    return frame
+
+
+class LivenessDetectionServiceTests(TestCase):
+    def test_static_face_sequence_emits_spoof_attack_once_per_cooldown(self):
+        service = LivenessDetectionService(window_size=4, min_samples=4, alert_cooldown=60)
+        frame = _liveness_pattern_frame(0)
+        events = []
+        result = None
+
+        for _ in range(4):
+            result, events = service.observe(
+                frame,
+                _liveness_presence(),
+                stream_id="cam-1",
+                persist_alert=False,
+            )
+
+        self.assertEqual(result["status"], "attack")
+        self.assertEqual(result["attack_type"], FACE_SPOOF)
+        self.assertTrue(events)
+        self.assertEqual(events[0]["type"], FACE_SPOOF)
+
+        _, repeated = service.observe(
+            frame,
+            _liveness_presence(),
+            stream_id="cam-1",
+            persist_alert=False,
+        )
+        self.assertEqual(repeated, [])
+
+    def test_sequence_with_motion_passes_liveness(self):
+        service = LivenessDetectionService(window_size=6, min_samples=4)
+        frames = [_liveness_pattern_frame(offset * 17) for offset in range(4)]
+        presences = [
+            _liveness_presence(20 + offset, 20, 80 + offset, 80)
+            for offset in range(4)
+        ]
+
+        result = service.analyze_sequence(frames, presences)
+
+        self.assertEqual(result["status"], "passed")
+        self.assertTrue(result["passed"])
+        self.assertIsNone(result["attack_type"])

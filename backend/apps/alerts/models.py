@@ -14,6 +14,10 @@ class Alert(models.Model):
 
     TYPE_CHOICES = [
         ("FACE_UNKNOWN", "陌生人"),
+        ("FACE_SPOOF", "人脸欺骗攻击"),
+        ("FACE_REPLAY", "照片/视频重放攻击"),
+        ("FACE_DEEPFAKE", "AI换脸攻击"),
+        ("FACE_AUTH_FAILED", "人脸认证失败"),
         ("INTRUSION", "区域闯入"),
         ("PROXIMITY", "距离过近"),
         ("LOITER", "异常停留"),
