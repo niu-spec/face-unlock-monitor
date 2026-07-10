@@ -55,18 +55,25 @@ DETECTION_CONFIG = {
     "FIRE_AREA_THRESHOLD": 0.05,
     "FIRE_BRIGHTNESS_THRESHOLD": 180,
     # --- 摔倒（FALL）---
-    "FALL_ASPECT_RATIO_THRESHOLD": 1.3,
+    "FALL_ASPECT_RATIO_THRESHOLD": 0.8,
     "FALL_PERSIST_FRAMES": 5,
+    "FALL_MIN_STANDING_RATIO": 1.6,
+    "FALL_CENTER_DROP_RATIO": 0.30,
+    "FALL_AR_VELOCITY_THRESHOLD": 1.0,
     # --- YOLO 行人检测（优先）---
     "YOLO_MODEL": "yolov8n.pt",
     "YOLO_CONFIDENCE_THRESHOLD": 0.5,
     "YOLO_IOU_THRESHOLD": 0.45,
     "YOLO_PERSON_CLASS_ID": 0,
     # --- HOG 行人检测（YOLO 不可用时降级）---
+    "HOG_MAX_DIM": 480,
     "HOG_WIN_STRIDE": (4, 4),
     "HOG_PADDING": (8, 8),
     "HOG_SCALE": 1.05,
     "HOG_CONFIDENCE_THRESHOLD": 0.5,
+    "HOG_NMS_THRESHOLD": 0.3,
+    # --- 闯入检测（INTRUSION）---
+    "INTRUSION_PERSIST_FRAMES": 3,
     # --- 告警冷却（秒）---
     "ALERT_COOLDOWN_SECONDS": {
         "WATER": 30,
@@ -127,9 +134,16 @@ def _is_point_in_polygon(point: tuple, polygon: np.ndarray) -> bool:
 def _is_rect_in_polygon(
     x: int, y: int, w: int, h: int, polygon: np.ndarray
 ) -> bool:
-    """判断矩形框中心点是否在多边形内部。"""
+    """判断人体框底部中心（脚部）或几何中心是否在多边形内部。
+
+    脚部优先（人站在区域内），中心兜底（人上半身探入区域）。
+    """
     cx, cy = x + w // 2, y + h // 2
-    return _is_point_in_polygon((cx, cy), polygon)
+    # 底部中心 = 脚部位置
+    foot_y = y + h
+    return _is_point_in_polygon((cx, foot_y), polygon) or _is_point_in_polygon(
+        (cx, cy), polygon
+    )
 
 
 def _rect_center(x: int, y: int, w: int, h: int) -> tuple[int, int]:
@@ -191,6 +205,10 @@ class DetectionService:
         self._loiter_since: dict[tuple[int, int], float] = {}
         self._current_snapshot_frame = None
         self._current_household_id: int | None = None
+        self._person_history: dict[int, dict] = {}
+        self._intrusion_counter: dict[str, dict[int, int]] = defaultdict(
+            lambda: defaultdict(int)
+        )
 
         logger.info(
             "DetectionService initialized (detector=%s, Django)",
@@ -312,7 +330,19 @@ class DetectionService:
         return boxes
 
     def _detect_pedestrians_hog(self, frame: np.ndarray) -> list[dict]:
-        """使用 HOG 检测器检测行人（降级方案）。"""
+        """使用 HOG 检测器检测行人（降级方案）。
+
+        优化：
+          - 大帧先降采样到 HOG_MAX_DIM，检测完再映射回原始坐标
+          - 对重叠框做 NMS 去重
+        """
+        h, w = frame.shape[:2]
+        max_dim = _cfg("HOG_MAX_DIM")
+        scale = 1.0
+        if max(h, w) > max_dim:
+            scale = max_dim / max(h, w)
+            frame = cv2.resize(frame, (int(w * scale), int(h * scale)))
+
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         rects, weights = self._hog.detectMultiScale(
             gray,
@@ -321,20 +351,71 @@ class DetectionService:
             scale=_cfg("HOG_SCALE"),
         )
 
-        boxes = []
+        # 收集通过置信度阈值的框
         threshold = _cfg("HOG_CONFIDENCE_THRESHOLD")
-        for i, (x, y, w, h) in enumerate(rects):
+        candidates: list[tuple[int, int, int, int, float]] = []
+        for i, (x, y, bw, bh) in enumerate(rects):
             if weights[i] >= threshold:
-                boxes.append(
-                    {
-                        "x": int(x),
-                        "y": int(y),
-                        "w": int(w),
-                        "h": int(h),
-                        "track_id": i,
-                    }
-                )
+                candidates.append((int(x), int(y), int(bw), int(bh), float(weights[i])))
+
+        if not candidates:
+            return []
+
+        # NMS 去重
+        nms_threshold = _cfg("HOG_NMS_THRESHOLD")
+        keep = self._nms(candidates, nms_threshold)
+
+        boxes = []
+        for idx in keep:
+            x, y, bw, bh, _weight = candidates[idx]
+            if scale != 1.0:
+                x, y = int(x / scale), int(y / scale)
+                bw, bh = int(bw / scale), int(bh / scale)
+            boxes.append(
+                {
+                    "x": x,
+                    "y": y,
+                    "w": bw,
+                    "h": bh,
+                    "track_id": idx,
+                }
+            )
         return boxes
+
+    @staticmethod
+    def _nms(
+        boxes: list[tuple[int, int, int, int, float]], threshold: float
+    ) -> list[int]:
+        """简单的 IoU-based NMS，返回保留的框索引列表。"""
+        if not boxes:
+            return []
+
+        # 按置信度降序排列
+        indexed = sorted(
+            enumerate(boxes), key=lambda item: item[1][4], reverse=True
+        )
+        keep: list[int] = []
+
+        while indexed:
+            idx, (x1, y1, w1, h1, _) = indexed.pop(0)
+            keep.append(idx)
+
+            filtered = []
+            for j, (x2, y2, w2, h2, conf) in indexed:
+                # 计算 IoU
+                ix1, iy1 = max(x1, x2), max(y1, y2)
+                ix2, iy2 = min(x1 + w1, x2 + w2), min(y1 + h1, y2 + h2)
+                inter_area = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+                area1, area2 = w1 * h1, w2 * h2
+                union_area = area1 + area2 - inter_area
+                iou = inter_area / union_area if union_area > 0 else 0
+
+                if iou < threshold:
+                    filtered.append((j, (x2, y2, w2, h2, conf)))
+
+            indexed = filtered
+
+        return keep
 
     # -----------------------------------------------------------------------
     # 1. 危险区域检测（INTRUSION / PROXIMITY / LOITER）
@@ -347,10 +428,13 @@ class DetectionService:
         person_boxes: list[dict],
         face_roles: dict[int, str],
     ) -> list[dict]:
-        """检测危险区域闯入、距边缘过近与异常停留。"""
+        """检测危险区域闯入、距边缘过近与异常停留（闯入需持续 N 帧防误报）。"""
         results: list[dict] = []
         active_loiter_keys: set[tuple[int, int]] = set()
         now = time.time()
+        active_ids = {box.get("track_id", -1) for box in person_boxes}
+        self._cleanup_stale_tracks(active_ids)
+        persist = _cfg("INTRUSION_PERSIST_FRAMES")
 
         for zone in zones:
             if not zone.get("is_active", zone.get("enabled", True)):
@@ -369,38 +453,55 @@ class DetectionService:
             safe_distance = max(0, int(zone.get("safe_distance") or 50))
             dwell_time = max(1, int(zone.get("dwell_time") or 5))
 
+            zone_key = str(zone.get("id", zone.get("name", "unknown")))
+
             for box in person_boxes:
                 tid = box.get("track_id", -1)
                 role = face_roles.get(tid, "stranger")
                 if role not in forbidden:
+                    self._intrusion_counter[zone_key][tid] = 0
                     continue
+
+                # 脚部（底部中心）用于判断人是否站在区域内
+                foot_x = box["x"] + box["w"] // 2
+                foot_y = box["y"] + box["h"]
+                foot_inside = _distance_point_to_polygon((foot_x, foot_y), polygon) < 0
 
                 cx, cy = _rect_center(box["x"], box["y"], box["w"], box["h"])
                 signed_dist = _distance_point_to_polygon((cx, cy), polygon)
-                inside = signed_dist < 0
+                inside = foot_inside or signed_dist < 0
                 bbox = (box["x"], box["y"], box["w"], box["h"])
 
                 if inside:
-                    if self._check_cooldown("INTRUSION", stream_id):
-                        msg = f"[{zone_name}] 检测到 {role} 闯入禁区"
-                        self._create_alert(
-                            alert_type="INTRUSION",
-                            level="HIGH",
-                            stream_id=stream_id,
-                            description=msg,
-                        )
-                        results.append(
-                            {
-                                "alert_type": "INTRUSION",
-                                "message": msg,
-                                "bbox": bbox,
-                                "severity": "high",
-                                "zone_id": zone_id,
-                                "zone_name": zone_name,
-                            }
-                        )
-                        logger.info("Zone intrusion: %s", msg)
-                elif 0 < signed_dist < safe_distance:
+                    # 闯入：需持续 N 帧才触发告警（防误报）
+                    self._intrusion_counter[zone_key][tid] += 1
+
+                    if self._intrusion_counter[zone_key][tid] >= persist:
+                        if self._check_cooldown("INTRUSION", stream_id):
+                            msg = f"[{zone_name}] 检测到 {role} 闯入禁区"
+                            self._create_alert(
+                                alert_type="INTRUSION",
+                                level="HIGH",
+                                stream_id=stream_id,
+                                description=msg,
+                            )
+                            results.append(
+                                {
+                                    "alert_type": "INTRUSION",
+                                    "message": msg,
+                                    "bbox": bbox,
+                                    "severity": "high",
+                                    "zone_id": zone_id,
+                                    "zone_name": zone_name,
+                                }
+                            )
+                            logger.info("Zone intrusion: %s", msg)
+                            self._intrusion_counter[zone_key][tid] = 0
+                else:
+                    self._intrusion_counter[zone_key][tid] = 0
+
+                # 距边缘过近（PROXIMITY）
+                if 0 < signed_dist < safe_distance:
                     if self._check_cooldown("PROXIMITY", f"{stream_id}:{zone_id}"):
                         msg = (
                             f"[{zone_name}] {role} 距禁区边缘过近"
@@ -428,6 +529,7 @@ class DetectionService:
                         )
                         logger.info("Zone proximity: %s", msg)
 
+                # 异常停留（LOITER）
                 in_loiter_area = inside or (
                     signed_dist >= 0 and signed_dist < safe_distance
                 )
@@ -564,9 +666,11 @@ class DetectionService:
             if not self._check_cooldown("FIRE", stream_id):
                 return []
 
-            contours, _ = cv2.findContours(
+            # OpenCV 3.x 返回 (img, contours, hierarchy)，4.x 返回 (contours, hierarchy)
+            find_result = cv2.findContours(
                 mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
+            contours = find_result[0] if len(find_result) == 2 else find_result[1]
             if contours:
                 x, y, fw, fh = cv2.boundingRect(
                     max(contours, key=cv2.contourArea)
@@ -600,28 +704,112 @@ class DetectionService:
     # 4. 摔倒检测（FALL）
     # -----------------------------------------------------------------------
 
+    def _cleanup_stale_tracks(self, active_ids: set[int]) -> None:
+        """清理已离开画面的 track_id 残留计数器与历史状态。"""
+        for tid in list(self._fall_counter.keys()):
+            if tid not in active_ids:
+                del self._fall_counter[tid]
+        for tid in list(self._person_history.keys()):
+            if tid not in active_ids:
+                del self._person_history[tid]
+        for zone_key in list(self._intrusion_counter.keys()):
+            for tid in list(self._intrusion_counter[zone_key].keys()):
+                if tid not in active_ids:
+                    del self._intrusion_counter[zone_key][tid]
+
     def _detect_fall(
         self, person_boxes: list[dict], stream_id: str
     ) -> list[dict]:
-        """检测人员摔倒。"""
+        """检测人员摔倒（多信号融合：高宽比 + 变化速率 + 中心点位移）。
+
+        蹲下 vs 摔倒区分策略：
+          - 蹲下：高宽比缓降（h/w 在 0.8~1.2）、中心点小幅下移 → 不告警
+          - 摔倒：高宽比骤降（h/w < 0.8）、中心点大幅下移 → 告警
+
+        三个判定条件（AND）：
+          a. 高宽比 < FALL_ASPECT_RATIO_THRESHOLD（人横向，宽大于高）
+          b. 曾明确站立过（h/w > FALL_MIN_STANDING_RATIO 持续 ≥ 3 帧）
+          c. 骤变确认（二选一）：
+             - 高宽比变化速率 > FALL_AR_VELOCITY_THRESHOLD（骤降 = 摔倒）
+             - 中心点 Y 下移 > FALL_CENTER_DROP_RATIO × 人物高度（大幅坠落 = 摔倒）
+        """
         results = []
+        now = time.time()
+
+        active_ids = {box.get("track_id", -1) for box in person_boxes}
+        self._cleanup_stale_tracks(active_ids)
+
+        # 缓存配置（避免循环内频繁 Django settings 查询）
+        fall_ar_threshold = _cfg("FALL_ASPECT_RATIO_THRESHOLD")
+        fall_min_standing = _cfg("FALL_MIN_STANDING_RATIO")
+        fall_persist = _cfg("FALL_PERSIST_FRAMES")
+        fall_ar_velocity = _cfg("FALL_AR_VELOCITY_THRESHOLD")
+        fall_center_drop = _cfg("FALL_CENTER_DROP_RATIO")
 
         for box in person_boxes:
             w, h = box["w"], box["h"]
-            if w <= 0:
+            if w <= 0 or h <= 0:
                 continue
 
             aspect_ratio = h / w
             tid = box.get("track_id", -1)
+            center_y = box["y"] + h // 2
 
-            if aspect_ratio < _cfg("FALL_ASPECT_RATIO_THRESHOLD"):
+            # ---- 初始化 / 获取该人物历史状态 ----
+            if tid not in self._person_history:
+                self._person_history[tid] = {
+                    "prev_ar": aspect_ratio,
+                    "prev_cy": center_y,
+                    "prev_h": h,
+                    "prev_time": now,
+                    "was_standing": False,
+                    "standing_frames": 0,
+                }
+
+            hist = self._person_history[tid]
+            dt = now - hist["prev_time"]
+
+            # ---- 追踪"站立历史" ----
+            if aspect_ratio >= fall_min_standing:
+                hist["standing_frames"] += 1
+                if hist["standing_frames"] >= 3:
+                    hist["was_standing"] = True
+            else:
+                # 缓慢衰减（避免短暂遮挡导致站立历史丢失）
+                hist["standing_frames"] = max(0, hist["standing_frames"] - 1)
+
+            # ---- 摔倒判定 ----
+            is_low_ar = aspect_ratio < fall_ar_threshold
+            is_fallen_pose = w > h  # 宽大于高 = 横向姿态
+
+            # 骤变信号（仅在 dt > 0 时有效）
+            is_rapid_drop = False
+            is_center_dropped = False
+            if dt > 0 and hist["prev_ar"] > 0:
+                ar_velocity = (hist["prev_ar"] - aspect_ratio) / dt
+                is_rapid_drop = ar_velocity > fall_ar_velocity
+
+                # 中心点下移量（正值 = 向下移动）
+                cy_drop = center_y - hist["prev_cy"]
+                # 相对于人物高度归一化
+                ref_h = max(h, hist.get("prev_h", h))
+                center_drop_ratio = cy_drop / ref_h if ref_h > 0 else 0
+                is_center_dropped = center_drop_ratio > fall_center_drop
+
+            is_sudden = is_rapid_drop or is_center_dropped
+
+            if is_low_ar and is_fallen_pose and hist["was_standing"] and is_sudden:
+                # 满足全部条件 → 可能是摔倒
                 self._fall_counter[tid] += 1
 
-                if self._fall_counter[tid] >= _cfg("FALL_PERSIST_FRAMES"):
+                if self._fall_counter[tid] >= fall_persist:
                     if not self._check_cooldown("FALL", stream_id):
                         continue
 
-                    msg = f"检测到人员疑似摔倒（高宽比 {aspect_ratio:.2f}）"
+                    msg = (
+                        f"检测到人员疑似摔倒（高宽比 {aspect_ratio:.2f}，"
+                        f"变化速率 {ar_velocity:.1f}/s）"
+                    )
 
                     self._create_alert(
                         alert_type="FALL",
@@ -640,12 +828,27 @@ class DetectionService:
                             "detail": {
                                 "aspect_ratio": round(aspect_ratio, 2),
                                 "track_id": tid,
+                                "ar_velocity": round(ar_velocity, 2),
+                                "center_drop_ratio": round(center_drop_ratio, 2),
                             },
                         }
                     )
+                    # 告警后重置状态
                     self._fall_counter[tid] = 0
+                    hist["was_standing"] = False
+                    hist["standing_frames"] = 0
+            elif is_low_ar and is_fallen_pose and not is_sudden:
+                # 低高宽比但变化缓慢 + 中心点未大幅下移 → 蹲下/坐下，递减计数器
+                self._fall_counter[tid] = max(0, self._fall_counter[tid] - 1)
             else:
+                # 站起来了 → 重置计数器
                 self._fall_counter[tid] = 0
+
+            # ---- 更新历史 ----
+            hist["prev_ar"] = aspect_ratio
+            hist["prev_cy"] = center_y
+            hist["prev_h"] = h
+            hist["prev_time"] = now
 
         return results
 
