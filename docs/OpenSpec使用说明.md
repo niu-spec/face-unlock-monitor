@@ -34,7 +34,7 @@ openspec/
 │   ├── home-monitor/
 │   ├── alerts-events/
 │   ├── frontend-integration/
-│   └── ai-video-integration/   # C/D 待实现
+│   └── ai-video-integration/   # AI 视频联调（代码已完成）
 └── changes/
     ├── ai-video-integration/   # 进行中的 change（C/D 使用）
     └── archive/                # 已归档 change
@@ -76,16 +76,11 @@ openspec/
 
 ## 6. 进行中的 change（组员使用）
 
-### `ai-video-integration` — C/D 负责
+### `ai-video-integration` — 代码已完成，待云验收
 
-- **C 王梓铭**：tasks 2.x 人脸识别、presence、陌生人告警
-- **D 李东礼**：tasks 3.x 区域闯入、积水/着火/跌倒
-
-使用方式：
-
-1. 在 Cursor 输入 `/opsx-apply ai-video-integration`
-2. 按 tasks.md 逐项实现
-3. 完成后 `/opsx-archive ai-video-integration`
+- **tasks 1–3**：处理器链、face、detection 已实现并合入 `dev`
+- **tasks 4.1–4.2**：OBS 推流 MJPEG/WebRTC 画框 + 告警中心验收（待 B 组部署后勾选）
+- 验收通过后执行 `/opsx-archive ai-video-integration`
 
 规格详见：`openspec/changes/ai-video-integration/specs/`
 

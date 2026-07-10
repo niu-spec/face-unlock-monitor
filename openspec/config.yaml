@@ -9,7 +9,8 @@ context: |
     - 后端: Django 4.2 + DRF + SimpleJWT（:8000）
     - 流媒体: OBS → RTMP(:9090) → MediaMTX → RTSP(:8554) → Django OpenCV
     - 数据库: MySQL（home_camera_monitor）
-    - AI: OpenCV / dlib / face_recognition（apps/face 已集成；detection 待完善）
+    - AI: face + detection 已集成至 video_stream.process_frame()；云上 E2E 验收待完成
+    - CI/CD: GitHub Actions（CI）+ Jenkins 云服务器（CD）
 
   分支规范:
     - main: 稳定发布
@@ -36,7 +37,7 @@ context: |
 
   团队 OpenSpec 约定:
     - 每个 feature PR 关联一个 change（propose → apply → archive）
-    - 进行中 change: ai-video-integration（C/D 负责）
+    - 进行中 change: ai-video-integration（代码已完成，待 4.1/4.2 云验收后 archive）
     - 使用说明: docs/OpenSpec使用说明.md
 
 rules:
