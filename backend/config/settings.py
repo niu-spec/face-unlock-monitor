@@ -130,6 +130,7 @@ USE_TZ = True
 # ── Static files ────────────────────────────────────────────────────
 
 STATIC_URL = "static/"
+SNAPSHOT_ROOT = BASE_DIR / "snapshots"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # ── CORS ─────────────────────────────────────────────────────────────

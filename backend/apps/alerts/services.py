@@ -26,6 +26,8 @@ def create_alert(
     description: str = "",
     snapshot_path: str = "",
     household_id: int = None,
+    frame=None,
+    metadata: dict | None = None,
 ) -> Alert:
     """
     创建告警 — 供 C/D 服务调用。
@@ -40,6 +42,11 @@ def create_alert(
     Returns:
         创建的 Alert 实例
     """
+    if not snapshot_path and frame is not None:
+        from apps.video_stream.snapshots import save_event_snapshot
+
+        snapshot_path = save_event_snapshot(frame, stream_id, type)
+
     alert = Alert.objects.create(
         type=type,
         level=level,
@@ -48,6 +55,23 @@ def create_alert(
         snapshot_path=snapshot_path,
         household_id=household_id,
     )
+
+    try:
+        from apps.events.services import record_event_for_alert
+
+        record_event_for_alert(
+            alert_type=type,
+            stream_id=stream_id,
+            description=description,
+            snapshot_path=snapshot_path,
+            household_id=household_id,
+            metadata=metadata,
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("同步事件日志失败: %s", type)
+
     return alert
 
 

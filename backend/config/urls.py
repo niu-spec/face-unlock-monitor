@@ -5,6 +5,8 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework.permissions import AllowAny
 
+from apps.events.replay_views import snapshot_file
+
 schema_view = get_schema_view(
     openapi.Info(
         title="Home Camera Monitor API",
@@ -25,6 +27,7 @@ urlpatterns = [
     path("api/zones/", include("apps.zones.urls")),
     path("api/alerts/", include("apps.alerts.urls")),
     path("api/events/", include("apps.events.urls")),
+    path("api/snapshots/<str:filename>/", snapshot_file, name="snapshot-replay"),
     path("api/detection/", include("apps.detection.urls")),  # D-李东礼
     path("api/face/", include("apps.face.urls")),            # C-王梓铭
     path("", include("apps.video_stream.urls")),              # B-苏哲勋：视频流

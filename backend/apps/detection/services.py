@@ -189,6 +189,7 @@ class DetectionService:
         self._cooldown: dict[str, dict[str, float]] = defaultdict(dict)
         self._fall_counter: dict[int, int] = defaultdict(int)
         self._loiter_since: dict[tuple[int, int], float] = {}
+        self._current_snapshot_frame = None
 
         logger.info(
             "DetectionService initialized (detector=%s, Django)",
@@ -206,6 +207,7 @@ class DetectionService:
         person_boxes: Optional[list[dict]] = None,
         face_roles: Optional[dict[int, str]] = None,
         zones: Optional[list[dict]] = None,
+        snapshot_frame: Optional[np.ndarray] = None,
     ) -> list[dict]:
         """处理单帧画面，执行全部检测逻辑。
 
@@ -229,6 +231,8 @@ class DetectionService:
         if frame is None or frame.size == 0:
             return results
 
+        self._current_snapshot_frame = snapshot_frame
+
         # 内部行人检测（若调用方未提供 person_boxes）
         if person_boxes is None:
             person_boxes = self._detect_pedestrians(frame)
@@ -250,6 +254,7 @@ class DetectionService:
         # 4. 摔倒检测
         results.extend(self._detect_fall(person_boxes, stream_id))
 
+        self._current_snapshot_frame = None
         return results
 
     # -----------------------------------------------------------------------
@@ -692,6 +697,7 @@ class DetectionService:
                 stream_id=stream_id,
                 description=description,
                 snapshot_path=snapshot_path,
+                frame=self._current_snapshot_frame,
             )
         except Exception as e:
             logger.error("通过告警服务写入告警失败: %s", e)

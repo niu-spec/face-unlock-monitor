@@ -17,6 +17,9 @@ class Event(models.Model):
         ("PROXIMITY", "距离过近"),
         ("LOITER", "异常停留"),
         ("TAILGATE", "尾随"),
+        ("FIRE", "火情"),
+        ("WATER", "积水"),
+        ("FALL", "人员摔倒"),
         ("LOCK", "上锁"),
         ("SYSTEM", "系统事件"),
     ]
@@ -28,6 +31,13 @@ class Event(models.Model):
     event_type = models.CharField("事件类型", max_length=32, choices=TYPE_CHOICES)
     stream_id = models.CharField("视频流ID", max_length=32, default="living_room")
     description = models.CharField("事件描述", max_length=256)
+    snapshot_path = models.CharField(
+        "截图路径",
+        max_length=256,
+        blank=True,
+        default="",
+        help_text="事件时刻截图文件名",
+    )
     metadata = models.JSONField("附加数据", default=dict, blank=True, help_text="如识别到的成员ID、姓名等")
     created_at = models.DateTimeField("发生时间", auto_now_add=True)
 

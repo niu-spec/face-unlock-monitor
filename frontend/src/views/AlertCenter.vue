@@ -1,11 +1,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import EventReplayDialog from '@/components/EventReplayDialog.vue'
 import { alertApi } from '@/api'
 
 const filterType = ref('')
 const alerts = ref([])
 const loading = ref(false)
+const replayVisible = ref(false)
+const replayItem = ref(null)
 
 const typeOptions = [
   { label: '全部', value: '' },
@@ -25,8 +28,11 @@ async function loadAlerts() {
     const params = filterType.value ? { type: filterType.value } : {}
     const data = await alertApi.list(params)
     alerts.value = data.results || data
-  } catch { alerts.value = [] }
-  finally { loading.value = false }
+  } catch {
+    alerts.value = []
+  } finally {
+    loading.value = false
+  }
 }
 
 async function handleAlert(alert) {
@@ -34,7 +40,14 @@ async function handleAlert(alert) {
     await alertApi.handle(alert.id)
     ElMessage.success('已处置')
     loadAlerts()
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
+}
+
+function openReplay(alert) {
+  replayItem.value = alert
+  replayVisible.value = true
 }
 
 onMounted(loadAlerts)
@@ -55,7 +68,7 @@ onMounted(loadAlerts)
       <el-table-column label="类型" width="120">
         <template #default="{ row }">{{ row.type_display || row.type }}</template>
       </el-table-column>
-      <el-table-column prop="description" label="描述" />
+      <el-table-column prop="description" label="描述" min-width="200" />
       <el-table-column label="等级" width="80">
         <template #default="{ row }">
           <el-tag :type="row.level === 'HIGH' ? 'danger' : row.level === 'MEDIUM' ? 'warning' : 'info'" size="small">
@@ -64,6 +77,18 @@ onMounted(loadAlerts)
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="时间" width="180" />
+      <el-table-column label="回放" width="90">
+        <template #default="{ row }">
+          <el-button
+            link
+            type="primary"
+            :disabled="!row.snapshot_path"
+            @click="openReplay(row)"
+          >
+            回放
+          </el-button>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="100">
         <template #default="{ row }">
           <el-button v-if="row.status === 'pending'" link type="primary" @click="handleAlert(row)">处置</el-button>
@@ -72,6 +97,15 @@ onMounted(loadAlerts)
       </el-table-column>
     </el-table>
     <el-empty v-else description="暂无告警" />
+
+    <EventReplayDialog
+      v-model="replayVisible"
+      :title="replayItem?.type_display || '告警回放'"
+      :description="replayItem?.description || ''"
+      :timestamp="replayItem?.created_at || ''"
+      :stream-id="replayItem?.stream_id || ''"
+      :snapshot-path="replayItem?.snapshot_path || ''"
+    />
   </el-card>
 </template>
 
