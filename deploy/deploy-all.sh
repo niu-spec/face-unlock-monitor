@@ -70,20 +70,21 @@ cd "$FRONTEND_DIR"
 npm ci
 npm run build
 
-if command -v docker >/dev/null 2>&1; then
-  bash "$MEDIA_SCRIPT"
+if [ "${DEPLOY_MEDIAMTX:-0}" = "1" ]; then
+  if command -v docker >/dev/null 2>&1; then
+    echo "[deploy] restart MediaMTX (DEPLOY_MEDIAMTX=1)"
+    bash "$MEDIA_SCRIPT"
+  else
+    echo "[deploy] docker not found, skip MediaMTX restart"
+  fi
 else
-  echo "[deploy] docker not found, skip MediaMTX restart"
+  echo "[deploy] skip MediaMTX (set DEPLOY_MEDIAMTX=1 to restart home-mediamtx)"
 fi
 
-if command -v nginx >/dev/null 2>&1; then
+if deploy_nginx_bin >/dev/null 2>&1; then
   echo "[deploy] reload nginx"
   deploy_nginx -t
-  if command -v systemctl >/dev/null 2>&1 && deploy_systemctl is-active --quiet nginx 2>/dev/null; then
-    deploy_systemctl reload nginx
-  else
-    deploy_nginx -s reload
-  fi
+  deploy_nginx_reload
 else
   echo "[deploy] nginx not found, skip reload"
 fi

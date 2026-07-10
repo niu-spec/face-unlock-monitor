@@ -99,7 +99,8 @@ DEPLOY_BRANCH=dev bash deploy/deploy-all.sh
 
 - 仅 `dev` / `main` 分支
 - Deploy 前将 `/service/home-camera-monitor` 重置为 **当前构建 commit**（与 CI 测试一致）
-- 执行 `deploy/deploy-all.sh`：migrate → 重启 backend → npm build → 重启 MediaMTX → reload nginx
+- 执行 `deploy/deploy-all.sh`：migrate → 重启 backend → npm build → reload nginx（**默认不重启 MediaMTX**）
+- Jenkins 环境变量 `DEPLOY_MEDIAMTX=0`；仅手动 `DEPLOY_MEDIAMTX=1` 时重建 `home-mediamtx`
 - Jenkins 用户需配置 docker 组 + 代码目录写权限 + `deploy/jenkins.sudoers.example`（见 Jenkins 安装指引 §6）
 
 ---

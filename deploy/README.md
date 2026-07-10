@@ -30,6 +30,8 @@
 | `SKIP_GIT_UPDATE` | `0` | 设为 `1` 跳过 git pull |
 | `DJANGO_SERVICE` | `home-camera-backend` | systemd 服务名 |
 | `DEPLOY_USE_SUDO` | `auto` | `auto`/`1` 时非 root 用户通过 `sudo -n` 执行 systemctl/nginx |
+| `DEPLOY_MEDIAMTX` | `0` | `1` 时才重启 `home-mediamtx`；Jenkins CD 默认 `0` |
+| `NGINX_BIN` | _(auto)_ | 显式指定 nginx 路径（宝塔：`/www/server/nginx/sbin/nginx`） |
 
 ---
 
@@ -64,6 +66,12 @@ sudo systemctl restart home-camera-backend
 
 ```bash
 cd /service/home-camera-monitor
-git fetch origin dev && git reset --hard origin/dev
-DEPLOY_BRANCH=dev bash deploy/deploy-all.sh
+git fetch origin dev && git merge --ff-only origin/dev
+DEPLOY_BRANCH=dev DEPLOY_MEDIAMTX=0 bash deploy/deploy-all.sh
+```
+
+仅当需要重建 MediaMTX 容器时：
+
+```bash
+DEPLOY_MEDIAMTX=1 bash deploy/deploy-all.sh
 ```

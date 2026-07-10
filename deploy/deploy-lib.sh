@@ -26,9 +26,39 @@ deploy_systemctl() {
   deploy_privileged systemctl "$@"
 }
 
-deploy_nginx() {
-  if ! command -v nginx >/dev/null 2>&1; then
-    return 1
+deploy_nginx_bin() {
+  if [ -n "${NGINX_BIN:-}" ] && [ -x "${NGINX_BIN}" ]; then
+    echo "${NGINX_BIN}"
+    return 0
   fi
-  deploy_privileged nginx "$@"
+  local candidate
+  for candidate in \
+    "$(command -v nginx 2>/dev/null || true)" \
+    /usr/bin/nginx \
+    /usr/sbin/nginx \
+    /www/server/nginx/sbin/nginx; do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+deploy_nginx() {
+  local bin
+  bin="$(deploy_nginx_bin)" || return 1
+  deploy_privileged "$bin" "$@"
+}
+
+deploy_nginx_reload() {
+  if command -v systemctl >/dev/null 2>&1 && deploy_systemctl is-active --quiet nginx 2>/dev/null; then
+    deploy_systemctl reload nginx
+    return 0
+  fi
+  if [ -x /etc/init.d/nginx ]; then
+    deploy_privileged /etc/init.d/nginx reload
+    return 0
+  fi
+  deploy_nginx -s reload
 }

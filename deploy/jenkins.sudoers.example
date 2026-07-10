@@ -4,6 +4,14 @@
 #   sudo cp deploy/jenkins.sudoers.example /etc/sudoers.d/jenkins-deploy
 #   sudo chmod 440 /etc/sudoers.d/jenkins-deploy
 #
-# Adjust paths if DEPLOY_PATH is not /service/home-camera-monitor.
+# Server 152.136.29.158 uses Baota panel nginx at /www/server/nginx/sbin/nginx.
+# Pick the paths that exist on your host (`which nginx`, `ls /etc/init.d/nginx`).
 
-jenkins ALL=(ALL) NOPASSWD: /bin/systemctl restart home-camera-backend, /bin/systemctl reload nginx, /bin/systemctl is-active nginx, /usr/sbin/nginx
+jenkins ALL=(ALL) NOPASSWD: \
+  /bin/systemctl restart home-camera-backend, \
+  /bin/systemctl reload nginx, \
+  /bin/systemctl is-active nginx, \
+  /usr/bin/nginx, \
+  /usr/sbin/nginx, \
+  /www/server/nginx/sbin/nginx, \
+  /etc/init.d/nginx

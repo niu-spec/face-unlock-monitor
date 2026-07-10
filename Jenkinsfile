@@ -21,6 +21,7 @@ pipeline {
         DJANGO_SECRET_KEY = 'jenkins-ci-test-secret-key'
         DJANGO_DEBUG = 'True'
         DEPLOY_PATH = '/service/home-camera-monitor'
+        DEPLOY_MEDIAMTX = '0'
     }
 
     stages {
@@ -56,14 +57,16 @@ pipeline {
                     BR="${BRANCH_NAME:-dev}"
                     APP="${DEPLOY_PATH}"
                     cd "$APP"
-                    git fetch origin "$BR"
+                    git fetch origin "$BR" 2>/dev/null || true
                     git checkout "$BR"
-                    if [ -n "${GIT_COMMIT:-}" ]; then
-                      git reset --hard "$GIT_COMMIT"
-                    else
-                      git pull --ff-only origin "$BR"
+                    TARGET="${GIT_COMMIT:-origin/$BR}"
+                    if ! git merge --ff-only "$TARGET" 2>/dev/null; then
+                      echo "[deploy] ff-only failed; update tracked files only (untracked preserved)"
+                      git checkout "$TARGET" -- .
+                      git update-ref "refs/heads/$BR" "$TARGET"
                     fi
                     DEPLOY_USE_SUDO=auto \
+                    DEPLOY_MEDIAMTX=0 \
                     SKIP_GIT_UPDATE=1 \
                     DEPLOY_BRANCH="$BR" \
                     DEPLOY_PATH="$APP" \
