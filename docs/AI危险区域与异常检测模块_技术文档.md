@@ -160,8 +160,11 @@ backend/
 | `FIRE_HSV_LOWER_2/UPPER_2` | (160,100,100)/(180,255,255) | 火焰红色 HSV 范围（高段） |
 | `FIRE_AREA_THRESHOLD` | 0.05 | 火焰面积占比阈值 |
 | `FIRE_BRIGHTNESS_THRESHOLD` | 180 | 火焰亮度 V 通道阈值 |
-| `FALL_ASPECT_RATIO_THRESHOLD` | 1.3 | 高宽比阈值（低于此值判定为摔倒） |
+| `FALL_ASPECT_RATIO_THRESHOLD` | 0.8 | 高宽比阈值（低于此值且 w>h 判定为横向姿态） |
 | `FALL_PERSIST_FRAMES` | 5 | 摔倒持续帧数（防误报） |
+| `FALL_MIN_STANDING_RATIO` | 1.6 | 明确站立高宽比（h/w > 此值累计 3 帧后标记为曾站立） |
+| `FALL_CENTER_DROP_RATIO` | 0.30 | 中心点下移比例（> 30% 人体高度判定为大幅坠落） |
+| `FALL_AR_VELOCITY_THRESHOLD` | 1.0 | 高宽比变化速率阈值（> 1.0/s 判定为骤变，单位/秒） |
 | `YOLO_MODEL` | `yolov8n.pt` | YOLO 模型文件（首次运行时自动下载） |
 | `YOLO_CONFIDENCE_THRESHOLD` | 0.5 | YOLO 检测置信度阈值 |
 | `YOLO_IOU_THRESHOLD` | 0.45 | YOLO NMS IOU 阈值 |
