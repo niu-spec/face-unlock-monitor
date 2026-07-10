@@ -134,6 +134,7 @@ def process_frame(frame, stream_id):
             face_roles=face_roles,
             zones=zones if zones else None,
             snapshot_frame=output,
+            household_id=household_id,
         )
         face_count = len(presence.get("faces", []))
         output = detection_service.draw_overlays(

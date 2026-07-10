@@ -190,6 +190,7 @@ class DetectionService:
         self._fall_counter: dict[int, int] = defaultdict(int)
         self._loiter_since: dict[tuple[int, int], float] = {}
         self._current_snapshot_frame = None
+        self._current_household_id: int | None = None
 
         logger.info(
             "DetectionService initialized (detector=%s, Django)",
@@ -208,6 +209,7 @@ class DetectionService:
         face_roles: Optional[dict[int, str]] = None,
         zones: Optional[list[dict]] = None,
         snapshot_frame: Optional[np.ndarray] = None,
+        household_id: int | None = None,
     ) -> list[dict]:
         """处理单帧画面，执行全部检测逻辑。
 
@@ -232,6 +234,7 @@ class DetectionService:
             return results
 
         self._current_snapshot_frame = snapshot_frame
+        self._current_household_id = household_id
 
         # 内部行人检测（若调用方未提供 person_boxes）
         if person_boxes is None:
@@ -255,6 +258,7 @@ class DetectionService:
         results.extend(self._detect_fall(person_boxes, stream_id))
 
         self._current_snapshot_frame = None
+        self._current_household_id = None
         return results
 
     # -----------------------------------------------------------------------
@@ -698,6 +702,7 @@ class DetectionService:
                 description=description,
                 snapshot_path=snapshot_path,
                 frame=self._current_snapshot_frame,
+                household_id=self._current_household_id,
             )
         except Exception as e:
             logger.error("通过告警服务写入告警失败: %s", e)

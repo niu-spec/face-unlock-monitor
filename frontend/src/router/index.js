@@ -45,6 +45,12 @@ const routes = [
     meta: { title: '事件记录' },
   },
   {
+    path: '/reports',
+    name: 'DailyReport',
+    component: () => import('@/views/DailyReport.vue'),
+    meta: { title: '监控日报' },
+  },
+  {
     path: '/users',
     name: 'UserManage',
     component: () => import('@/views/UserManage.vue'),
