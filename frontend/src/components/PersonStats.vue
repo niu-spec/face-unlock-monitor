@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, onUnmounted, ref } from 'vue'
-import { homeApi } from '@/api'
+import { homeApi, videoApi } from '@/api'
 
 const stats = ref({
   total: 0,
@@ -10,14 +10,27 @@ const stats = ref({
 
 let timer = null
 
+function applyPresence(data) {
+  if (!data) return false
+  stats.value = {
+    total: data.total ?? data.total_count ?? 0,
+    family: data.family ?? data.family_count ?? 0,
+    stranger: data.stranger ?? data.stranger_count ?? 0,
+  }
+  return Boolean(data.updated_at)
+}
+
 async function fetchPresence() {
   try {
+    const videoStatus = await videoApi.status()
+    if (applyPresence(videoStatus.presence)) return
+  } catch {
+    // fall through to legacy endpoint
+  }
+
+  try {
     const data = await homeApi.presence()
-    stats.value = {
-      total: data.total ?? data.total_count ?? 0,
-      family: data.family ?? data.family_count ?? 0,
-      stranger: data.stranger ?? data.stranger_count ?? 0,
-    }
+    applyPresence(data)
   } catch {
     stats.value = { total: 0, family: 0, stranger: 0 }
   }

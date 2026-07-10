@@ -230,6 +230,48 @@ class FaceRecognitionService:
         )
         return member, encoding.astype(float).tolist()
 
+    @staticmethod
+    def draw_face_boxes(frame: np.ndarray, presence: dict[str, Any]) -> np.ndarray:
+        """根据 presence 中的人脸坐标在 BGR 帧上绘制标注框。"""
+        if frame is None or frame.size == 0:
+            return frame
+
+        output = frame.copy()
+        height, width = output.shape[:2]
+        for face in presence.get("faces", []):
+            box = face.get("box") or {}
+            left = int(box.get("left", 0))
+            top = int(box.get("top", 0))
+            right = int(box.get("right", 0))
+            bottom = int(box.get("bottom", 0))
+            if right <= left or bottom <= top:
+                continue
+
+            left = max(0, min(left, width - 1))
+            top = max(0, min(top, height - 1))
+            right = max(left + 1, min(right, width))
+            bottom = max(top + 1, min(bottom, height))
+
+            known = bool(face.get("known"))
+            color = (0, 180, 0) if known else (0, 0, 255)
+            member_id = face.get("member_id")
+            name = face.get("name") or ("Stranger" if not known else "Family")
+            role = face.get("role") or ("stranger" if not known else "adult")
+            label = f"{member_id or name} ({role})"
+
+            cv2.rectangle(output, (left, top), (right, bottom), color, 2)
+            cv2.putText(
+                output,
+                label,
+                (left, max(20, top - 8)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                2,
+                cv2.LINE_AA,
+            )
+        return output
+
     def process_frame(
         self,
         frame: np.ndarray,
@@ -279,12 +321,10 @@ class FaceRecognitionService:
             if matched_index is None:
                 member_id, name, role, known = None, "Stranger", "stranger", False
                 stranger_count += 1
-                color = (0, 0, 255)
             else:
                 member_id = known_ids[matched_index]
                 registered = known_members[matched_index]
                 name, role, known = registered["name"], registered["role"], True
-                color = (0, 180, 0)
                 if member_id not in seen_members:
                     members.append(
                         {"member_id": member_id, "name": name, "role": role}
@@ -301,13 +341,6 @@ class FaceRecognitionService:
                     "box": {"top": top, "right": right, "bottom": bottom, "left": left},
                 }
             )
-            if annotate:
-                cv2.rectangle(output, (left, top), (right, bottom), color, 2)
-                label = f"{member_id or 'Stranger'} ({role})"
-                cv2.putText(
-                    output, label, (left, max(20, top - 8)),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA,
-                )
 
         updated_at = datetime.now(timezone.utc).isoformat()
         presence = {
@@ -319,6 +352,8 @@ class FaceRecognitionService:
             "stream_id": str(stream_id),
             "updated_at": updated_at,
         }
+        if annotate and faces:
+            output = self.draw_face_boxes(frame, presence)
         events: list[dict[str, Any]] = []
         now = datetime.now(timezone.utc).timestamp()
         last = self._last_unknown_alert.get(str(stream_id), 0.0)

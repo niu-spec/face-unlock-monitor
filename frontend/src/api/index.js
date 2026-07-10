@@ -69,4 +69,9 @@ export const homeApi = {
   presence: () => request.get('/api/home/presence/', { silent: true }),
 }
 
+// ── 视频流状态（与 MJPEG 同进程，含实时 presence）──────
+export const videoApi = {
+  status: () => request.get('/api/video/status', { silent: true }),
+}
+
 export { videoFeedPath as videoFeedUrl, webrtcPreviewUrl } from '@/constants/streams'
