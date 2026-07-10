@@ -120,6 +120,8 @@ def process_frame(frame, stream_id):
                 "name": z.name,
                 "points_json": z.points_json,
                 "forbidden_roles": z.forbidden_roles,
+                "safe_distance": z.safe_distance,
+                "dwell_time": z.dwell_time,
                 "is_active": z.is_active,
             }
             for z in zones_qs
