@@ -3,6 +3,7 @@ from datetime import date, datetime, time
 from django.test import TestCase
 from django.utils import timezone
 
+from apps.accounts.models import User
 from apps.alerts.models import Alert
 from apps.households.models import Household
 from apps.reports.services import build_template_report, collect_daily_stats, generate_daily_report
@@ -10,7 +11,10 @@ from apps.reports.services import build_template_report, collect_daily_stats, ge
 
 class DailyReportServiceTests(TestCase):
     def setUp(self):
-        self.household = Household.objects.create(name="测试家庭")
+        self.user = User.objects.create_user(phone="13800000099", password="pass")
+        self.household = Household.objects.create(
+            name="测试家庭", created_by=self.user
+        )
         self.report_date = date(2026, 7, 10)
         self.sample_time = timezone.make_aware(
             datetime.combine(self.report_date, time(12, 0))

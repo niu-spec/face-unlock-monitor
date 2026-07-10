@@ -18,7 +18,12 @@ _FILENAME_SAFE = re.compile(r"[^\w.-]+")
 def _snapshot_root() -> Path:
     from django.conf import settings
 
-    root = Path(getattr(settings, "SNAPSHOT_ROOT", settings.BASE_DIR / "snapshots"))
+    configured = getattr(settings, "SNAPSHOT_ROOT", None)
+    root = (
+        Path(configured)
+        if configured
+        else Path(settings.BASE_DIR / "snapshots")
+    )
     root.mkdir(parents=True, exist_ok=True)
     return root
 

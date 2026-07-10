@@ -102,5 +102,5 @@ class ZoneViolationTests(SimpleTestCase):
         polygon = _parse_polygon([[0, 0], [100, 0], [100, 100], [0, 100]])
         inside = _distance_point_to_polygon((50, 50), polygon)
         outside = _distance_point_to_polygon((150, 50), polygon)
-        self.assertLess(inside, 0)
-        self.assertGreater(outside, 0)
+        self.assertGreater(inside, 0)
+        self.assertLess(outside, 0)

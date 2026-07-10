@@ -151,7 +151,10 @@ def _rect_center(x: int, y: int, w: int, h: int) -> tuple[int, int]:
 
 
 def _distance_point_to_polygon(point: tuple[int, int], polygon: np.ndarray) -> float:
-    """点到多边形轮廓的有符号距离：内部为负，外部为正，边界为 0。"""
+    """点到多边形轮廓的有符号距离（OpenCV measureDist=True）。
+
+    当前 OpenCV 版本约定：内部为正，外部为负，绝对值为到边界的像素距离。
+    """
     return float(cv2.pointPolygonTest(polygon, point, True))
 
 
@@ -465,11 +468,12 @@ class DetectionService:
                 # 脚部（底部中心）用于判断人是否站在区域内
                 foot_x = box["x"] + box["w"] // 2
                 foot_y = box["y"] + box["h"]
-                foot_inside = _distance_point_to_polygon((foot_x, foot_y), polygon) < 0
+                foot_dist = _distance_point_to_polygon((foot_x, foot_y), polygon)
+                foot_inside = foot_dist > 0
 
                 cx, cy = _rect_center(box["x"], box["y"], box["w"], box["h"])
                 signed_dist = _distance_point_to_polygon((cx, cy), polygon)
-                inside = foot_inside or signed_dist < 0
+                inside = foot_inside or signed_dist > 0
                 bbox = (box["x"], box["y"], box["w"], box["h"])
 
                 if inside:
@@ -500,12 +504,13 @@ class DetectionService:
                 else:
                     self._intrusion_counter[zone_key][tid] = 0
 
-                # 距边缘过近（PROXIMITY）
-                if 0 < signed_dist < safe_distance:
+                # 距边缘过近（PROXIMITY）：人在外部且距边界 < safe_distance
+                edge_gap = abs(signed_dist) if signed_dist < 0 else 0.0
+                if not inside and signed_dist < 0 and edge_gap < safe_distance:
                     if self._check_cooldown("PROXIMITY", f"{stream_id}:{zone_id}"):
                         msg = (
                             f"[{zone_name}] {role} 距禁区边缘过近"
-                            f"（{signed_dist:.0f}px < {safe_distance}px）"
+                            f"（{edge_gap:.0f}px < {safe_distance}px）"
                         )
                         self._create_alert(
                             alert_type="PROXIMITY",
@@ -522,16 +527,16 @@ class DetectionService:
                                 "zone_id": zone_id,
                                 "zone_name": zone_name,
                                 "detail": {
-                                    "distance_px": round(signed_dist, 1),
+                                    "distance_px": round(edge_gap, 1),
                                     "safe_distance_px": safe_distance,
                                 },
                             }
                         )
                         logger.info("Zone proximity: %s", msg)
 
-                # 异常停留（LOITER）
+                # 异常停留（LOITER）：在禁区内或紧贴边界外
                 in_loiter_area = inside or (
-                    signed_dist >= 0 and signed_dist < safe_distance
+                    signed_dist < 0 and abs(signed_dist) < safe_distance
                 )
                 if in_loiter_area:
                     loiter_key = (int(zone_id), int(tid))
