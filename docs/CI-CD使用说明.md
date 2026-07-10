@@ -111,7 +111,6 @@ DEPLOY_BRANCH=dev bash deploy/deploy-all.sh
 | `scripts/ci-backend-test.sh` | 后端测试（Jenkins / Actions 共用） |
 | `scripts/ci-frontend-build.sh` | 前端构建（Jenkins / Actions 共用） |
 | `deploy/deploy-all.sh` | 生产部署入口 |
-| `.gitlab-ci.yml` | 已弃用，仅保留参考 |
 
 ---
 
@@ -152,7 +151,7 @@ DEPLOY_BRANCH=dev bash deploy/deploy-all.sh
 
 ### Q：GitLab 还要用吗？
 
-不用。`.gitlab-ci.yml` 已标记弃用，不必再 `git push gitlab`。
+不用。已移除 `.gitlab-ci.yml`，日常只推 GitHub 即可。
 
 ### Q：Pipeline 失败，backend-test 报 face_recognition 错误？
 

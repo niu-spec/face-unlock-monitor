@@ -36,8 +36,6 @@
 | [../deploy/README.md](../deploy/README.md) | B/A | 部署脚本说明 |
 | [B组-Jenkins安装指引.md](B组-Jenkins安装指引.md) | B | Jenkins 一次性安装 + Webhook |
 
-> 以下文档已合并进 `B组-云部署与联调指引.md`，仅保留跳转：`B组-下一步部署指引.md`、`B组-WebRTC人脸叠加部署.md`、`B组-AI联调待办.md`、`backend_handoff_video_stream.md`、`cloud-api-handoff-for-b-group.md`
-
 ---
 
 ## CI/CD 与规范

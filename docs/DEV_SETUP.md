@@ -139,7 +139,7 @@ X-Active-Household-Id: <家庭 ID>
 
 生产环境脚本见 `deploy/deploy-django.sh`。Linux 上 dlib 可通过 conda-forge 或系统编译依赖 + pip 安装；推荐同样使用 `environment.yml`。
 
-流媒体：OBS → RTMP `:9090` → MediaMTX → RTSP `:8554` → Django OpenCV 拉流。详见 `nginx/README.md`、`docs/backend_handoff_video_stream.md`。
+流媒体：OBS → RTMP `:9090` → MediaMTX → RTSP `:8554` → Django OpenCV 拉流。详见 [nginx/README.md](../nginx/README.md)、[video-stream-webrtc-integration.md](video-stream-webrtc-integration.md)。
 
 ## 9. 相关文档
 
