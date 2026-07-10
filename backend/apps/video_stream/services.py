@@ -75,12 +75,22 @@ def _map_face_roles_to_people(presence: dict, person_boxes: list[dict]) -> dict[
 
 def process_frame(frame, stream_id):
     """在 MJPEG 编码前执行实时 AI 处理链。"""
+    try:
+        from django.db import close_old_connections
+
+        close_old_connections()
+    except Exception:
+        pass
+
     biz_stream_id = _to_business_stream_id(str(stream_id))
     original = frame.copy()
     output = frame
     person_boxes: list[dict] = []
     face_roles: dict[int, str] = {}
     zones = None
+    face_count = 0
+    ai_ok = False
+    presence: dict = {}
 
     try:
         from apps.detection.services import get_detection_service
@@ -127,9 +137,34 @@ def process_frame(frame, stream_id):
             zones=zones if zones else None,
             person_boxes=person_boxes,
         )
+        face_count = len(presence.get("faces", []))
+        # 保底：D 组 draw_overlays 可能覆盖人脸层，最终由 C 组统一重绘人脸框
+        if face_count:
+            output = get_face_service().draw_face_boxes(output, presence)
+        ai_ok = True
     except Exception as exc:
-        logger.warning("视频流 %s 的 AI 处理链执行失败: %s", stream_id, exc)
+        logger.warning(
+            "视频流 %s 的 AI 处理链执行失败: %s",
+            stream_id,
+            exc,
+            exc_info=True,
+        )
 
+    ai_status = (
+        f"AI ok  faces:{face_count}  persons:{len(person_boxes)}"
+        if ai_ok
+        else "AI err"
+    )
+    cv2.putText(
+        output,
+        ai_status,
+        (20, 75),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.65,
+        (0, 255, 255) if ai_ok else (0, 0, 255),
+        2,
+        cv2.LINE_AA,
+    )
     cv2.putText(
         output,
         f"stream {stream_id}",

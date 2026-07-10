@@ -31,12 +31,16 @@ def video_feed(request, stream_id):
 
 @require_GET
 def video_status(request):
+    from apps.face.services import get_face_service
+
     return JsonResponse(
         {
             "code": 200,
             "message": "video stream app running",
             "rtsp_base_url": RTSP_BASE_URL,
             "rtmp_public_base_url": RTMP_PUBLIC_BASE_URL,
+            # 与 MJPEG 同进程的人数快照，避免 Nginx 将 /api/home/ 指到另一 Django 时读不到数据
+            "presence": get_face_service().get_presence(),
             "workers": get_workers_status(),
         }
     )

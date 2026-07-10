@@ -77,3 +77,49 @@ class FaceRecognitionServiceTests(TestCase):
 
         self.assertEqual(presence["total"], 0)
         self.assertEqual(events, [])
+
+    @patch("apps.face.services._load_face_recognition")
+    def test_process_frame_draws_boxes_when_annotate_true(self, load_library):
+        library = Mock()
+        library.face_locations.return_value = [(10, 40, 40, 10)]
+        library.face_encodings.return_value = [np.zeros(128)]
+        library.face_distance.return_value = np.array([0.9])
+        load_library.return_value = library
+
+        output, presence, _ = self.service.process_frame(
+            self.frame, annotate=True, persist_alert=False
+        )
+
+        self.assertEqual(presence["total"], 1)
+        self.assertFalse(np.array_equal(output, self.frame))
+
+    @patch("apps.face.services._load_face_recognition")
+    def test_process_frame_skips_drawing_when_annotate_false(self, load_library):
+        library = Mock()
+        library.face_locations.return_value = [(10, 40, 40, 10)]
+        library.face_encodings.return_value = [np.zeros(128)]
+        library.face_distance.return_value = np.array([0.9])
+        load_library.return_value = library
+
+        output, presence, _ = self.service.process_frame(
+            self.frame, annotate=False, persist_alert=False
+        )
+
+        self.assertEqual(presence["total"], 1)
+        self.assertTrue(np.array_equal(output, self.frame))
+
+    def test_draw_face_boxes_from_presence(self):
+        presence = {
+            "faces": [
+                {
+                    "known": False,
+                    "name": "Stranger",
+                    "role": "stranger",
+                    "box": {"top": 10, "right": 40, "bottom": 40, "left": 10},
+                }
+            ]
+        }
+
+        annotated = FaceRecognitionService.draw_face_boxes(self.frame, presence)
+
+        self.assertFalse(np.array_equal(annotated, self.frame))
