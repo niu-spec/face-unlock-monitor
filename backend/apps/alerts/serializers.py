@@ -1,10 +1,11 @@
 """Alerts — 序列化器"""
 from rest_framework import serializers
+from apps.common.serializers import SnapshotUrlMixin
 from apps.alerts.models import Alert
 from apps.alerts.services import handle_alert
 
 
-class AlertSerializer(serializers.ModelSerializer):
+class AlertSerializer(SnapshotUrlMixin, serializers.ModelSerializer):
     """告警序列化"""
 
     type_display = serializers.CharField(source="get_type_display", read_only=True)
@@ -22,6 +23,7 @@ class AlertSerializer(serializers.ModelSerializer):
             "stream_id",
             "description",
             "snapshot_path",
+            "snapshot_url",
             "status",
             "status_display",
             "created_at",

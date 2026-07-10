@@ -374,21 +374,28 @@ class FaceRecognitionService:
             events.append(event)
             self._last_unknown_alert[str(stream_id)] = now
             if persist_alert:
-                self._persist_unknown_alert(event, household_id)
+                self._persist_unknown_alert(event, household_id, frame=output)
 
         with self._lock:
             self._presence = deepcopy(presence)
         return output, presence, events
 
     @staticmethod
-    def _persist_unknown_alert(event: dict[str, Any], household_id: int | None) -> None:
+    def _persist_unknown_alert(
+        event: dict[str, Any],
+        household_id: int | None,
+        frame: np.ndarray | None = None,
+    ) -> None:
         try:
             from apps.alerts.services import create_alert
 
             create_alert(
-                type=event["type"], level=event["level"],
-                stream_id=event["stream_id"], description=event["description"],
+                type=event["type"],
+                level=event["level"],
+                stream_id=event["stream_id"],
+                description=event["description"],
                 household_id=household_id,
+                frame=frame,
             )
         except Exception:
             # 数据库临时不可用时，视频帧处理链仍要继续运行。

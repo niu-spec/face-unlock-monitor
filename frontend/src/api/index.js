@@ -57,6 +57,14 @@ export const eventApi = {
   list: (params) => request.get('/api/events/', { params }),
 }
 
+export function fetchSnapshotBlob(filename) {
+  if (!filename) return Promise.resolve(null)
+  return request.get(`/api/snapshots/${encodeURIComponent(filename)}/`, {
+    responseType: 'blob',
+    silent: true,
+  })
+}
+
 // ── 摄像头 ────────────────────────────────────────────
 export const cameraApi = {
   list: () => request.get('/api/cameras/'),
