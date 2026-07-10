@@ -1,4 +1,7 @@
-# GitLab CI/CD for home-camera-monitor
+# DEPRECATED: GitLab.com 需身份验证，组员无法全员使用。
+# 主 CI/CD 已迁移至 Jenkins（云服务器）+ GitHub Actions，见 docs/CI-CD使用说明.md
+#
+# GitLab CI/CD for home-camera-monitor (kept for reference)
 
 stages:
   - test

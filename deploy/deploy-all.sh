@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="${DEPLOY_PATH:-/service}"
+APP_DIR="${DEPLOY_PATH:-/service/home-camera-monitor}"
 BACKEND_DIR="$APP_DIR/backend"
 FRONTEND_DIR="$APP_DIR/frontend"
 ENV_FILE="${DJANGO_ENV_FILE:-$BACKEND_DIR/.env.production}"
@@ -14,7 +14,7 @@ cd "$APP_DIR"
 if [ "${SKIP_GIT_UPDATE:-0}" = "1" ]; then
   echo "[deploy] skip git update"
 else
-  DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
+  DEPLOY_BRANCH="${DEPLOY_BRANCH:-dev}"
   if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "[deploy] working tree has local changes; commit/stash them or set SKIP_GIT_UPDATE=1" >&2
     git status --short >&2

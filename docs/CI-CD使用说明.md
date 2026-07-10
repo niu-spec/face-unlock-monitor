@@ -3,199 +3,183 @@
 > **项目**：home-camera-monitor  
 > **负责人**：A 牛雨昊  
 > **GitHub 仓库**：https://github.com/niu-spec/home-camera-monitor  
-> **GitLab 仓库**：https://gitlab.com/dzzxzy/home-camera-monitor
+> **云服务器**：152.136.29.158
 
 ---
 
-## 0. 当前使用方案
+## 0. 当前方案（2026-07-10 更新）
 
-| 方案 | 状态 | 说明 |
+| 方案 | 角色 | 说明 |
 |------|------|------|
-| **GitLab CI**（主用） | ✅ 可用 | 配置文件 `.gitlab-ci.yml`，含 test / build / deploy |
-| Jenkins（云服务器） | 可选 | 见下文 §8，符合评分表「Jenkins 或 GitLab」 |
+| **Jenkins**（主用，结题材料） | 云服务器 `:8080` | 符合评分表「Jenkins/GitLab」，**全员浏览器可用** |
+| **GitHub Actions**（辅用） | GitHub 仓库 | push 即跑 test/build，零额外注册 |
+| ~~GitLab CI~~ | 已弃用 | gitlab.com 需身份验证，组员无法全员使用 |
 
-**日常开发**：push 到 GitLab 后，在 **Build → Pipelines** 页查看 CI 结果。
+**为什么不用 GitLab：** gitlab.com 注册需手机/身份验证，组员过不了；且日常只推 GitHub，Pipeline 不会自动跑。
+
+**日常开发：** 只推 GitHub 即可，CI 自动触发。
 
 ```bash
-git push gitlab dev
+git push origin feature/xxx
+# → GitHub Actions 自动跑 CI
+# → Jenkins（配好 Webhook 后）自动跑 Pipeline
 ```
 
 ---
 
-## 1. GitLab CI/CD
+## 1. 组员日常使用
 
-配置文件：`.gitlab-ci.yml`（项目根目录）
-
-### 1.1 创建 GitLab 项目并导入 GitHub 仓库
-
-1. 登录 [gitlab.com](https://gitlab.com)（或用学校 GitLab）
-2. **New project** → **Import project** → **GitHub**
-3. 授权后选择 `niu-spec/home-camera-monitor`
-4. 可见性选 **Private** 或 **Internal**
-5. 点击 **Import**
-
-导入完成后，GitLab 地址类似：
-`https://gitlab.com/你的用户名/home-camera-monitor`
-
-### 1.2 配置 GitHub → GitLab 自动同步（可选）
-
-在 GitLab 项目中：
-
-1. **Settings** → **Repository** → **Mirroring repositories**
-2. **Git repository URL**：`https://github.com/niu-spec/home-camera-monitor.git`
-3. 勾选 **Mirror direction**: Pull
-4. 填入 GitHub Personal Access Token（需 `repo` 权限）
-5. 保存后点 **Update now** 立即同步
-
-之后每次 GitHub push，可手动或定时 Pull 到 GitLab。
-
-**或** 在本地添加 GitLab 远程并双推：
-
-```bash
-git remote add gitlab https://gitlab.com/你的用户名/home-camera-monitor.git
-git push gitlab dev
-git push gitlab main
-```
-
-### 1.3 配置部署变量（CD 阶段，可选）
-
-**Settings** → **CI/CD** → **Variables** → **Add variable**：
-
-| 变量名 | 类型 | 说明 |
-|--------|------|------|
-| `SSH_PRIVATE_KEY` | Variable（Masked） | 云服务器 SSH 私钥全文 |
-| `DEPLOY_HOST` | Variable | 服务器 IP，如 `152.136.29.158` |
-| `DEPLOY_USER` | Variable | SSH 用户，如 `root` |
-
-未配置时，`backend-test` 和 `frontend-build` 仍可正常运行；仅 `deploy-production` 需要上述变量。
-
-### 1.4 开启 Shared Runners
-
-**Settings** → **CI/CD** → **Runners** → 确认 **Shared runners** 已启用（gitlab.com 免费账户默认有）。
-
----
-
-## 2. 组员日常使用
-
-### 2.1 开发流程
+### 1.1 开发流程
 
 ```bash
 git checkout dev
 git pull origin dev
-git checkout -b feature/face
+git checkout -b feature/your-module
 # ... 写代码 ...
 git add .
-git commit -m "feat(face): xxx"
-git push origin feature/face
+git commit -m "feat(module): your change"
+git push origin feature/your-module
 ```
 
-### 2.2 触发 CI
+### 1.2 查看 CI 结果
 
-推送到 GitLab 即触发：
+**方式 A — GitHub Actions（推荐，零门槛）**
+
+1. 打开 https://github.com/niu-spec/home-camera-monitor/actions
+2. 找到你的 commit 对应的 workflow run
+3. 绿色 ✓ = 通过，红色 ✗ = 失败，点进去看日志
+
+**方式 B — Jenkins（结题演示用）**
+
+1. 浏览器打开 `http://152.136.29.158:8080`
+2. 登录 Jenkins 账号（组长分配）
+3. 进入 **home-camera-monitor** 任务 → 查看构建历史
+
+### 1.3 合并到 dev
 
 ```bash
-git push gitlab feature/face
+# 在 GitHub 创建 Pull Request：feature/xxx → dev
+# PR 页面会显示 GitHub Actions 检查结果
+# 合并后 Jenkins 也会触发（若 Webhook 已配置）
 ```
 
-### 2.3 查看 Pipeline 结果
+### 1.4 手动部署（仅组长 / B 组）
 
-1. 打开 GitLab 项目
-2. 左侧 **Build** → **Pipelines**
-3. 绿色 ✓ = 通过，红色 ✗ = 失败，点进去看 Job 日志
+Jenkins Pipeline 的 **Deploy Production** 阶段需手动确认：
 
-### 2.4 Merge Request 自动检查
+1. Jenkins → 最新构建 → 等待 test/build 通过
+2. 出现 **Deploy to production server?** → 点 **Deploy**
+3. 或在服务器 SSH 手动执行：
 
-在 GitLab 创建 MR（`feature/face` → `dev`）时，Pipeline 会自动跑，MR 页面显示通过/失败状态。
+```bash
+cd /service/home-camera-monitor
+DEPLOY_BRANCH=dev bash deploy/deploy-all.sh
+```
 
 ---
 
-## 3. Pipeline 详情
+## 2. Pipeline 详情
 
 ### backend-test
 
-- 镜像：`python:3.10-bookworm`
-- 依赖：`backend/requirements-ci.txt`（不含 dlib，CI 环境无法编译）
+- 脚本：`scripts/ci-backend-test.sh`
+- Python 3.10 + `backend/requirements-ci.txt`（不含 dlib，避免 CI 编译失败）
 - 步骤：
   1. `python manage.py check`
-  2. `python manage.py test apps.face.tests`
+  2. `python manage.py test` — face / detection / video_stream / reports
 - 数据库：CI 环境自动使用 SQLite（`settings.py` 中 `CI=true` 时切换）
 
 ### frontend-build
 
-- 镜像：`node:20-bookworm`
-- 步骤：`npm ci` → `npm run build`
-- 产物：`frontend/dist/`（保留 1 周，可下载）
+- 脚本：`scripts/ci-frontend-build.sh`
+- Node.js 20 → `npm ci` → `npm run build`
+- 产物：`frontend/dist/`
 
-### deploy-production
+### deploy-production（Jenkins 手动触发）
 
-- 仅 `main` 分支
-- **手动触发**（Pipeline 页面点 ▶️ Play）
-- SSH 到服务器执行 `deploy/deploy-django.sh`
+- 仅 `dev` / `main` 分支
+- 执行 `deploy/deploy-all.sh`：git pull → migrate → 重启 backend → npm build → 重启 MediaMTX → reload nginx
 
 ---
 
-## 4. 结题验收材料
+## 3. 配置文件一览
+
+| 文件 | 用途 |
+|------|------|
+| `Jenkinsfile` | Jenkins Pipeline 定义（主 CI/CD） |
+| `.github/workflows/ci.yml` | GitHub Actions（辅 CI） |
+| `scripts/ci-backend-test.sh` | 后端测试（Jenkins / Actions 共用） |
+| `scripts/ci-frontend-build.sh` | 前端构建（Jenkins / Actions 共用） |
+| `deploy/deploy-all.sh` | 生产部署入口 |
+| `.gitlab-ci.yml` | 已弃用，仅保留参考 |
+
+---
+
+## 4. Jenkins 安装（B 组一次性操作）
+
+详见 **[docs/B组-Jenkins安装指引.md](B组-Jenkins安装指引.md)**。
+
+概要：
+
+1. SSH 登录 `152.136.29.158`
+2. 运行 `deploy/install_jenkins.sh`（或按文档手动安装）
+3. 浏览器访问 `http://152.136.29.158:8080` 完成初始化
+4. 新建 Pipeline 任务，SCM 指向 GitHub `dev` 分支，Script Path = `Jenkinsfile`
+5. 配置 GitHub Webhook（push 自动触发）
+6. 给 6 名组员各建 Jenkins 账号
+
+---
+
+## 5. 结题验收材料
 
 | 材料 | 获取方式 |
 |------|----------|
-| Pipeline 配置 | 截图 `.gitlab-ci.yml` 或 GitLab CI/CD → Editor |
-| 成功运行记录 | GitLab → Pipelines → 绿色 Pipeline 详情截图 |
-| 组员都会使用 | 晨会演示：push → 看 Pipeline 结果 |
+| Pipeline 配置 | 截图 `Jenkinsfile` + Jenkins 任务配置页 |
+| 成功运行记录 | Jenkins 构建历史绿色截图 + GitHub Actions 绿色截图 |
+| 组员都会使用 | 晨会演示：每人 push 一次 → 两处 CI 均出现构建记录 |
+| 部署记录 | Jenkins Deploy 阶段截图 或 服务器 deploy 日志 |
 | 本文档 | `docs/CI-CD使用说明.md` |
 
 建议截图保存到 `docs/验收材料/CI-CD/` 目录。
 
 ---
 
-## 5. 常见问题
+## 6. 常见问题
+
+### Q：只推 GitHub，CI 会跑吗？
+
+会。GitHub Actions 自动触发；Jenkins 需 B 组配好 Webhook（见 Jenkins 安装指引）。
+
+### Q：GitLab 还要用吗？
+
+不用。`.gitlab-ci.yml` 已标记弃用，不必再 `git push gitlab`。
 
 ### Q：Pipeline 失败，backend-test 报 face_recognition 错误？
 
-`requirements-ci.txt` 已排除 dlib。若仍报错，确认测试使用了 mock（`apps.face.tests` 已 mock `_load_face_recognition`）。
+`requirements-ci.txt` 已排除 dlib。确认测试使用了 mock（`apps.face.tests` 已 mock `_load_face_recognition`）。
 
-### Q：只推 GitHub、不推 GitLab，Pipeline 会跑吗？
+### Q：Jenkins 构建失败，找不到 node / python3？
 
-不会。必须 push 到 GitLab 远程（或配置 GitHub → GitLab 镜像同步）后才会触发。
+B 组需在服务器安装 Node.js 20 和 Python 3.10+（见 Jenkins 安装指引 §2）。
 
-### Q：deploy 阶段怎么手动触发？
+### Q：deploy 阶段怎么触发？
 
-Pipelines 页面 → 找到 `main` 分支的 Pipeline → `deploy-production` 右侧点 **Play**。
+Jenkins 构建到 Deploy 阶段时会暂停等待确认，点 **Deploy** 即可。不要在 feature 分支 deploy。
 
-### Q：feature 分支会跑 CI 吗？
+### Q：GitHub Actions 算 CI/CD 加分吗？
 
-会。`feature/*` 分支 push 后自动触发 `backend-test` 和 `frontend-build`。
+评分表写「Jenkins/GitLab」。GitHub Actions 作为辅助；**结题以 Jenkins 截图为主**，Actions 作补充。
 
 ---
 
-## 6. 与 OpenSpec / Swagger 的关系
+## 7. 与 OpenSpec / Swagger 的关系
 
 | 基础建设项 | 对应实现 |
 |-----------|----------|
 | 代码管理（GitHub） | `CONTRIBUTORS.md` + 分支规范 |
 | OpenSpec | `openspec/` + `docs/OpenSpec使用说明.md` |
-| Swagger | `http://localhost:8000/api/docs/` |
-| **CI/CD** | **GitLab CI**（`.gitlab-ci.yml`）+ Jenkins 可选 |
-
----
-
-## 7. Jenkins（云服务器，符合评分表）
-
-若老师严格要求「Jenkins 或 GitLab」，可在现有云服务器（152.136.29.158）安装 Jenkins：
-
-```bash
-# SSH 登录服务器后
-sudo apt update
-sudo apt install -y openjdk-17-jre
-curl -fsSL https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key | sudo tee /usr/share/keyrings/jenkins-keyring.asc
-echo "deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian-stable binary/" | sudo tee /etc/apt/sources.list.d/jenkins.list
-sudo apt install -y jenkins
-sudo systemctl enable jenkins && sudo systemctl start jenkins
-sudo cat /var/lib/jenkins/secrets/initialAdminPassword   # 浏览器访问 http://IP:8080
-```
-
-在 Jenkins 新建 **Pipeline** 任务，Script Path 填 `Jenkinsfile`（可从 `.gitlab-ci.yml` 逻辑改写，或联系组长配置）。
-
-结题截图：Jenkins 控制台 + 成功构建记录 + 组员演示 push 后自动构建。
+| Swagger | `http://152.136.29.158/api/docs/` |
+| **CI/CD** | **Jenkins** + GitHub Actions |
 
 ---
 
