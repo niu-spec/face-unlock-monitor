@@ -19,6 +19,8 @@ class ZoneViolationTests(SimpleTestCase):
         self.service._cooldown = defaultdict(dict)
         self.service._loiter_since = {}
         self.service._intrusion_counter = defaultdict(lambda: defaultdict(int))
+        self.service._fall_counter = defaultdict(int)
+        self.service._person_history = {}
 
     def _square_zone(self, zone_id=1, safe_distance=50, dwell_time=2):
         return {
