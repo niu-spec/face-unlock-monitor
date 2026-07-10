@@ -9,7 +9,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("alerts", "0002_add_notification_fields"),
+        ("alerts", "0003_add_notification_fields"),
         ("households", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
