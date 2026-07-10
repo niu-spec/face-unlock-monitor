@@ -254,10 +254,14 @@ class FaceRecognitionService:
 
             known = bool(face.get("known"))
             color = (0, 180, 0) if known else (0, 0, 255)
-            member_id = face.get("member_id")
-            name = face.get("name") or ("Stranger" if not known else "Family")
-            role = face.get("role") or ("stranger" if not known else "adult")
-            label = f"{member_id or name} ({role})"
+            name = str(face.get("name") or "").strip()
+            role = str(face.get("role") or "").strip()
+            if not known:
+                label = "陌生人"
+            else:
+                role_labels = {"adult": "成人", "child": "儿童"}
+                role_text = role_labels.get(role, role or "家人")
+                label = f"{name or '家人'} ({role_text})"
 
             cv2.rectangle(output, (left, top), (right, bottom), color, 2)
             cv2.putText(
@@ -343,6 +347,7 @@ class FaceRecognitionService:
             )
 
         updated_at = datetime.now(timezone.utc).isoformat()
+        height, width = frame.shape[:2]
         presence = {
             "total": len(faces),
             "family": len(faces) - stranger_count,
@@ -350,6 +355,7 @@ class FaceRecognitionService:
             "members": members,
             "faces": faces,
             "stream_id": str(stream_id),
+            "frame_size": {"width": int(width), "height": int(height)},
             "updated_at": updated_at,
         }
         if annotate and faces:

@@ -666,16 +666,6 @@ class DetectionService:
                     (255, 255, 0),
                     1,
                 )
-            cv2.putText(
-                annotated,
-                f"persons: {len(person_boxes)}",
-                (20, 72),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (255, 255, 0),
-                2,
-                cv2.LINE_AA,
-            )
         for r in results:
             alert_type = r.get("alert_type", "")
             color = color_map.get(alert_type, (0, 255, 0))

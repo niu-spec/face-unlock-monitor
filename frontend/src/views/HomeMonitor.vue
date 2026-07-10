@@ -1,5 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
+import FaceOverlay from '@/components/FaceOverlay.vue'
 import PersonStats from '@/components/PersonStats.vue'
 import { videoFeedUrl, webrtcPreviewUrl } from '@/api'
 import { CAMERA_STREAMS, DEFAULT_STREAM_ID } from '@/constants/streams'
@@ -55,6 +56,12 @@ function openWebRtcWindow() {
               allow="autoplay; fullscreen"
               class="video-frame"
             />
+            <FaceOverlay
+              v-if="previewMode === 'webrtc'"
+              :key="`overlay-${activeStream}`"
+              :stream-id="activeStream"
+              :active="previewMode === 'webrtc'"
+            />
             <img
               v-else
               :key="`mjpeg-${activeStream}`"
@@ -72,7 +79,7 @@ function openWebRtcWindow() {
 
           <div class="video-footer">
             <span v-if="previewMode === 'webrtc'" class="video-hint">
-              低延迟 WebRTC 预览 · AI 识别结果见右侧人数统计
+              低延迟 WebRTC 预览 · 含 AI 人脸标注（Canvas 叠加）
             </span>
             <span v-else class="video-hint">
               MJPEG 备用预览（延迟较高，含 AI 标注框）

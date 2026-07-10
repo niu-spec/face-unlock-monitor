@@ -15,6 +15,7 @@ RTMP_PUBLIC_BASE_URL = os.getenv(
     "RTMP_PUBLIC_BASE_URL", "rtmp://152.136.29.158:9090/stream"
 )
 FRAME_SKIP = int(os.getenv("VIDEO_FRAME_SKIP", "5"))
+SHOW_VIDEO_HUD = os.getenv("VIDEO_SHOW_HUD", "").lower() in ("1", "true", "yes")
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 workers = {}
@@ -131,13 +132,14 @@ def process_frame(frame, stream_id):
             face_roles=face_roles,
             zones=zones if zones else None,
         )
+        face_count = len(presence.get("faces", []))
         output = detection_service.draw_overlays(
             output,
             results,
             zones=zones if zones else None,
-            person_boxes=person_boxes,
+            # 已检测到人脸时不画黄色人体框，避免与绿/红人脸框重叠
+            person_boxes=[] if face_count else person_boxes,
         )
-        face_count = len(presence.get("faces", []))
         # 保底：D 组 draw_overlays 可能覆盖人脸层，最终由 C 组统一重绘人脸框
         if face_count:
             output = get_face_service().draw_face_boxes(output, presence)
@@ -151,30 +153,31 @@ def process_frame(frame, stream_id):
         )
 
     ai_status = (
-        f"AI ok  faces:{face_count}  persons:{len(person_boxes)}"
+        f"faces:{face_count}  persons:{len(person_boxes)}"
         if ai_ok
         else "AI err"
     )
-    cv2.putText(
-        output,
-        ai_status,
-        (20, 75),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        0.65,
-        (0, 255, 255) if ai_ok else (0, 0, 255),
-        2,
-        cv2.LINE_AA,
-    )
-    cv2.putText(
-        output,
-        f"stream {stream_id}",
-        (20, 40),
-        cv2.FONT_HERSHEY_SIMPLEX,
-        1,
-        (0, 255, 0),
-        2,
-        cv2.LINE_AA,
-    )
+    if SHOW_VIDEO_HUD:
+        cv2.putText(
+            output,
+            f"stream {stream_id}",
+            (12, 28),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 255, 0),
+            2,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            output,
+            ai_status,
+            (12, 52),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (0, 255, 255) if ai_ok else (0, 0, 255),
+            1,
+            cv2.LINE_AA,
+        )
     return output
 def encode_frame(frame):
     ok, buffer = cv2.imencode(".jpg", frame)
