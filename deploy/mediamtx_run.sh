@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
 # Restart MediaMTX for OBS RTMP ingest and Django/OpenCV RTSP reading.
 # Do not bind host port 8888 because BaoTa panel commonly uses it.
 
-docker rm -f home-mediamtx 2>/dev/null || true
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deploy-lib.sh
+source "$SCRIPT_DIR/deploy-lib.sh"
 
-docker run -d \
+docker_cmd=(docker)
+if ! docker info >/dev/null 2>&1; then
+  if deploy_use_sudo && command -v sudo >/dev/null 2>&1; then
+    docker_cmd=(sudo -n docker)
+  fi
+fi
+
+"${docker_cmd[@]}" rm -f home-mediamtx 2>/dev/null || true
+
+"${docker_cmd[@]}" run -d \
   --name home-mediamtx \
   --restart=always \
   -p 9090:1935 \
@@ -16,5 +27,5 @@ docker run -d \
   -e MTX_WEBRTCADDITIONALHOSTS=152.136.29.158 \
   bluenviron/mediamtx:latest
 
-docker ps | grep home-mediamtx
-ss -lntp | grep -E "9090|8554|8889" || true
+"${docker_cmd[@]}" ps | grep home-mediamtx
+ss -lntp 2>/dev/null | grep -E "9090|8554|8889" || true

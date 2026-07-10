@@ -98,7 +98,9 @@ DEPLOY_BRANCH=dev bash deploy/deploy-all.sh
 ### deploy-production（Jenkins 手动触发）
 
 - 仅 `dev` / `main` 分支
-- 执行 `deploy/deploy-all.sh`：git pull → migrate → 重启 backend → npm build → 重启 MediaMTX → reload nginx
+- Deploy 前将 `/service/home-camera-monitor` 重置为 **当前构建 commit**（与 CI 测试一致）
+- 执行 `deploy/deploy-all.sh`：migrate → 重启 backend → npm build → 重启 MediaMTX → reload nginx
+- Jenkins 用户需配置 docker 组 + 代码目录写权限 + `deploy/jenkins.sudoers.example`（见 Jenkins 安装指引 §6）
 
 ---
 

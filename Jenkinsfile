@@ -53,9 +53,21 @@ pipeline {
                 input message: 'Deploy to production server?', ok: 'Deploy'
                 sh '''
                     set -euo pipefail
-                    DEPLOY_BRANCH="${BRANCH_NAME:-dev}" \
-                    DEPLOY_PATH="${DEPLOY_PATH}" \
-                    bash "${DEPLOY_PATH}/deploy/deploy-all.sh"
+                    BR="${BRANCH_NAME:-dev}"
+                    APP="${DEPLOY_PATH}"
+                    cd "$APP"
+                    git fetch origin "$BR"
+                    git checkout "$BR"
+                    if [ -n "${GIT_COMMIT:-}" ]; then
+                      git reset --hard "$GIT_COMMIT"
+                    else
+                      git pull --ff-only origin "$BR"
+                    fi
+                    DEPLOY_USE_SUDO=auto \
+                    SKIP_GIT_UPDATE=1 \
+                    DEPLOY_BRANCH="$BR" \
+                    DEPLOY_PATH="$APP" \
+                    bash "$APP/deploy/deploy-all.sh"
                 '''
             }
         }

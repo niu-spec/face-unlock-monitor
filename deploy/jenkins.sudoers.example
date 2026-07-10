@@ -1,0 +1,9 @@
+# Passwordless sudo rules for Jenkins CD (copy to server, then validate).
+#
+#   sudo visudo -cf /etc/sudoers.d/jenkins-deploy
+#   sudo cp deploy/jenkins.sudoers.example /etc/sudoers.d/jenkins-deploy
+#   sudo chmod 440 /etc/sudoers.d/jenkins-deploy
+#
+# Adjust paths if DEPLOY_PATH is not /service/home-camera-monitor.
+
+jenkins ALL=(ALL) NOPASSWD: /bin/systemctl restart home-camera-backend, /bin/systemctl reload nginx, /bin/systemctl is-active nginx, /usr/sbin/nginx

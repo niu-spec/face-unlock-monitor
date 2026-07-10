@@ -173,24 +173,43 @@ Jenkins 任务应在 1 分钟内自动开始构建。
 
 ## 6. Deploy 阶段权限
 
-Jenkins Pipeline 的 Deploy 阶段会执行 `deploy/deploy-all.sh`，需要 Jenkins 用户能：
+Jenkins Pipeline 的 Deploy 阶段会执行 `deploy/deploy-all.sh`（`DEPLOY_USE_SUDO=auto`），需要 Jenkins 用户能：
 
+- 对 `/service/home-camera-monitor` 执行 `git fetch/reset`（部署与 CI 测试同一 commit）
 - `systemctl restart home-camera-backend`
-- `docker` 操作
-- `nginx -s reload`
+- `docker` 操作（MediaMTX）
+- `nginx -t` / `nginx reload`
+
+### 6.1 Docker 组
 
 ```bash
 # 将 jenkins 用户加入 docker 组
 sudo usermod -aG docker jenkins
-
-# 允许 jenkins 无密码执行 deploy 相关命令（按需调整）
-sudo visudo -f /etc/sudoers.d/jenkins-deploy
 ```
 
-写入：
+### 6.2 代码目录写权限
 
+Deploy 会在生产目录 `git reset --hard $GIT_COMMIT`，需 jenkins 用户可写：
+
+```bash
+# 方式 A：目录属主改为 jenkins（小团队常用）
+sudo chown -R jenkins:jenkins /service/home-camera-monitor
+
+# 方式 B：保留原属主，仅加组权限（按实际属组调整）
+# sudo chgrp -R jenkins /service/home-camera-monitor
+# sudo chmod -R g+rwX /service/home-camera-monitor
 ```
-jenkins ALL=(ALL) NOPASSWD: /bin/systemctl restart home-camera-backend, /bin/systemctl reload nginx, /usr/sbin/nginx
+
+### 6.3 sudoers（systemctl / nginx）
+
+仓库已提供模板 `deploy/jenkins.sudoers.example`：
+
+```bash
+cd /service/home-camera-monitor
+git pull origin dev
+sudo cp deploy/jenkins.sudoers.example /etc/sudoers.d/jenkins-deploy
+sudo chmod 440 /etc/sudoers.d/jenkins-deploy
+sudo visudo -cf /etc/sudoers.d/jenkins-deploy
 ```
 
 然后重启 Jenkins：

@@ -83,21 +83,34 @@ def get_pending_alerts(stream_id: str = None):
     return qs.order_by("-created_at")
 
 
-def handle_alert(alert_id: int, handled_by=None) -> Alert:
-    """将告警标记为已处理"""
+def _finalize_alert(alert: Alert, status: str, actor=None, actor_key: str = "handled_by") -> Alert:
+    """将告警标记为 handled 或 ignored，并记录操作人。"""
     from django.utils import timezone
 
-    alert = Alert.objects.get(id=alert_id)
-    alert.status = "handled"
-    alert.handled_at = timezone.now()
+    now = timezone.now()
+    alert.status = status
+    alert.handled_at = now
 
-    # 记录处理人信息
-    if handled_by:
-        alert.metadata["handled_by"] = {
-            "user_id": handled_by.id,
-            "phone": handled_by.phone,
+    if actor:
+        metadata = dict(alert.metadata or {})
+        metadata[actor_key] = {
+            "user_id": actor.id,
+            "phone": actor.phone,
         }
-        alert.metadata["handled_at"] = alert.handled_at.isoformat()
+        metadata[f"{status}_at"] = now.isoformat()
+        alert.metadata = metadata
 
     alert.save(update_fields=["status", "handled_at", "metadata"])
     return alert
+
+
+def handle_alert(alert_id: int, handled_by=None) -> Alert:
+    """将告警标记为已处理"""
+    alert = Alert.objects.get(id=alert_id)
+    return _finalize_alert(alert, "handled", handled_by, "handled_by")
+
+
+def ignore_alert(alert_id: int, ignored_by=None) -> Alert:
+    """将告警标记为已忽略"""
+    alert = Alert.objects.get(id=alert_id)
+    return _finalize_alert(alert, "ignored", ignored_by, "ignored_by")

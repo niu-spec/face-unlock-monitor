@@ -8,7 +8,7 @@ from drf_yasg.utils import swagger_auto_schema
 from apps.households.filters import HouseholdFilterBackend
 from apps.alerts.models import Alert
 from apps.alerts.serializers import AlertSerializer
-from apps.alerts.services import handle_alert
+from apps.alerts.services import handle_alert, ignore_alert
 
 
 class AlertViewSet(viewsets.ModelViewSet):
@@ -56,4 +56,13 @@ class AlertViewSet(viewsets.ModelViewSet):
         if alert.status != "pending":
             return Response({"error": "该告警已处理或已忽略"}, status=status.HTTP_400_BAD_REQUEST)
         updated = handle_alert(alert.id, handled_by=request.user)
-        return Response(AlertSerializer(updated).data)
+        return Response(AlertSerializer(updated, context={"request": request}).data)
+
+    @swagger_auto_schema(tags=["告警管理"], operation_description="忽略告警 — 标记为 ignored")
+    @action(detail=True, methods=["put"])
+    def ignore(self, request, pk=None):
+        alert = self.get_object()
+        if alert.status != "pending":
+            return Response({"error": "该告警已处理或已忽略"}, status=status.HTTP_400_BAD_REQUEST)
+        updated = ignore_alert(alert.id, ignored_by=request.user)
+        return Response(AlertSerializer(updated, context={"request": request}).data)

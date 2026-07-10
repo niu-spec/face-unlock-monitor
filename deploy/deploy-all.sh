@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deploy-lib.sh
+source "$SCRIPT_DIR/deploy-lib.sh"
+
 APP_DIR="${DEPLOY_PATH:-/service/home-camera-monitor}"
 BACKEND_DIR="$APP_DIR/backend"
 FRONTEND_DIR="$APP_DIR/frontend"
@@ -54,8 +58,9 @@ fi
 python manage.py migrate --noinput
 python manage.py check
 
-if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "$DJANGO_SERVICE.service" --no-legend | grep -q "^$DJANGO_SERVICE.service"; then
-  systemctl restart "$DJANGO_SERVICE"
+if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "$DJANGO_SERVICE.service" --no-legend 2>/dev/null | grep -q "^$DJANGO_SERVICE.service"; then
+  echo "[deploy] restart $DJANGO_SERVICE"
+  deploy_systemctl restart "$DJANGO_SERVICE"
 else
   echo "[deploy] systemd service not found, falling back to deploy-django.sh"
   bash "$APP_DIR/deploy/deploy-django.sh"
@@ -72,11 +77,12 @@ else
 fi
 
 if command -v nginx >/dev/null 2>&1; then
-  nginx -t
-  if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx; then
-    systemctl reload nginx
+  echo "[deploy] reload nginx"
+  deploy_nginx -t
+  if command -v systemctl >/dev/null 2>&1 && deploy_systemctl is-active --quiet nginx 2>/dev/null; then
+    deploy_systemctl reload nginx
   else
-    nginx -s reload
+    deploy_nginx -s reload
   fi
 else
   echo "[deploy] nginx not found, skip reload"

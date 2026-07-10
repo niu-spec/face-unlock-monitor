@@ -11,6 +11,8 @@
 | 脚本 | 用途 |
 |------|------|
 | `deploy-all.sh` | **主入口** — git pull、migrate、重启 backend、构建前端、MediaMTX、nginx |
+| `deploy-lib.sh` | Deploy 共用 helper（`sudo -n` 封装 systemctl/nginx） |
+| `jenkins.sudoers.example` | Jenkins CD 所需 sudoers 模板 |
 | `start_backend.sh` | systemd 启动 gunicorn（绑定 `BACKEND_BIND`，默认 8010） |
 | `mediamtx_run.sh` | Docker 重启 MediaMTX（9090/8554/8889/8189） |
 | `install_jenkins.sh` | 云服务器一次性安装 Jenkins |
@@ -27,7 +29,7 @@
 | `DEPLOY_BRANCH` | `dev` | git 拉取分支 |
 | `SKIP_GIT_UPDATE` | `0` | 设为 `1` 跳过 git pull |
 | `DJANGO_SERVICE` | `home-camera-backend` | systemd 服务名 |
-| `BACKEND_BIND` | `127.0.0.1:8010` | gunicorn 绑定（start_backend.sh） |
+| `DEPLOY_USE_SUDO` | `auto` | `auto`/`1` 时非 root 用户通过 `sudo -n` 执行 systemctl/nginx |
 
 ---
 
