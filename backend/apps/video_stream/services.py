@@ -92,9 +92,11 @@ def process_frame(frame, stream_id):
     face_count = 0
     ai_ok = False
     presence: dict = {}
+    liveness: dict = {}
 
     try:
         from apps.detection.services import get_detection_service
+        from apps.face.liveness import get_liveness_service
         from apps.face.services import get_face_service
         from apps.zones.models import Zone
 
@@ -110,6 +112,13 @@ def process_frame(frame, stream_id):
             persist_alert=True,
         )
         face_roles = _map_face_roles_to_people(presence, person_boxes)
+        liveness, _liveness_events = get_liveness_service().observe(
+            original,
+            presence,
+            stream_id=biz_stream_id,
+            household_id=household_id,
+            persist_alert=True,
+        )
 
         zones_qs = Zone.objects.filter(stream_id=biz_stream_id, is_active=True)
         if household_id is not None:
@@ -156,11 +165,16 @@ def process_frame(frame, stream_id):
             exc_info=True,
         )
 
-    ai_status = (
-        f"faces:{face_count}  persons:{len(person_boxes)}"
-        if ai_ok
-        else "AI err"
-    )
+    if ai_ok:
+        live_status = liveness.get("status", "unknown") if liveness else "unknown"
+        attack_type = liveness.get("attack_type") if liveness else None
+        attack_hint = f" attack:{attack_type}" if attack_type else ""
+        ai_status = (
+            f"faces:{face_count}  persons:{len(person_boxes)}  "
+            f"live:{live_status}{attack_hint}"
+        )
+    else:
+        ai_status = "AI err"
     if SHOW_VIDEO_HUD:
         cv2.putText(
             output,
