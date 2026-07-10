@@ -18,6 +18,7 @@ class ZoneViolationTests(SimpleTestCase):
             self.service = DetectionService()
         self.service._cooldown = defaultdict(dict)
         self.service._loiter_since = {}
+        self.service._intrusion_counter = defaultdict(lambda: defaultdict(int))
 
     def _square_zone(self, zone_id=1, safe_distance=50, dwell_time=2):
         return {
@@ -51,9 +52,12 @@ class ZoneViolationTests(SimpleTestCase):
         person_boxes = [{"x": 180, "y": 180, "w": 40, "h": 80, "track_id": 1}]
         face_roles = {1: "child"}
 
-        results = self.service._detect_zone_violations(
-            "kitchen", zones, person_boxes, face_roles
-        )
+        results = []
+        # INTRUSION_PERSIST_FRAMES=3：需连续多帧在禁区内才触发闯入告警
+        for _ in range(3):
+            results = self.service._detect_zone_violations(
+                "kitchen", zones, person_boxes, face_roles
+            )
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["alert_type"], "INTRUSION")
