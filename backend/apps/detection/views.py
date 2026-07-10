@@ -102,6 +102,8 @@ def detection_status(request):
             "service": "DetectionService",
             "capabilities": [
                 "INTRUSION",
+                "PROXIMITY",
+                "LOITER",
                 "WATER",
                 "FIRE",
                 "FALL",

@@ -1,7 +1,7 @@
 """检测服务模块 — 危险区域与异常检测（Django 版）。
 
 负责：
-  - 危险区域闯入检测（YOLO 行人检测 + 多边形碰撞）
+  - 危险区域闯入 / 距边缘过近 / 异常停留检测（YOLO 行人检测 + 多边形碰撞）
   - 积水检测（HSV 颜色 + 形态分析）
   - 着火检测（HSV 火焰颜色 + 亮度分析）
   - 摔倒检测（人体框高宽比分析）
@@ -73,6 +73,8 @@ DETECTION_CONFIG = {
         "FIRE": 30,
         "FALL": 15,
         "INTRUSION": 10,
+        "PROXIMITY": 10,
+        "LOITER": 15,
     },
 }
 
@@ -130,6 +132,23 @@ def _is_rect_in_polygon(
     return _is_point_in_polygon((cx, cy), polygon)
 
 
+def _rect_center(x: int, y: int, w: int, h: int) -> tuple[int, int]:
+    return x + w // 2, y + h // 2
+
+
+def _distance_point_to_polygon(point: tuple[int, int], polygon: np.ndarray) -> float:
+    """点到多边形轮廓的有符号距离：内部为负，外部为正，边界为 0。"""
+    return float(cv2.pointPolygonTest(polygon, point, True))
+
+
+def _normalize_forbidden_roles(forbidden) -> list[str]:
+    if isinstance(forbidden, str):
+        return [r.strip() for r in forbidden.split(",") if r.strip()]
+    if isinstance(forbidden, list):
+        return [str(r).strip() for r in forbidden if str(r).strip()]
+    return []
+
+
 # ---------------------------------------------------------------------------
 # 检测服务主类
 # ---------------------------------------------------------------------------
@@ -169,6 +188,7 @@ class DetectionService:
 
         self._cooldown: dict[str, dict[str, float]] = defaultdict(dict)
         self._fall_counter: dict[int, int] = defaultdict(int)
+        self._loiter_since: dict[tuple[int, int], float] = {}
 
         logger.info(
             "DetectionService initialized (detector=%s, Django)",
@@ -198,7 +218,8 @@ class DetectionService:
             face_roles: 人脸识别结果，{track_id: role}，
                 role 为 'adult' / 'child' / 'stranger'。
             zones: 危险区域配置列表，每项含
-                {'id', 'name', 'points_json', 'forbidden_roles'}。
+                {'id', 'name', 'points_json', 'forbidden_roles',
+                 'safe_distance', 'dwell_time'}。
 
         Returns:
             detection_results: 检测结果列表。
@@ -212,11 +233,11 @@ class DetectionService:
         if person_boxes is None:
             person_boxes = self._detect_pedestrians(frame)
 
-        # 1. 危险区域闯入检测
+        # 1. 危险区域：闯入 / 距边缘过近 / 异常停留
         if zones:
             results.extend(
-                self._detect_zone_intrusion(
-                    frame, stream_id, zones, person_boxes, face_roles or {}
+                self._detect_zone_violations(
+                    stream_id, zones, person_boxes, face_roles or {}
                 )
             )
 
@@ -307,22 +328,20 @@ class DetectionService:
         return boxes
 
     # -----------------------------------------------------------------------
-    # 1. 危险区域闯入检测（INTRUSION）
+    # 1. 危险区域检测（INTRUSION / PROXIMITY / LOITER）
     # -----------------------------------------------------------------------
 
-    def _detect_zone_intrusion(
+    def _detect_zone_violations(
         self,
-        frame: np.ndarray,
         stream_id: str,
         zones: list[dict],
         person_boxes: list[dict],
         face_roles: dict[int, str],
     ) -> list[dict]:
-        """检测危险区域闯入。
-
-        dev 分支告警类型: INTRUSION（对应 Flask 版的 ZONE_INTRUSION）。
-        """
-        results = []
+        """检测危险区域闯入、距边缘过近与异常停留。"""
+        results: list[dict] = []
+        active_loiter_keys: set[tuple[int, int]] = set()
+        now = time.time()
 
         for zone in zones:
             if not zone.get("is_active", zone.get("enabled", True)):
@@ -332,44 +351,115 @@ class DetectionService:
             if polygon is None:
                 continue
 
-            forbidden = zone.get("forbidden_roles", [])
-            if isinstance(forbidden, str):
-                forbidden = [r.strip() for r in forbidden.split(",") if r.strip()]
+            forbidden = _normalize_forbidden_roles(zone.get("forbidden_roles", []))
+            if not forbidden:
+                continue
+
+            zone_id = zone.get("id", 0)
+            zone_name = zone.get("name", "危险区域")
+            safe_distance = max(0, int(zone.get("safe_distance") or 50))
+            dwell_time = max(1, int(zone.get("dwell_time") or 5))
 
             for box in person_boxes:
                 tid = box.get("track_id", -1)
                 role = face_roles.get(tid, "stranger")
-
                 if role not in forbidden:
                     continue
 
-                if _is_rect_in_polygon(
-                    box["x"], box["y"], box["w"], box["h"], polygon
-                ):
-                    if not self._check_cooldown("INTRUSION", stream_id):
-                        continue
+                cx, cy = _rect_center(box["x"], box["y"], box["w"], box["h"])
+                signed_dist = _distance_point_to_polygon((cx, cy), polygon)
+                inside = signed_dist < 0
+                bbox = (box["x"], box["y"], box["w"], box["h"])
 
-                    zone_name = zone.get("name", "危险区域")
-                    msg = f"[{zone_name}] 检测到 {role} 闯入禁区"
+                if inside:
+                    if self._check_cooldown("INTRUSION", stream_id):
+                        msg = f"[{zone_name}] 检测到 {role} 闯入禁区"
+                        self._create_alert(
+                            alert_type="INTRUSION",
+                            level="HIGH",
+                            stream_id=stream_id,
+                            description=msg,
+                        )
+                        results.append(
+                            {
+                                "alert_type": "INTRUSION",
+                                "message": msg,
+                                "bbox": bbox,
+                                "severity": "high",
+                                "zone_id": zone_id,
+                                "zone_name": zone_name,
+                            }
+                        )
+                        logger.info("Zone intrusion: %s", msg)
+                elif 0 < signed_dist < safe_distance:
+                    if self._check_cooldown("PROXIMITY", f"{stream_id}:{zone_id}"):
+                        msg = (
+                            f"[{zone_name}] {role} 距禁区边缘过近"
+                            f"（{signed_dist:.0f}px < {safe_distance}px）"
+                        )
+                        self._create_alert(
+                            alert_type="PROXIMITY",
+                            level="MEDIUM",
+                            stream_id=stream_id,
+                            description=msg,
+                        )
+                        results.append(
+                            {
+                                "alert_type": "PROXIMITY",
+                                "message": msg,
+                                "bbox": bbox,
+                                "severity": "medium",
+                                "zone_id": zone_id,
+                                "zone_name": zone_name,
+                                "detail": {
+                                    "distance_px": round(signed_dist, 1),
+                                    "safe_distance_px": safe_distance,
+                                },
+                            }
+                        )
+                        logger.info("Zone proximity: %s", msg)
 
-                    self._create_alert(
-                        alert_type="INTRUSION",
-                        level="HIGH",
-                        stream_id=stream_id,
-                        description=msg,
-                    )
+                in_loiter_area = inside or (
+                    signed_dist >= 0 and signed_dist < safe_distance
+                )
+                if in_loiter_area:
+                    loiter_key = (int(zone_id), int(tid))
+                    active_loiter_keys.add(loiter_key)
+                    started = self._loiter_since.get(loiter_key)
+                    if started is None:
+                        self._loiter_since[loiter_key] = now
+                    elif now - started >= dwell_time:
+                        if self._check_cooldown("LOITER", f"{stream_id}:{zone_id}"):
+                            msg = (
+                                f"[{zone_name}] {role} 在禁区附近停留超过"
+                                f" {dwell_time} 秒"
+                            )
+                            self._create_alert(
+                                alert_type="LOITER",
+                                level="MEDIUM",
+                                stream_id=stream_id,
+                                description=msg,
+                            )
+                            results.append(
+                                {
+                                    "alert_type": "LOITER",
+                                    "message": msg,
+                                    "bbox": bbox,
+                                    "severity": "medium",
+                                    "zone_id": zone_id,
+                                    "zone_name": zone_name,
+                                    "detail": {
+                                        "dwell_seconds": round(now - started, 1),
+                                        "dwell_threshold": dwell_time,
+                                    },
+                                }
+                            )
+                            logger.info("Zone loiter: %s", msg)
+                            self._loiter_since[loiter_key] = now
 
-                    results.append(
-                        {
-                            "alert_type": "INTRUSION",
-                            "message": msg,
-                            "bbox": (box["x"], box["y"], box["w"], box["h"]),
-                            "severity": "high",
-                            "zone_id": zone.get("id"),
-                            "zone_name": zone_name,
-                        }
-                    )
-                    logger.info("Zone intrusion: %s", msg)
+        stale = [key for key in self._loiter_since if key not in active_loiter_keys]
+        for key in stale:
+            del self._loiter_since[key]
 
         return results
 
@@ -587,6 +677,8 @@ class DetectionService:
 
         告警类型：
           - INTRUSION（区域闯入）
+          - PROXIMITY（距边缘过近）
+          - LOITER（异常停留）
           - WATER（积水）
           - FIRE（火情）
           - FALL（人员摔倒）
@@ -648,6 +740,8 @@ class DetectionService:
 
         color_map = {
             "INTRUSION": (0, 0, 255),
+            "PROXIMITY": (0, 128, 255),
+            "LOITER": (255, 128, 0),
             "WATER": (255, 0, 0),
             "FIRE": (0, 165, 255),
             "FALL": (0, 255, 255),
