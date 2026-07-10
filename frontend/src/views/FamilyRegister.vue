@@ -1,25 +1,60 @@
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, watch, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { memberApi, householdApi, faceApi } from '@/api'
+import FaceCapture from '@/components/FaceCapture.vue'
+import MobileRegisterQr from '@/components/MobileRegisterQr.vue'
+import { memberApi, householdApi } from '@/api'
 import request from '@/api/request'
+import { isMobileDevice } from '@/utils/device'
+
+const route = useRoute()
+const isMobile = ref(false)
+const fromMobileScan = computed(() => route.query.from === 'mobile')
 
 const activeHouseholdName = ref('')
 const activeHouseholdId = ref(localStorage.getItem('activeHouseholdId') || '')
 
 const form = reactive({ name: '', role: 'adult' })
+const inputMode = ref('camera')
 const previewUrl = ref('')
 const photoFile = ref(null)
 const submitting = ref(false)
 const members = ref([])
+const captureRef = ref(null)
+
+let previewObjectUrl = ''
+
+function setPreview(file, url) {
+  if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl)
+  photoFile.value = file
+  previewUrl.value = url
+  previewObjectUrl = url
+}
+
+function onFileChange(file) {
+  setPreview(file.raw, URL.createObjectURL(file.raw))
+}
+
+function onCameraCapture({ file, previewUrl: url }) {
+  setPreview(file, url)
+}
+
+watch(inputMode, (mode) => {
+  if (mode === 'upload') {
+    captureRef.value?.stopCamera?.()
+  } else {
+    captureRef.value?.startCamera?.()
+  }
+})
 
 async function loadHouseholdInfo() {
   if (!activeHouseholdId.value) return
   try {
     const data = await householdApi.list()
     const list = data.results || data
-    const h = list.find(h => h.id === Number(activeHouseholdId.value))
+    const h = list.find((item) => item.id === Number(activeHouseholdId.value))
     if (h) activeHouseholdName.value = h.name
   } catch (err) {
     console.error('加载家庭信息失败:', err)
@@ -37,15 +72,30 @@ async function loadMembers() {
   }
 }
 
-function onFileChange(file) {
-  photoFile.value = file.raw
-  previewUrl.value = URL.createObjectURL(file.raw)
+function clearPhoto() {
+  if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl)
+  previewObjectUrl = ''
+  photoFile.value = null
+  previewUrl.value = ''
 }
 
 async function onSubmit() {
-  if (!form.name.trim()) { ElMessage.warning('请输入姓名'); return }
-  if (!activeHouseholdId.value) { ElMessage.warning('请先在家庭管理中切换到当前家庭'); return }
-  if (!photoFile.value) { ElMessage.warning('请上传一张清晰的单人人脸照片'); return }
+  if (!form.name.trim()) {
+    ElMessage.warning('请输入姓名')
+    return
+  }
+  if (!activeHouseholdId.value) {
+    ElMessage.warning('请先在家庭管理中切换到当前家庭')
+    return
+  }
+  if (!photoFile.value) {
+    ElMessage.warning(
+      inputMode.value === 'camera'
+        ? '请先点击「截取当前画面」'
+        : '请上传一张清晰的单人人脸照片',
+    )
+    return
+  }
 
   submitting.value = true
   const data = new FormData()
@@ -58,8 +108,7 @@ async function onSubmit() {
     await request.post('/api/face/register/', data, { silent: true })
     ElMessage.success('家庭成员与人脸特征已录入')
     form.name = ''
-    photoFile.value = null
-    previewUrl.value = ''
+    clearPhoto()
     loadMembers()
   } catch (err) {
     const msg = err?.response?.data?.error || err?.response?.data?.detail || ''
@@ -72,8 +121,7 @@ async function onSubmit() {
         })
         ElMessage.warning('成员已保存；本地未安装人脸识别库，人脸特征需在服务器环境补录')
         form.name = ''
-        photoFile.value = null
-        previewUrl.value = ''
+        clearPhoto()
         loadMembers()
       } catch {
         /* interceptor shows error */
@@ -89,15 +137,21 @@ async function removeMember(member) {
     await memberApi.remove(member.id)
     ElMessage.success('已删除')
     loadMembers()
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
-onMounted(() => { loadHouseholdInfo(); loadMembers() })
+onMounted(() => {
+  isMobile.value = isMobileDevice()
+  if (isMobile.value) inputMode.value = 'camera'
+  loadHouseholdInfo()
+  loadMembers()
+})
 </script>
 
 <template>
   <div class="family-page">
-    <!-- 当前家庭提示 -->
     <el-alert
       v-if="!activeHouseholdId"
       title="请先在「家庭管理」中创建或切换到一个家庭"
@@ -107,7 +161,23 @@ onMounted(() => { loadHouseholdInfo(); loadMembers() })
       style="margin-bottom: 16px"
     />
 
-    <!-- 录入表单 -->
+    <el-alert
+      v-if="fromMobileScan && isMobile"
+      title="已从电脑端扫码进入，请确认已登录管理员账号并选中当前家庭"
+      type="success"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 16px"
+    />
+
+    <el-card v-if="!isMobile" shadow="never" style="margin-bottom: 16px">
+      <template #header>管理员手机录入</template>
+      <p class="section-intro">
+        需要给家人拍照录入时，可由管理员用手机打开下方链接，使用后置摄像头实时截取人脸。
+      </p>
+      <MobileRegisterQr />
+    </el-card>
+
     <el-card shadow="never">
       <template #header>
         <span>家庭成员录入</span>
@@ -115,7 +185,7 @@ onMounted(() => { loadHouseholdInfo(); loadMembers() })
           {{ activeHouseholdName }}
         </el-tag>
       </template>
-      <el-form :model="form" label-width="88px" style="max-width: 560px">
+      <el-form :model="form" label-width="88px" style="max-width: 640px">
         <el-form-item label="姓名">
           <el-input v-model="form.name" placeholder="如：爸爸" />
         </el-form-item>
@@ -127,20 +197,35 @@ onMounted(() => { loadHouseholdInfo(); loadMembers() })
             <el-radio value="guest">访客</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="人脸照片">
-          <el-upload drag :auto-upload="false" :show-file-list="false" accept="image/*" @change="onFileChange">
-            <el-icon :size="40"><UploadFilled /></el-icon>
-            <div class="upload-text">点击或拖拽上传人脸照片</div>
-          </el-upload>
-          <img v-if="previewUrl" :src="previewUrl" class="preview" alt="预览" />
+        <el-form-item label="录入方式">
+          <el-radio-group v-model="inputMode">
+            <el-radio value="camera">{{ isMobile ? '手机摄像头' : '电脑摄像头' }}</el-radio>
+            <el-radio value="upload">上传照片</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="人脸采集">
+          <FaceCapture
+            v-if="inputMode === 'camera'"
+            ref="captureRef"
+            @capture="onCameraCapture"
+          />
+          <template v-else>
+            <el-upload drag :auto-upload="false" :show-file-list="false" accept="image/*" @change="onFileChange">
+              <el-icon :size="40"><UploadFilled /></el-icon>
+              <div class="upload-text">点击或拖拽上传人脸照片</div>
+            </el-upload>
+          </template>
+          <div v-if="previewUrl" class="preview-wrap">
+            <img :src="previewUrl" class="preview" alt="待录入预览" />
+            <el-button link type="danger" @click="clearPhoto">清除重拍</el-button>
+          </div>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="onSubmit" :loading="submitting">录入成员</el-button>
+          <el-button type="primary" :loading="submitting" @click="onSubmit">录入成员</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- 已有成员 -->
     <el-card v-if="activeHouseholdId" shadow="never" style="margin-top: 16px">
       <template #header>家庭成员列表</template>
       <el-table v-if="members.length" :data="members" stripe>
@@ -170,9 +255,49 @@ onMounted(() => { loadHouseholdInfo(); loadMembers() })
 </template>
 
 <style scoped>
-.family-page { max-width: 700px; margin: 0 auto; }
+.family-page {
+  max-width: 760px;
+  margin: 0 auto;
+}
 
-.upload-text { margin-top: 8px; color: var(--el-text-color-secondary); font-size: 13px; }
+.section-intro {
+  margin: 0 0 12px;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.6;
+}
 
-.preview { display: block; margin-top: 12px; width: 200px; height: 200px; object-fit: cover; border-radius: 8px; border: 1px solid var(--el-border-color); }
+@media (max-width: 768px) {
+  .family-page {
+    max-width: 100%;
+  }
+
+  .family-page :deep(.el-form-item__label) {
+    width: 100% !important;
+    justify-content: flex-start;
+  }
+
+  .family-page :deep(.el-form-item__content) {
+    margin-left: 0 !important;
+  }
+}
+
+.upload-text {
+  margin-top: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 13px;
+}
+
+.preview-wrap {
+  margin-top: 12px;
+}
+
+.preview {
+  display: block;
+  width: 200px;
+  height: 200px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--el-border-color);
+}
 </style>
