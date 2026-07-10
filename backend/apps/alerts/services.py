@@ -83,12 +83,21 @@ def get_pending_alerts(stream_id: str = None):
     return qs.order_by("-created_at")
 
 
-def handle_alert(alert_id: int) -> Alert:
+def handle_alert(alert_id: int, handled_by=None) -> Alert:
     """将告警标记为已处理"""
     from django.utils import timezone
 
     alert = Alert.objects.get(id=alert_id)
     alert.status = "handled"
     alert.handled_at = timezone.now()
-    alert.save(update_fields=["status", "handled_at"])
+
+    # 记录处理人信息
+    if handled_by:
+        alert.metadata["handled_by"] = {
+            "user_id": handled_by.id,
+            "phone": handled_by.phone,
+        }
+        alert.metadata["handled_at"] = alert.handled_at.isoformat()
+
+    alert.save(update_fields=["status", "handled_at", "metadata"])
     return alert

@@ -68,6 +68,12 @@ const routes = [
     component: () => import('@/views/Profile.vue'),
     meta: { title: '个人信息' },
   },
+  {
+    path: '/settings/notifications',
+    name: 'NotificationSettings',
+    component: () => import('@/views/NotificationSettings.vue'),
+    meta: { title: '通知设置' },
+  },
 ]
 
 const router = createRouter({

@@ -1,32 +1,33 @@
 """Alerts — 序列化器"""
 from rest_framework import serializers
-from apps.common.serializers import SnapshotUrlMixin
 from apps.alerts.models import Alert
-from apps.alerts.services import handle_alert
 
 
-class AlertSerializer(SnapshotUrlMixin, serializers.ModelSerializer):
+class AlertSerializer(serializers.ModelSerializer):
     """告警序列化"""
 
     type_display = serializers.CharField(source="get_type_display", read_only=True)
     level_display = serializers.CharField(source="get_level_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
+    snapshot_url = serializers.CharField(read_only=True)
+    assigned_to_name = serializers.CharField(read_only=True)
 
     class Meta:
         model = Alert
-        fields = [
-            "id",
-            "type",
-            "type_display",
-            "level",
-            "level_display",
-            "stream_id",
-            "description",
-            "snapshot_path",
-            "snapshot_url",
-            "status",
-            "status_display",
-            "created_at",
-            "handled_at",
+        fields = "__all__"
+        read_only_fields = [
+            "id", "created_at", "handled_at",
+            "escalation_level", "escalation_last_at", "notified_at",
         ]
-        read_only_fields = ["id", "created_at", "handled_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        filename = data.get("snapshot_path") or ""
+        if filename:
+            request = self.context.get("request")
+            path = f"/api/snapshots/{filename}/"
+            data["snapshot_url"] = request.build_absolute_uri(path) if request else path
+        else:
+            data["snapshot_url"] = None
+        data["assigned_to_name"] = instance.assigned_to.phone if instance.assigned_to_id else ""
+        return data

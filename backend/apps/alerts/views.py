@@ -20,6 +20,8 @@ class AlertViewSet(viewsets.ModelViewSet):
     filter_backends = [HouseholdFilterBackend]
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Alert.objects.none()
         qs = super().get_queryset()
         alert_type = self.request.query_params.get("type")
         alert_status = self.request.query_params.get("status")
@@ -53,5 +55,5 @@ class AlertViewSet(viewsets.ModelViewSet):
         alert = self.get_object()
         if alert.status != "pending":
             return Response({"error": "该告警已处理或已忽略"}, status=status.HTTP_400_BAD_REQUEST)
-        updated = handle_alert(alert.id)
+        updated = handle_alert(alert.id, handled_by=request.user)
         return Response(AlertSerializer(updated).data)

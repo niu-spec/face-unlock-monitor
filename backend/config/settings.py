@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "apps.households",  # E-刘帅华：家庭管理
     "apps.video_stream",  # B-苏哲勋：MediaMTX + RTSP 视频预览
     "apps.reports",  # A：AI 监控日报
+    "apps.notifications",  # 钉钉告警通知 + 逐级升级
 ]
 
 # ── Detection config ─────────────────────────────────────────────────
@@ -165,6 +166,26 @@ SIMPLE_JWT = {
     # Token blacklist — 退出登录时将 refresh token 加入黑名单
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
+}
+
+# ── DingTalk (钉钉) notification ─────────────────────────────────────
+
+DINGTALK = {
+    # 全局开关
+    "ENABLED": os.environ.get("DINGTALK_ENABLED", "False").lower() in ("true", "1", "yes"),
+    # 全局 fallback Webhook（如果家庭级别未配置则使用此地址）
+    "WEBHOOK_URL": os.environ.get("DINGTALK_WEBHOOK_URL", ""),
+    "SECRET": os.environ.get("DINGTALK_SECRET", ""),
+    # 分级升级超时（秒），可被家庭级别的 DingTalkConfig 覆盖
+    "ESCALATION_TIMEOUT_HIGH": int(os.environ.get("DINGTALK_ESCALATION_HIGH", "60")),
+    "ESCALATION_TIMEOUT_MEDIUM": int(os.environ.get("DINGTALK_ESCALATION_MEDIUM", "300")),
+    "ESCALATION_TIMEOUT_LOW": int(os.environ.get("DINGTALK_ESCALATION_LOW", "900")),
+    # 最大升级层级（0=主R, 1=+1, 2=+2, 3=+3）
+    "MAX_ESCALATION_LEVEL": int(os.environ.get("DINGTALK_MAX_ESCALATION", "3")),
+    # 升级检查器轮询间隔（秒）
+    "CHECKER_INTERVAL": int(os.environ.get("DINGTALK_CHECKER_INTERVAL", "30")),
+    # 消息标题前缀
+    "MESSAGE_TITLE_PREFIX": os.environ.get("DINGTALK_TITLE_PREFIX", "安防告警"),
 }
 
 # ── drf-yasg (Swagger) ───────────────────────────────────────────────

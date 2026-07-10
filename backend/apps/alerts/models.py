@@ -49,6 +49,27 @@ class Alert(models.Model):
     description = models.TextField("告警描述", blank=True)
     snapshot_path = models.CharField("截图路径", max_length=256, blank=True, help_text="告警时刻的截图文件路径")
     status = models.CharField("处理状态", max_length=16, choices=STATUS_CHOICES, default="pending")
+    assigned_to = models.ForeignKey(
+        "accounts.User", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="assigned_alerts", verbose_name="当前负责人",
+        help_text="当前应处理此告警的人（升级后指向上级）",
+    )
+    escalation_level = models.IntegerField(
+        "升级层级", default=0,
+        help_text="0=主R, 1=+1上级, 2=+2上级...",
+    )
+    escalation_last_at = models.DateTimeField(
+        "最近升级时间", null=True, blank=True,
+        help_text="上一次触发升级的时间",
+    )
+    notified_at = models.DateTimeField(
+        "首次通知时间", null=True, blank=True,
+        help_text="告警首次推送到钉钉的时间",
+    )
+    metadata = models.JSONField(
+        "扩展元数据", default=dict, blank=True,
+        help_text="存储通知历史、升级记录等扩展信息",
+    )
     created_at = models.DateTimeField("发生时间", auto_now_add=True)
     handled_at = models.DateTimeField("处置时间", null=True, blank=True)
 

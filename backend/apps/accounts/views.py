@@ -198,6 +198,9 @@ def me_view(request):
     return Response({
         "id": user.id,
         "phone": str(user.phone),
+        "dingtalk_user_id": user.dingtalk_user_id,
+        "dingtalk_mobile": user.dingtalk_mobile,
+        "supervisor_id": user.supervisor_id,
         "households": [
             {"id": h["household__id"], "name": h["household__name"], "role": h["role"]}
             for h in households
@@ -210,7 +213,53 @@ def me_view(request):
 @permission_classes([IsAuthenticated])
 def profile_view(request):
     user = request.user
-    return Response({"id": user.id, "phone": str(user.phone)})
+    return Response({
+        "id": user.id,
+        "phone": str(user.phone),
+        "dingtalk_user_id": user.dingtalk_user_id,
+        "dingtalk_mobile": user.dingtalk_mobile,
+        "supervisor_id": user.supervisor_id,
+    })
+
+
+@swagger_auto_schema(method="put", tags=["个人信息"], operation_description="更新个人信息（钉钉ID、手机号等）")
+@api_view(["PUT"])
+@permission_classes([IsAuthenticated])
+def update_profile_view(request):
+    """更新钉钉相关字段"""
+    user = request.user
+
+    dingtalk_user_id = request.data.get("dingtalk_user_id", None)
+    dingtalk_mobile = request.data.get("dingtalk_mobile", None)
+    supervisor_id = request.data.get("supervisor_id", None)
+
+    update_fields = []
+    if dingtalk_user_id is not None:
+        user.dingtalk_user_id = dingtalk_user_id
+        update_fields.append("dingtalk_user_id")
+    if dingtalk_mobile is not None:
+        user.dingtalk_mobile = dingtalk_mobile
+        update_fields.append("dingtalk_mobile")
+    if supervisor_id is not None:
+        if supervisor_id:
+            from apps.accounts.models import User
+            try:
+                User.objects.get(id=supervisor_id)
+            except User.DoesNotExist:
+                return Response({"error": "指定的上级用户不存在"}, status=400)
+        user.supervisor_id = supervisor_id or None
+        update_fields.append("supervisor_id")
+
+    if update_fields:
+        user.save(update_fields=update_fields)
+
+    return Response({
+        "id": user.id,
+        "phone": str(user.phone),
+        "dingtalk_user_id": user.dingtalk_user_id,
+        "dingtalk_mobile": user.dingtalk_mobile,
+        "supervisor_id": user.supervisor_id,
+    })
 
 
 @swagger_auto_schema(

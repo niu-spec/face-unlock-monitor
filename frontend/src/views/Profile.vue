@@ -4,8 +4,11 @@ import { ElMessage } from 'element-plus'
 import { authApi } from '@/api'
 
 const currentPhone = ref('')
+const dingtalkUserId = ref('')
+const dingtalkMobile = ref('')
 const changing = ref(false)
 const smsCountdown = ref(0)
+const savingDingtalk = ref(false)
 
 const form = reactive({
   phone: '',
@@ -16,6 +19,8 @@ async function loadProfile() {
   try {
     const data = await authApi.getMe()
     currentPhone.value = data.phone || ''
+    dingtalkUserId.value = data.dingtalk_user_id || ''
+    dingtalkMobile.value = data.dingtalk_mobile || ''
     localStorage.setItem('user', JSON.stringify({ phone: data.phone }))
   } catch { /* ignore */ }
 }
@@ -57,6 +62,21 @@ function cancelChange() {
   form.smsCode = ''
 }
 
+async function saveDingtalkInfo() {
+  savingDingtalk.value = true
+  try {
+    await authApi.updateProfile({
+      dingtalk_user_id: dingtalkUserId.value,
+      dingtalk_mobile: dingtalkMobile.value,
+    })
+    ElMessage.success('钉钉信息已保存')
+  } catch {
+    ElMessage.error('保存失败')
+  } finally {
+    savingDingtalk.value = false
+  }
+}
+
 onMounted(loadProfile)
 </script>
 
@@ -66,12 +86,19 @@ onMounted(loadProfile)
       <template #header>个人信息</template>
 
       <!-- 当前信息 -->
-      <el-form v-if="!changing" label-width="80px" style="max-width: 480px">
+      <el-form v-if="!changing" label-width="100px" style="max-width: 480px">
         <el-form-item label="手机号">
           <span style="font-size: 16px; font-weight: 500">{{ currentPhone }}</span>
         </el-form-item>
+        <el-form-item label="钉钉 UserID">
+          <el-input v-model="dingtalkUserId" placeholder="钉钉企业内部UserID，用于@提醒" />
+        </el-form-item>
+        <el-form-item label="钉钉手机号">
+          <el-input v-model="dingtalkMobile" placeholder="如与登录手机号不同，用于@提醒" />
+        </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="changing = true">更换手机号</el-button>
+          <el-button type="primary" :loading="savingDingtalk" @click="saveDingtalkInfo">保存钉钉信息</el-button>
+          <el-button @click="changing = true">更换手机号</el-button>
         </el-form-item>
       </el-form>
 

@@ -9,6 +9,8 @@ export const authApi = {
   getCaptcha: () => request.get('/api/auth/captcha/'),
   getMe: () => request.get('/api/auth/me/'),
   changePhone: (data) => request.post('/api/auth/change-phone/', data),
+  getProfile: () => request.get('/api/auth/profile/'),
+  updateProfile: (data) => request.put('/api/auth/profile/update/', data),
 }
 
 // ── 家庭管理 ──────────────────────────────────────────
@@ -87,6 +89,13 @@ export const homeApi = {
 // ── 视频流状态（与 MJPEG 同进程，含实时 presence）──────
 export const videoApi = {
   status: () => request.get('/api/video/status', { silent: true }),
+}
+
+// ── 通知配置 ──────────────────────────────────────────
+export const notificationApi = {
+  getConfig: () => request.get('/api/notifications/config/'),
+  updateConfig: (data) => request.put('/api/notifications/config/', data),
+  testWebhook: () => request.post('/api/notifications/config/test/'),
 }
 
 export { videoFeedPath as videoFeedUrl, webrtcPreviewUrl } from '@/constants/streams'

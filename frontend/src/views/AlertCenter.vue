@@ -76,6 +76,25 @@ onMounted(loadAlerts)
           </el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="通知状态" width="110">
+        <template #default="{ row }">
+          <template v-if="!row.notified_at">
+            <el-tag size="small" type="info">未通知</el-tag>
+          </template>
+          <template v-else-if="row.escalation_level > 0">
+            <el-tag size="small" type="warning">已升级 Lv.{{ row.escalation_level }}</el-tag>
+          </template>
+          <template v-else>
+            <el-tag size="small" type="success">已通知</el-tag>
+          </template>
+        </template>
+      </el-table-column>
+      <el-table-column label="负责人" width="120">
+        <template #default="{ row }">
+          <span v-if="row.assigned_to_name">{{ row.assigned_to_name }}</span>
+          <span v-else style="color:#999">-</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="created_at" label="时间" width="180" />
       <el-table-column label="回放" width="90">
         <template #default="{ row }">

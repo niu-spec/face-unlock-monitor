@@ -25,6 +25,8 @@ class HouseholdViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Household.objects.none()
         return Household.objects.filter(memberships__user=self.request.user).distinct()
 
     def perform_create(self, serializer):
@@ -197,6 +199,8 @@ class CameraViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Camera.objects.none()
         qs = Camera.objects.filter(is_active=True)
         household_id = self.request.headers.get("X-Active-Household-Id")
         if household_id:

@@ -1,13 +1,13 @@
 """Events — 序列化器"""
 from rest_framework import serializers
-from apps.common.serializers import SnapshotUrlMixin
 from apps.events.models import Event
 
 
-class EventSerializer(SnapshotUrlMixin, serializers.ModelSerializer):
+class EventSerializer(serializers.ModelSerializer):
     """事件日志序列化"""
 
     event_type_display = serializers.CharField(source="get_event_type_display", read_only=True)
+    snapshot_url = serializers.CharField(read_only=True)
 
     class Meta:
         model = Event
@@ -23,3 +23,14 @@ class EventSerializer(SnapshotUrlMixin, serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        filename = data.get("snapshot_path") or ""
+        if filename:
+            request = self.context.get("request")
+            path = f"/api/snapshots/{filename}/"
+            data["snapshot_url"] = request.build_absolute_uri(path) if request else path
+        else:
+            data["snapshot_url"] = None
+        return data

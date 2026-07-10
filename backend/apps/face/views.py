@@ -41,6 +41,7 @@ class FaceRegisterView(APIView):
             openapi.Parameter("image", openapi.IN_FORM, type=openapi.TYPE_FILE, required=True),
         ],
         responses={201: "注册成功", 400: "图片或参数无效"},
+        consumes=["multipart/form-data"],
     )
     def post(self, request):
         household_id = resolve_active_household_id(request)
@@ -90,6 +91,7 @@ class FaceAnalyzeView(APIView):
             openapi.Parameter("stream_id", openapi.IN_FORM, type=openapi.TYPE_STRING),
             openapi.Parameter("image", openapi.IN_FORM, type=openapi.TYPE_FILE, required=True),
         ],
+        consumes=["multipart/form-data"],
     )
     def post(self, request):
         try:

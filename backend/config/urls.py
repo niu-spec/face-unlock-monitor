@@ -34,6 +34,8 @@ urlpatterns = [
     path("", include("apps.video_stream.urls")),              # B-苏哲勋：视频流
     path("api/", include("apps.households.urls")),            # E-刘帅华：家庭/摄像头
 
+    path("api/notifications/", include("apps.notifications.urls")),
+
     # Swagger UI
     path(
         "api/docs/",

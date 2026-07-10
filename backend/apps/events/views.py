@@ -14,6 +14,8 @@ class EventViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, viewsets.Ge
     filter_backends = [HouseholdFilterBackend]
 
     def get_queryset(self):
+        if getattr(self, "swagger_fake_view", False):
+            return Event.objects.none()
         qs = super().get_queryset()
         event_type = self.request.query_params.get("event_type")
         stream_id = self.request.query_params.get("stream_id")

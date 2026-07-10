@@ -33,6 +33,20 @@ class User(AbstractUser):
     username = None
     phone = models.CharField("手机号", max_length=16, unique=True, db_index=True)
 
+    dingtalk_user_id = models.CharField(
+        "钉钉UserID", max_length=128, blank=True, default="",
+        help_text="钉钉企业内部UserID，用于@提醒（非unionid）",
+    )
+    supervisor = models.ForeignKey(
+        "self", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="subordinates", verbose_name="直属上级",
+        help_text="升级链路：当前用户未响应时，告警升级至其上级",
+    )
+    dingtalk_mobile = models.CharField(
+        "钉钉手机号", max_length=16, blank=True, default="",
+        help_text="如与登录手机号不同，用于钉钉@手机号提醒",
+    )
+
     USERNAME_FIELD = "phone"
     REQUIRED_FIELDS = []
 
