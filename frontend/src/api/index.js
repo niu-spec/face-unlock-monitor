@@ -65,6 +65,13 @@ export function fetchSnapshotBlob(filename) {
   })
 }
 
+// ── 监控日报 ──────────────────────────────────────────
+export const reportApi = {
+  list: () => request.get('/api/reports/daily/'),
+  detail: (id) => request.get(`/api/reports/daily/${id}/`),
+  generate: (data = {}) => request.post('/api/reports/daily/generate/', data),
+}
+
 // ── 摄像头 ────────────────────────────────────────────
 export const cameraApi = {
   list: () => request.get('/api/cameras/'),

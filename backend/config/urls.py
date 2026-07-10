@@ -27,6 +27,7 @@ urlpatterns = [
     path("api/zones/", include("apps.zones.urls")),
     path("api/alerts/", include("apps.alerts.urls")),
     path("api/events/", include("apps.events.urls")),
+    path("api/reports/", include("apps.reports.urls")),
     path("api/snapshots/<str:filename>/", snapshot_file, name="snapshot-replay"),
     path("api/detection/", include("apps.detection.urls")),  # D-李东礼
     path("api/face/", include("apps.face.urls")),            # C-王梓铭
