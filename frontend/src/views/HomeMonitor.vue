@@ -97,7 +97,7 @@ function openWebRtcWindow() {
         </el-card>
       </el-col>
       <el-col :span="8">
-        <PersonStats />
+        <PersonStats :stream-id="activeStream" />
       </el-col>
     </el-row>
   </div>

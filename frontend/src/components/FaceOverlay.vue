@@ -1,6 +1,7 @@
 <script setup>
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { videoApi } from '@/api'
+import { toZoneStreamId } from '@/constants/streams'
 
 const props = defineProps({
   streamId: {
@@ -133,8 +134,14 @@ function drawOverlay() {
   }
 }
 
+function presenceMatchesStream(presence) {
+  if (!presence?.stream_id) return false
+  const legacyId = toZoneStreamId(props.streamId)
+  return String(presence.stream_id) === String(legacyId)
+}
+
 function applyPresence(presence) {
-  if (!presence || String(presence.stream_id) !== String(props.streamId)) {
+  if (!presenceMatchesStream(presence)) {
     faces = []
     clearCanvas()
     return
@@ -154,7 +161,7 @@ async function fetchPresence() {
   if (!props.active) return
 
   try {
-    const data = await videoApi.status()
+    const data = await videoApi.status(props.streamId)
     applyPresence(data.presence)
   } catch {
     faces = []

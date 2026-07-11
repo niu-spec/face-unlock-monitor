@@ -1,4 +1,4 @@
-# CI 专用依赖（不含 dlib/face_recognition，避免 GitLab Runner 编译失败）
+# CI 专用依赖（不含 dlib/face_recognition，避免 CI 环境编译失败）
 django~=4.2.0
 djangorestframework~=3.14.0
 djangorestframework-simplejwt~=5.3.0

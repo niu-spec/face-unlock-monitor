@@ -42,6 +42,19 @@ def _to_business_stream_id(stream_id: str) -> str:
     return _VIDEO_TO_BUSINESS_STREAM.get(stream_id, stream_id)
 
 
+def resolve_presence_stream_id(stream_id: str | None) -> str | None:
+    """解析 presence 查询参数中的 stream_id。"""
+    raw = (stream_id or "").strip()
+    if not raw:
+        return None
+    return _to_business_stream_id(raw)
+
+
+def resolve_household_id_for_stream(stream_id: str) -> int | None:
+    """尽力根据业务流 ID 找到对应家庭 ID。"""
+    return _resolve_household_id_for_stream(stream_id)
+
+
 def _resolve_household_id_for_stream(stream_id: str) -> int | None:
     """尽力根据业务流 ID 找到对应家庭 ID。"""
     try:

@@ -5,8 +5,11 @@ from django.test import SimpleTestCase
 
 from apps.detection.services import (
     DetectionService,
+    ZONE_EDITOR_HEIGHT,
+    ZONE_EDITOR_WIDTH,
     _distance_point_to_polygon,
     _parse_polygon,
+    _parse_polygon_for_frame,
 )
 
 
@@ -40,7 +43,7 @@ class ZoneViolationTests(SimpleTestCase):
         face_roles = {1: "child"}
 
         results = self.service._detect_zone_violations(
-            "kitchen", zones, person_boxes, face_roles
+            "kitchen", zones, person_boxes, face_roles, 640, 480
         )
 
         self.assertEqual(len(results), 1)
@@ -58,7 +61,7 @@ class ZoneViolationTests(SimpleTestCase):
         # INTRUSION_PERSIST_FRAMES=3：需连续多帧在禁区内才触发闯入告警
         for _ in range(3):
             results = self.service._detect_zone_violations(
-                "kitchen", zones, person_boxes, face_roles
+                "kitchen", zones, person_boxes, face_roles, 640, 480
             )
 
         self.assertEqual(len(results), 1)
@@ -73,13 +76,13 @@ class ZoneViolationTests(SimpleTestCase):
         with patch("apps.detection.services.time.time") as mock_time:
             mock_time.return_value = 1000.0
             first = self.service._detect_zone_violations(
-                "kitchen", zones, person_boxes, face_roles
+                "kitchen", zones, person_boxes, face_roles, 640, 480
             )
             self.assertTrue(any(r["alert_type"] == "PROXIMITY" for r in first))
 
             mock_time.return_value = 1002.0
             second = self.service._detect_zone_violations(
-                "kitchen", zones, person_boxes, face_roles
+                "kitchen", zones, person_boxes, face_roles, 640, 480
             )
 
         loiter = [r for r in second if r["alert_type"] == "LOITER"]
@@ -92,7 +95,7 @@ class ZoneViolationTests(SimpleTestCase):
         face_roles = {3: "adult"}
 
         results = self.service._detect_zone_violations(
-            "kitchen", zones, person_boxes, face_roles
+            "kitchen", zones, person_boxes, face_roles, 640, 480
         )
 
         self.assertEqual(results, [])
@@ -104,3 +107,9 @@ class ZoneViolationTests(SimpleTestCase):
         outside = _distance_point_to_polygon((150, 50), polygon)
         self.assertGreater(inside, 0)
         self.assertLess(outside, 0)
+
+    def test_polygon_scales_to_detection_frame(self):
+        points = [[0, 0], [ZONE_EDITOR_WIDTH, 0], [ZONE_EDITOR_WIDTH, ZONE_EDITOR_HEIGHT], [0, ZONE_EDITOR_HEIGHT]]
+        polygon = _parse_polygon_for_frame(points, 1280, 720)
+        self.assertEqual(int(polygon[1][0][0]), 1280)
+        self.assertEqual(int(polygon[2][0][1]), 720)

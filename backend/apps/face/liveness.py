@@ -49,7 +49,7 @@ class LivenessDetectionService:
             event = self._build_event(result, str(stream_id))
             events.append(event)
             if persist_alert:
-                self._persist_alert(event, household_id)
+                self._persist_alert(event, household_id, frame=frame)
         return result, events
 
     def analyze_sequence(
@@ -254,7 +254,11 @@ class LivenessDetectionService:
         return True
 
     @staticmethod
-    def _persist_alert(event: dict[str, Any], household_id: int | None) -> None:
+    def _persist_alert(
+        event: dict[str, Any],
+        household_id: int | None,
+        frame: np.ndarray | None = None,
+    ) -> None:
         try:
             from apps.alerts.services import create_alert
 
@@ -264,6 +268,8 @@ class LivenessDetectionService:
                 stream_id=event["stream_id"],
                 description=event["description"],
                 household_id=household_id,
+                frame=frame,
+                metadata=event.get("details"),
             )
         except Exception:
             logger.exception("持久化人脸活体攻击告警失败")

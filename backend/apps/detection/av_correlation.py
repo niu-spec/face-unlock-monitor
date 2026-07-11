@@ -325,12 +325,14 @@ class AVCorrelationBuffer:
         # 写入告警
         try:
             from apps.alerts.services import create_alert
+            from apps.video_stream.services import resolve_household_id_for_stream
 
             create_alert(
                 type=emergency_type,
                 level=level,
                 stream_id=stream_id,
                 description=description,
+                household_id=resolve_household_id_for_stream(stream_id),
                 metadata={
                     "source": "av_correlation",
                     "audio_type": audio.alert_type,

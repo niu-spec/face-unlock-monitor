@@ -68,7 +68,7 @@ def collect_daily_stats(household_id: int, report_date: date) -> dict[str, Any]:
     total_alerts = alerts_qs.count()
     pending_alerts = alerts_qs.filter(status="pending").count()
     handled_alerts = alerts_qs.filter(status="handled").count()
-    high_alerts = alerts_qs.filter(level="HIGH").count()
+    high_alerts = alerts_qs.filter(level__in=["HIGH", "CRITICAL"]).count()
 
     highlights = list(
         alerts_qs.order_by("-created_at").values(
