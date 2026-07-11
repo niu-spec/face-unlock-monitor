@@ -65,7 +65,7 @@ class FaceRecognitionService:
         self._members: dict[str, dict[str, Any]] = {}
         self._last_unknown_alert: dict[str, float] = {}
         self._last_db_sync = 0.0
-        self._presence = self._empty_presence()
+        self._presence_by_stream: dict[str, dict[str, Any]] = {}
         self._load_registry()
 
     @staticmethod
@@ -392,7 +392,7 @@ class FaceRecognitionService:
                 self._persist_unknown_alert(event, household_id, frame=output)
 
         with self._lock:
-            self._presence = deepcopy(presence)
+            self._presence_by_stream[str(stream_id)] = deepcopy(presence)
         return output, presence, events
 
     @staticmethod
@@ -418,13 +418,31 @@ class FaceRecognitionService:
 
             logging.getLogger(__name__).exception("持久化 FACE_UNKNOWN 告警失败")
 
-    def get_presence(self) -> dict[str, Any]:
+    def get_presence(self, stream_id: str | None = None) -> dict[str, Any]:
         with self._lock:
-            return deepcopy(self._presence)
+            if stream_id:
+                return deepcopy(
+                    self._presence_by_stream.get(
+                        str(stream_id), self._empty_presence()
+                    )
+                )
+            if not self._presence_by_stream:
+                return self._empty_presence()
+            latest = max(
+                self._presence_by_stream.values(),
+                key=lambda item: item.get("updated_at") or "",
+            )
+            return deepcopy(latest)
+
+    def get_all_presence(self) -> dict[str, dict[str, Any]]:
+        with self._lock:
+            return deepcopy(self._presence_by_stream)
 
     def set_presence(self, presence: dict[str, Any]) -> None:
         with self._lock:
-            self._presence = deepcopy(presence)
+            stream_id = presence.get("stream_id")
+            if stream_id:
+                self._presence_by_stream[str(stream_id)] = deepcopy(presence)
 
     def list_registered_members(self) -> list[dict[str, Any]]:
         with self._lock:

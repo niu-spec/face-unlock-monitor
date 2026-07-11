@@ -37,7 +37,7 @@ function openWebRtcWindow() {
 
 async function refreshVideoStatus() {
   try {
-    const data = await videoApi.status()
+    const data = await videoApi.status(activeStream.value)
     livenessByStream.value = data.liveness || {}
   } catch {
     /* keep the last liveness status */
@@ -129,7 +129,7 @@ onBeforeUnmount(() => {
         </el-card>
       </el-col>
       <el-col :span="8">
-        <PersonStats />
+        <PersonStats :stream-id="activeStream" />
       </el-col>
     </el-row>
   </div>

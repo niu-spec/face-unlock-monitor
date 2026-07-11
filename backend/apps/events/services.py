@@ -6,6 +6,10 @@ from apps.events.models import Event
 
 ALERT_TO_EVENT_TYPE = {
     "FACE_UNKNOWN": "FACE_UNKNOWN",
+    "FACE_SPOOF": "FACE_UNKNOWN",
+    "FACE_REPLAY": "FACE_UNKNOWN",
+    "FACE_DEEPFAKE": "FACE_UNKNOWN",
+    "FACE_AUTH_FAILED": "FACE_UNKNOWN",
     "INTRUSION": "INTRUSION",
     "PROXIMITY": "PROXIMITY",
     "LOITER": "LOITER",
@@ -13,6 +17,12 @@ ALERT_TO_EVENT_TYPE = {
     "FIRE": "FIRE",
     "WATER": "WATER",
     "FALL": "FALL",
+    "SCREAM": "SYSTEM",
+    "FIGHT": "SYSTEM",
+    "CRYING": "SYSTEM",
+    "GLASS_BREAK": "SYSTEM",
+    "ABNORMAL_SOUND": "SYSTEM",
+    "EMERGENCY": "SYSTEM",
 }
 
 

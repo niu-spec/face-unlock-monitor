@@ -1,6 +1,14 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { homeApi, videoApi } from '@/api'
+import { toZoneStreamId } from '@/constants/streams'
+
+const props = defineProps({
+  streamId: {
+    type: String,
+    default: '',
+  },
+})
 
 const stats = ref({
   total: 0,
@@ -21,20 +29,29 @@ function applyPresence(data) {
 }
 
 async function fetchPresence() {
+  const legacyId = props.streamId ? toZoneStreamId(props.streamId) : ''
+
   try {
-    const videoStatus = await videoApi.status()
+    const videoStatus = await videoApi.status(props.streamId || undefined)
     if (applyPresence(videoStatus.presence)) return
   } catch {
     // fall through to legacy endpoint
   }
 
   try {
-    const data = await homeApi.presence()
+    const data = await homeApi.presence(legacyId || undefined)
     applyPresence(data)
   } catch {
     stats.value = { total: 0, family: 0, stranger: 0 }
   }
 }
+
+watch(
+  () => props.streamId,
+  () => {
+    fetchPresence()
+  },
+)
 
 onMounted(() => {
   fetchPresence()

@@ -735,6 +735,7 @@ class AudioDetectionService:
         # 写入告警
         try:
             from apps.alerts.services import create_alert
+            from apps.video_stream.services import resolve_household_id_for_stream
 
             create_alert(
                 type=alert_type,
@@ -742,6 +743,7 @@ class AudioDetectionService:
                 stream_id=stream_id,
                 description=description,
                 snapshot_path=snippet_path,
+                household_id=resolve_household_id_for_stream(stream_id),
                 metadata={
                     "source": "audio",
                     "confidence": round(confidence, 4),

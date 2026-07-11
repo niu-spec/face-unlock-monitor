@@ -54,6 +54,7 @@ def create_alert(
         description=description,
         snapshot_path=snapshot_path,
         household_id=household_id,
+        metadata=dict(metadata or {}),
     )
 
     try:

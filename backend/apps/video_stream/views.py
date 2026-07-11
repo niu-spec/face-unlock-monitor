@@ -11,6 +11,7 @@ from .services import (
     gen_frames,
     get_liveness_status,
     get_workers_status,
+    resolve_presence_stream_id,
 )
 
 
@@ -34,6 +35,8 @@ def video_feed(request, stream_id):
 def video_status(request):
     from apps.face.services import get_face_service
 
+    service = get_face_service()
+    stream_id = resolve_presence_stream_id(request.GET.get("stream_id"))
     return JsonResponse(
         {
             "code": 200,
@@ -41,7 +44,8 @@ def video_status(request):
             "rtsp_base_url": RTSP_BASE_URL,
             "rtmp_public_base_url": RTMP_PUBLIC_BASE_URL,
             # 与 MJPEG 同进程的人数快照，避免 Nginx 将 /api/home/ 指到另一 Django 时读不到数据
-            "presence": get_face_service().get_presence(),
+            "presence": service.get_presence(stream_id),
+            "presences": service.get_all_presence(),
             "liveness": get_liveness_status(),
             "workers": get_workers_status(),
         }

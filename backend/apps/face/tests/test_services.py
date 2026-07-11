@@ -141,6 +141,23 @@ class FaceRecognitionServiceTests(TestCase):
 
         self.assertFalse(np.array_equal(annotated, self.frame))
 
+    @patch("apps.face.services._load_face_recognition")
+    def test_presence_is_tracked_per_stream(self, load_library):
+        library = Mock()
+        library.face_locations.return_value = [(10, 40, 40, 10)]
+        library.face_encodings.return_value = [np.zeros(128)]
+        library.face_distance.return_value = np.array([0.9])
+        load_library.return_value = library
+
+        self.service.process_frame(self.frame, "living_room", persist_alert=False)
+        self.service.process_frame(self.frame, "kitchen", persist_alert=False)
+
+        living_room = self.service.get_presence("living_room")
+        kitchen = self.service.get_presence("kitchen")
+
+        self.assertEqual(living_room["stream_id"], "living_room")
+        self.assertEqual(kitchen["stream_id"], "kitchen")
+
 from apps.face.liveness import FACE_SPOOF, LivenessDetectionService
 
 

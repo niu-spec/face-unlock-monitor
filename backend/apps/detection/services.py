@@ -96,6 +96,11 @@ DETECTION_CONFIG = {
 }
 
 
+# ZoneEditor 画布尺寸（前端固定 640×480，检测帧需按比例缩放）
+ZONE_EDITOR_WIDTH = 640
+ZONE_EDITOR_HEIGHT = 480
+
+
 def _cfg(key: str):
     """从 Django settings 读取检测配置，未设置时使用默认值。"""
     try:
@@ -134,6 +139,34 @@ def _parse_polygon(points) -> Optional[np.ndarray]:
         return np.array(points, dtype=np.int32).reshape((-1, 1, 2))
     except (ValueError, TypeError):
         return None
+
+
+def _parse_polygon_for_frame(
+    points, frame_width: int, frame_height: int
+) -> Optional[np.ndarray]:
+    """将 ZoneEditor 坐标缩放至实际检测帧尺寸。"""
+    polygon = _parse_polygon(points)
+    if polygon is None or frame_width <= 0 or frame_height <= 0:
+        return polygon
+
+    scale_x = frame_width / ZONE_EDITOR_WIDTH
+    scale_y = frame_height / ZONE_EDITOR_HEIGHT
+    if abs(scale_x - 1.0) < 0.01 and abs(scale_y - 1.0) < 0.01:
+        return polygon
+
+    scaled = polygon.astype(np.float64).copy()
+    scaled[:, 0, 0] *= scale_x
+    scaled[:, 0, 1] *= scale_y
+    return scaled.astype(np.int32)
+
+
+def _scale_editor_distance(
+    distance: int, frame_width: int, frame_height: int
+) -> int:
+    """将 ZoneEditor 中的像素距离缩放至检测帧坐标系。"""
+    scale_x = frame_width / ZONE_EDITOR_WIDTH
+    scale_y = frame_height / ZONE_EDITOR_HEIGHT
+    return max(1, int(round(distance * (scale_x + scale_y) / 2)))
 
 
 def _is_point_in_polygon(point: tuple, polygon: np.ndarray) -> bool:
@@ -270,6 +303,7 @@ class DetectionService:
 
         self._current_snapshot_frame = snapshot_frame
         self._current_household_id = household_id
+        frame_height, frame_width = frame.shape[:2]
 
         # 内部行人检测（若调用方未提供 person_boxes）
         if person_boxes is None:
@@ -279,7 +313,12 @@ class DetectionService:
         if zones:
             results.extend(
                 self._detect_zone_violations(
-                    stream_id, zones, person_boxes, face_roles or {}
+                    stream_id,
+                    zones,
+                    person_boxes,
+                    face_roles or {},
+                    frame_width,
+                    frame_height,
                 )
             )
 
@@ -450,6 +489,8 @@ class DetectionService:
         zones: list[dict],
         person_boxes: list[dict],
         face_roles: dict[int, str],
+        frame_width: int,
+        frame_height: int,
     ) -> list[dict]:
         """检测危险区域闯入、距边缘过近与异常停留（闯入需持续 N 帧防误报）。"""
         results: list[dict] = []
@@ -463,7 +504,9 @@ class DetectionService:
             if not zone.get("is_active", zone.get("enabled", True)):
                 continue
 
-            polygon = _parse_polygon(zone.get("points_json", ""))
+            polygon = _parse_polygon_for_frame(
+                zone.get("points_json", ""), frame_width, frame_height
+            )
             if polygon is None:
                 continue
 
@@ -473,7 +516,11 @@ class DetectionService:
 
             zone_id = zone.get("id", 0)
             zone_name = zone.get("name", "危险区域")
-            safe_distance = max(0, int(zone.get("safe_distance") or 50))
+            safe_distance = _scale_editor_distance(
+                max(0, int(zone.get("safe_distance") or 50)),
+                frame_width,
+                frame_height,
+            )
             dwell_time = max(1, int(zone.get("dwell_time") or 5))
 
             zone_key = str(zone.get("id", zone.get("name", "unknown")))
@@ -1002,10 +1049,13 @@ class DetectionService:
             标注后的 BGR 帧。
         """
         annotated = frame.copy()
+        frame_height, frame_width = annotated.shape[:2]
 
         if zones:
             for zone in zones:
-                polygon = _parse_polygon(zone.get("points_json", ""))
+                polygon = _parse_polygon_for_frame(
+                    zone.get("points_json", ""), frame_width, frame_height
+                )
                 if polygon is not None:
                     cv2.polylines(annotated, [polygon], True, (0, 0, 255), 2)
                     name = zone.get("name", "")

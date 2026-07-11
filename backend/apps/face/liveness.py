@@ -284,7 +284,11 @@ class LivenessDetectionService:
         return True
 
     @staticmethod
-    def _persist_alert(event: dict[str, Any], household_id: int | None, frame: np.ndarray | None = None) -> None:
+    def _persist_alert(
+        event: dict[str, Any],
+        household_id: int | None,
+        frame: np.ndarray | None = None,
+    ) -> None:
         try:
             from apps.alerts.services import create_alert
 
