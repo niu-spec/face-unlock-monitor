@@ -1,6 +1,6 @@
 # Backend (Django)
 
-See [docs/DEV_SETUP.md](../docs/DEV_SETUP.md) for the full local dev guide.
+See [docs/开发指南/DEV_SETUP.md](../docs/开发指南/DEV_SETUP.md) for the full local dev guide.
 
 ## Requirements
 

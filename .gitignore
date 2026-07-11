@@ -30,7 +30,7 @@ backend/ci_test.sqlite3
 backend/.env.production
 backend/yolov8n.pt
 
-# Production data (keep outside git tree on server; see docs/部署修改过程/生产目录文件策略.md)
+# Production data (keep outside git tree on server; see docs/部署运维/记录/生产目录文件策略.md)
 mysql8-data/
 
 # Logs

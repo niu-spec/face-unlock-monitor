@@ -1,5 +1,5 @@
 # GitHub Actions CI — runs on every push to GitHub (secondary CI, zero extra signup).
-# Primary course CI/CD: Jenkins on cloud server (see docs/CI-CD使用说明.md).
+# Primary course CI/CD: Jenkins on cloud server (see docs/部署运维/CI-CD使用说明.md).
 
 name: CI
 

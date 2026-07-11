@@ -2,7 +2,7 @@
 
 原任务表写的是 Nginx-RTMP，但实测中为降低排障成本并提升后端 RTSP 读取稳定性，流媒体服务替换为 MediaMTX。
 
-> **完整配置（WebRTC + MJPEG 双通道）**：见 [docs/video-stream-webrtc-integration.md](../docs/video-stream-webrtc-integration.md)
+> **完整配置（WebRTC + MJPEG 双通道）**：见 [docs/部署运维/video-stream-webrtc-integration.md](../docs/部署运维/video-stream-webrtc-integration.md)
 
 ## 对外 OBS 推流
 

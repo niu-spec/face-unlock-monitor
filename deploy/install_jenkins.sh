@@ -40,4 +40,4 @@ echo "[jenkins] initial admin password:"
 cat /var/lib/jenkins/secrets/initialAdminPassword
 echo ""
 echo "[jenkins] open http://$(hostname -I | awk '{print $1}'):8080"
-echo "[jenkins] next steps: docs/B组-Jenkins安装指引.md"
+echo "[jenkins] next steps: docs/部署运维/B组-Jenkins安装指引.md"

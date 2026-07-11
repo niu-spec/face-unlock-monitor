@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成居家摄像头场景项目任务分工表 PDF（总表 + 各成员独立 PDF）"""
+"""生成居家摄像头场景项目任务分工表 PDF（总表）"""
 
 import os
 from datetime import date
@@ -14,8 +14,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import KeepTogether, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-OUTPUT = os.path.join(ROOT, "docs", "项目任务分工表.pdf")
-MEMBER_OUTPUT_DIR = os.path.join(ROOT, "docs", "成员任务")
+OUTPUT = os.path.join(ROOT, "docs", "项目管理", "项目任务分工表.pdf")
 REPO_URL = "https://github.com/niu-spec/home-camera-monitor"
 PROD_SERVER = "152.136.29.158"
 PROD_PATH = "/service/home-camera-monitor"
@@ -135,7 +134,7 @@ TASKS = {
         ["4", "v3.0 结题文档", "测试/部署/总结", "7/15 提交", "进行中", "P0"],
         ["5", "演示视频", "注册→识人→禁区→异常→告警回放", "5-10min MP4", "进行中", "P0"],
         ["6", "维护 docs/", f"总体架构说明 {ARCH_VERSION}、README 索引", "与代码同步", "完成", "P1"],
-        ["7", "任务分工表 PDF", "本 PDF + 成员任务清单", "7/11 更新", "完成", "P1"],
+        ["7", "任务分工表 PDF", "本 PDF（总表）", "7/11 更新", "完成", "P1"],
     ],
 }
 
@@ -637,12 +636,6 @@ def main():
 
     write_pdf(OUTPUT, build_story(styles))
     print(f"总表 PDF 已生成: {OUTPUT}")
-
-    os.makedirs(MEMBER_OUTPUT_DIR, exist_ok=True)
-    for code, (name, _) in TEAM.items():
-        path = os.path.join(MEMBER_OUTPUT_DIR, f"任务清单_{name}.pdf")
-        write_pdf(path, build_person_story(styles, code))
-        print(f"个人 PDF 已生成: {path}")
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 居家摄像头视频推流服务当前使用 MediaMTX，Nginx 只负责将 Web/API 请求反代到 Django/Gunicorn。
 
-**完整对接说明（含 WebRTC 低延迟预览）**：见 [docs/video-stream-webrtc-integration.md](../docs/video-stream-webrtc-integration.md)
+**完整对接说明（含 WebRTC 低延迟预览）**：见 [docs/部署运维/video-stream-webrtc-integration.md](../docs/部署运维/video-stream-webrtc-integration.md)
 
 ## 端口一览
 

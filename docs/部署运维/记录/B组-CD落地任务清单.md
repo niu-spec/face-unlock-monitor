@@ -10,14 +10,13 @@
 
 ## 背景
 
-A 组已在 `dev` 分支提交 Jenkins CD 加固改动：
+A 组已根据 B 组反馈（`B组-CD落地反馈.md`）二次修复，详见 **`A组回复-B组CD阻塞修复.md`**：
 
-- `Jenkinsfile`：Deploy 前 reset 到 **当前构建 commit**（与 CI 测试一致）
-- `deploy/deploy-lib.sh`：非 root 自动 `sudo -n` 执行 systemctl/nginx
-- `deploy/jenkins.sudoers.example`：sudoers 模板
-- 文档同步更新
+- `DEPLOY_MEDIAMTX=0`（默认跳过 MediaMTX，不重启 `home-mediamtx`）
+- Jenkins Deploy 改用 ff-only / checkout tracked，**保留** `.env.production` 等未跟踪文件
+- sudoers / nginx 路径适配宝塔
 
-**你需要做的**：在云服务器 pull 最新代码，完成一次性权限配置，并 **跑通一次 Jenkins Deploy 全流程**，留截图给结题。
+**你需要做的**：pull 最新 `dev` → 配置权限 → **跑通 Deploy** → 留截图。
 
 ---
 
@@ -42,15 +41,15 @@ SSH 登录服务器：
 ssh root@152.136.29.158   # 或你的常用账号
 cd /service/home-camera-monitor
 git fetch origin dev
-git reset --hard origin/dev
+git merge --ff-only origin/dev
 git log -1 --oneline
+grep "skip MediaMTX" deploy/deploy-all.sh
 ```
 
-确认最新 commit 包含以下文件之一：
+确认最新 commit 包含：
 
-- `deploy/deploy-lib.sh`
-- `deploy/jenkins.sudoers.example`
-- `Jenkinsfile`（Deploy 阶段含 `git reset --hard "$GIT_COMMIT"`）
+- `deploy/deploy-all.sh` 中 `DEPLOY_MEDIAMTX` 默认跳过 MediaMTX
+- `Jenkinsfile` 中 `DEPLOY_MEDIAMTX=0`
 
 ---
 
@@ -58,7 +57,7 @@ git log -1 --oneline
 
 ### 2.1 代码目录写权限
 
-Deploy 会在生产目录执行 `git reset --hard`，jenkins 用户必须可写：
+Deploy 会更新 **tracked 文件**，**不会删除** `.env.production`、`yolov8n.pt`、`mysql8-data/`（见 `生产目录文件策略.md`），jenkins 用户需可写：
 
 ```bash
 sudo chown -R jenkins:jenkins /service/home-camera-monitor
@@ -95,11 +94,11 @@ sudo systemctl status jenkins --no-pager
 ```bash
 sudo -u jenkins -H bash -lc '
   cd /service/home-camera-monitor
-  DEPLOY_USE_SUDO=auto SKIP_GIT_UPDATE=1 bash deploy/deploy-all.sh
+  DEPLOY_USE_SUDO=auto DEPLOY_MEDIAMTX=0 SKIP_GIT_UPDATE=1 bash deploy/deploy-all.sh
 '
 ```
 
-若输出 `[deploy] completed` 则权限配置正确。
+期望输出含 `[deploy] skip MediaMTX` 和 `[deploy] completed`，且 **home-mediamtx 容器未被重建**。
 
 ---
 
@@ -114,7 +113,7 @@ sudo -u jenkins -H bash -lc '
 
 | 报错 | 处理 |
 |------|------|
-| `npm: command not found` | 安装 Node.js 20（见 `docs/B组-Jenkins安装指引.md` §2） |
+| `npm: command not found` | 安装 Node.js 20（见 `docs/部署运维/B组-Jenkins安装指引.md` §2） |
 | `python3: command not found` | `sudo apt install -y python3 python3-venv python3-pip` |
 | backend-test 失败 | 点进日志看具体 test，群里 @ 对应模块负责人 |
 
@@ -131,6 +130,7 @@ sudo -u jenkins -H bash -lc '
 
 ```
 [deploy] restart home-camera-backend
+[deploy] skip MediaMTX
 [deploy] reload nginx
 [deploy] completed
 ```

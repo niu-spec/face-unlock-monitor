@@ -4,7 +4,7 @@
 
 ## What Changes
 
-- 从 `docs/总体架构说明.md`、`docs/backend_handoff_video_stream.md` 等现有文档提炼首批 capability specs
+- 从 `docs/架构设计/总体架构说明.md`、`docs/backend_handoff_video_stream.md` 等现有文档提炼首批 capability specs
 - 在 `openspec/config.yaml` 写入项目上下文（技术栈、端口、分支规范、流 ID 约定）
 - 建立 Cursor 命令（`/opsx-propose`、`/opsx-apply`、`/opsx-archive`）的工作流基线
 - 不修改任何运行时代码；本 change 仅产出规格与设计文档

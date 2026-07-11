@@ -9,7 +9,7 @@ These are installed by the `face-recognition-models` pip package and are **not c
 
 ## Environment setup
 
-See [docs/DEV_SETUP.md](../../docs/DEV_SETUP.md) and [backend/README.md](../README.md).
+See [docs/开发指南/DEV_SETUP.md](../../docs/开发指南/DEV_SETUP.md) and [backend/README.md](../README.md).
 
 Verify model paths:
 

@@ -1,6 +1,6 @@
 # Frontend (Vue3 + Vite)
 
-REST client for the Django backend. See [docs/DEV_SETUP.md](../docs/DEV_SETUP.md) for full setup.
+REST client for the Django backend. See [docs/开发指南/DEV_SETUP.md](../docs/开发指南/DEV_SETUP.md) for full setup.
 
 ## Dev server
 

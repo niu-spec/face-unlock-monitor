@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成 OpenSpec 组员提示词使用指南 PDF（总册 + 各成员独立 PDF）"""
+"""生成 OpenSpec 组员提示词使用指南 PDF（总册）"""
 
 import os
 from datetime import date
@@ -14,10 +14,9 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-OUTPUT = os.path.join(ROOT, "docs", "OpenSpec组员提示词指南.pdf")
-MEMBER_OUTPUT_DIR = os.path.join(ROOT, "docs", "成员任务")
+OUTPUT = os.path.join(ROOT, "docs", "项目管理", "OpenSpec", "OpenSpec组员提示词指南.pdf")
 REPO_URL = "https://github.com/niu-spec/home-camera-monitor"
-GUIDE_URL = f"{REPO_URL}/blob/dev/docs/OpenSpec组员上手指南.md"
+GUIDE_URL = f"{REPO_URL}/blob/dev/docs/项目管理/OpenSpec/OpenSpec组员上手指南.md"
 FONT_PATH = r"C:\Windows\Fonts\msyh.ttc"
 FONT_NAME = "MicrosoftYaHei"
 DOCUMENT_DATE = date(2026, 7, 8)
@@ -436,12 +435,6 @@ def main():
 
     write_pdf(OUTPUT, build_main_story(styles))
     print(f"总册 PDF 已生成: {OUTPUT}")
-
-    os.makedirs(MEMBER_OUTPUT_DIR, exist_ok=True)
-    for code in ["B", "C", "D", "E", "F"]:
-        path = os.path.join(MEMBER_OUTPUT_DIR, f"OpenSpec提示词_{TEAM[code][0]}.pdf")
-        write_pdf(path, build_member_story(styles, code))
-        print(f"个人 PDF 已生成: {path}")
 
 
 if __name__ == "__main__":

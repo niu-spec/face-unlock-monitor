@@ -46,7 +46,7 @@ home-camera-monitor/
 
 ## 快速开始
 
-完整步骤见 **[docs/DEV_SETUP.md](docs/DEV_SETUP.md)**。
+完整步骤见 **[docs/开发指南/DEV_SETUP.md](docs/开发指南/DEV_SETUP.md)**。
 
 ```powershell
 .\scripts\setup_backend.ps1      # 首次：conda 环境
@@ -67,12 +67,12 @@ home-camera-monitor/
 
 | 文档 | 说明 |
 |------|------|
-| [DEV_SETUP.md](docs/DEV_SETUP.md) | 本地开发（必读） |
-| [总体架构说明.md](docs/总体架构说明.md) | 结题架构文档 |
-| [B组-云部署与联调指引.md](docs/B组-云部署与联调指引.md) | 云服务器部署 |
-| [CI-CD使用说明.md](docs/CI-CD使用说明.md) | Jenkins + GitHub Actions |
-| [video-stream-webrtc-integration.md](docs/video-stream-webrtc-integration.md) | 流媒体详细配置 |
-| [OpenSpec使用说明.md](docs/OpenSpec使用说明.md) | 规格驱动开发 |
+| [开发指南/DEV_SETUP.md](docs/开发指南/DEV_SETUP.md) | 本地开发（必读） |
+| [架构设计/总体架构说明.md](docs/架构设计/总体架构说明.md) | 结题架构文档 |
+| [部署运维/B组-云部署与联调指引.md](docs/部署运维/B组-云部署与联调指引.md) | 云服务器部署 |
+| [部署运维/CI-CD使用说明.md](docs/部署运维/CI-CD使用说明.md) | Jenkins + GitHub Actions |
+| [部署运维/video-stream-webrtc-integration.md](docs/部署运维/video-stream-webrtc-integration.md) | 流媒体详细配置 |
+| [项目管理/OpenSpec/OpenSpec使用说明.md](docs/项目管理/OpenSpec/OpenSpec使用说明.md) | 规格驱动开发 |
 
 ## 团队
 
