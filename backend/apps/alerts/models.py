@@ -25,9 +25,17 @@ class Alert(models.Model):
         ("FIRE", "火情"),
         ("WATER", "积水"),
         ("FALL", "人员摔倒"),
+        # 音频异常检测（D-李东礼，v1.3）
+        ("SCREAM", "尖叫/呼救声"),
+        ("FIGHT", "打架/争吵声"),
+        ("CRYING", "哭喊声"),
+        ("GLASS_BREAK", "玻璃破碎声"),
+        ("ABNORMAL_SOUND", "异常声音"),
+        ("EMERGENCY", "音视频联动紧急事件"),
     ]
 
     LEVEL_CHOICES = [
+        ("CRITICAL", "紧急"),
         ("HIGH", "高"),
         ("MEDIUM", "中"),
         ("LOW", "低"),

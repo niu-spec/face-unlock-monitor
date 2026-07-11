@@ -565,4 +565,294 @@ annotated = service.draw_overlays(frame, results, zones, person_boxes)
 
 ---
 
+## 9. 异常声学事件检测与音视频联动告警
+
+> **版本**：v1.3 — 新增音频检测能力  
+> **状态**：需求分析 & 技术方案阶段  
+> **编制日期**：2026-07-11
+
+### 9.1 需求背景
+
+当前模块仅覆盖**视觉维度**的异常检测（积水、着火、摔倒），但居家安全场景中存在大量仅靠视觉难以可靠识别的事件：
+
+| 事件类型 | 视觉特征 | 听觉特征 | 仅视频的局限 |
+|----------|----------|----------|-------------|
+| 打架/争吵 | 人体快速移动、肢体接触 | 高声喊叫、撞击声、争吵语音 | 视觉易被遮挡，且与打闹难以区分 |
+| 尖叫/呼救 | 人脸恐惧表情（需高分辨率）| 尖锐叫声、呼救语音 | 表情识别需近距离+高分辨率，居家摄像头难以满足 |
+| 玻璃破碎 | 碎片飞溅（极难检测） | 清脆碎裂声 | 碎片太小，YOLO 不可能稳定检测 |
+| 婴儿哭喊 | 面部表情 | 持续哭声音频 | 夜间/昏暗环境视觉失效 |
+
+**核心思路**：增加**音频维度**的异常事件检测，并通过**音视频联动分析**（同一时间窗口内音频+视频同时触发异常 → 置信度提升），提高整体检测的可靠性。
+
+### 9.2 功能需求
+
+| 编号 | 需求项 | 说明 |
+|------|--------|------|
+| R9.1 | 实时音频采集 | 从 RTSP 视频流中抽取音频轨道，连续输出音频片段 |
+| R9.2 | 异常声音分类 | 识别尖叫、哭喊、争吵声、玻璃破碎等异常声音类别 |
+| R9.3 | 异常声音告警 | 检测到异常声音时，以独立告警类型写入告警表 |
+| R9.4 | 音视频联动 | 同一时间窗口内音频+视频同时触发异常时，提升告警等级或创建关联告警 |
+| R9.5 | 音频告警冷却 | 与视频告警一致的冷却机制，防止同一事件反复触发 |
+| R9.6 | 音频片段存储 | 触发告警时保存异常音频片段（3-5 秒），供回放确认 |
+
+### 9.3 技术方案
+
+#### 9.3.1 总体架构
+
+```
+RTSP 流 (rtsp://127.0.0.1:8554/stream/1)
+        │
+        ├─── OpenCV VideoCapture ──→ 视频帧 ──→ process_frame()（已有）
+        │                                         ├── 人脸识别
+        │                                         ├── 危险区域闯入
+        │                                         ├── 积水/着火/摔倒
+        │                                         └── 告警创建
+        │
+        └─── FFmpeg 子进程 ──→ 音频 PCM 流 ──→ AudioDetectionService（新增）
+                       │                           ├── 音频分帧 (2-3s chunks)
+                       │                           ├── 梅尔频谱图提取
+                       │                           ├── PANNs 分类推理
+                       │                           ├── 异常声音告警创建
+                       │                           └── 写入联动缓冲器
+                                                  │
+                    ┌─────────────────────────────┘
+                    ▼
+          ┌──────────────────┐
+          │ 音视频联动缓冲器   │  ← 新增
+          │ (滑动时间窗口)    │
+          │                  │
+          │ 视频告警 ──┬── 时间关联 ──→ 联动告警（severity 升级）
+          │ 音频告警 ──┘              │
+          └──────────────────────────┘
+```
+
+#### 9.3.2 音频采集方案：FFmpeg 从 RTSP 抽取音频
+
+现有视频采集使用 OpenCV `VideoCapture` 读取 RTSP 流，但 OpenCV **不支持读取音频轨道**。需要单独的音频采集通道：
+
+```
+ffmpeg -i rtsp://127.0.0.1:8554/stream/1 \
+       -vn \                    # 丢弃视频
+       -acodec pcm_s16le \      # 16-bit PCM
+       -ar 16000 \              # 重采样至 16kHz（音频分类标准采样率）
+       -ac 1 \                  # 单声道
+       -f wav \                 # WAV 格式
+       pipe:1                   # 输出到 stdout（Python 进程读取）
+```
+
+**关键设计点**：
+- FFmpeg 作为**子进程**启动（通过 `subprocess.Popen`），持续输出 PCM 数据到管道
+- Python 端按固定时长（2-3 秒）从管道读取音频块
+- FFmpeg 进程与 Django 主进程同生命周期，随 `video_stream` worker 启停
+- 当 RTSP 流无音频轨道时，FFmpeg 会报错退出 → 自动降级（仅视频检测，不影响现有功能）
+
+#### 9.3.3 音频分类模型：PANNs CNN14
+
+| 对比维度 | PANNs CNN14 | YAMNet | 自定义分类器 |
+|----------|-------------|--------|-------------|
+| 深度学习框架 | PyTorch ✅ | TensorFlow ❌ | PyTorch ✅ |
+| 预训练数据集 | AudioSet (2M+) | AudioSet (2M+) | 需自训练 |
+| 模型大小 | ~80MB | ~15MB | 取决于设计 |
+| 类别覆盖 | 527 类 | 521 类 | 自定义 |
+| 与现有技术栈兼容 | ✅ (同 YOLO) | ❌ 需新增 TF | ✅ |
+| 推理延迟 (CPU) | ~50ms/chunk | ~30ms/chunk | ~10ms/chunk |
+
+**选择 PANNs 理由**：
+1. 与 YOLOv8n 共享 PyTorch 运行时，**不引入第二个深度学习框架**
+2. AudioSet 527 类中已包含目标类别：`Shout`、`Screaming`、`Crying, sobbing`、`Shatter`、`Yell`、`Gunshot, gunfire` 等
+3. 通过 `torch.hub` 一行加载，无需额外配置
+
+**目标音频类别映射**：
+
+| 业务告警类型 | AudioSet 对应类别 | 类别 ID |
+|-------------|-------------------|---------|
+| `SCREAM` | Screaming / Shout / Yell | 特定 ID |
+| `FIGHT` | Shout + 嘈杂人声组合 | 多标签 |
+| `GLASS_BREAK` | Shatter / Glass | 特定 ID |
+| `CRYING` | Crying, sobbing / Baby cry, infant cry | 特定 ID |
+
+**推理流程**：
+```
+PCM 音频块 (16kHz, mono, 3s)
+    → librosa 提取梅尔频谱图 (64 mel-bands)
+    → torch tensor (1, 1, T, 64)  [batch, channel, time, mel]
+    → PANNs CNN14 前向推理
+    → sigmoid 输出 527 类概率
+    → 映射到目标类别 + 阈值过滤 (> 0.3)
+    → 触发告警
+```
+
+#### 9.3.4 音视频联动分析
+
+**滑动时间窗口缓冲器**：
+
+```
+class AVCorrelationBuffer:
+    """
+    维护一个环形缓冲器，记录近 N 秒内的所有检测事件。
+    
+    - audio_events:  deque[AudioEvent]    (timestamp, alert_type, confidence)
+    - video_events:  deque[VideoEvent]    (timestamp, alert_type, confidence)
+    
+    每个新事件入队时，检查时间窗口内是否存在异类事件。
+    """
+```
+
+**联动规则**：
+
+| 视频告警 | 音频告警 | 时间窗口 | 联动结果 |
+|----------|----------|----------|----------|
+| `FALL` | `SCREAM` | ±5s | 创建 `EMERGENCY` 关联告警（severity: critical） |
+| `INTRUSION` | `SCREAM` / `FIGHT` | ±5s | `INTRUSION` 升级为 critical |
+| `FIRE` | `SCREAM` | ±5s | `FIRE` 升级为 critical |
+| `WATER` | — | — | 不联动（积水无典型关联声音） |
+| — | `SCREAM` | 仅音频 | 单独创建 `SCREAM` 告警（severity: high） |
+| — | `FIGHT` | 仅音频 | 单独创建 `FIGHT` 告警（severity: high） |
+| — | `GLASS_BREAK` | 仅音频 | 单独创建 `GLASS_BREAK` 告警（severity: medium） |
+
+**设计考量**：
+- 即使没有视频告警配合，音频异常仍**独立产生告警**（不依赖视频确认）
+- 联动是"增强"而非"必要条件"——视频检测不可靠时，音频独立工作
+- 时间窗口可配置（默认 ±5 秒）
+
+#### 9.3.5 模块目录结构（新增部分）
+
+```
+backend/apps/detection/
+├── __init__.py
+├── services.py                      # 已有：DetectionService（视频检测）
+├── audio_service.py                 # 新增：AudioDetectionService（音频检测）
+├── audio_capture.py                 # 新增：FFmpeg 音频采集子进程管理
+├── av_correlation.py                # 新增：音视频联动缓冲器 & 规则引擎
+├── views.py                         # 已有（需新增 GET /api/detection/audio/status）
+├── urls.py                          # 已有（需新增路由）
+└── tests/
+    ├── test_audio_service.py        # 新增：音频检测单元测试
+    └── test_av_correlation.py       # 新增：联动逻辑单元测试
+```
+
+#### 9.3.6 新增告警类型
+
+在 `alerts/models.py` 的告警类型枚举中新增：
+
+| 枚举值 | 含义 | 触发源 | 默认严重程度 |
+|--------|------|--------|-------------|
+| `SCREAM` | 尖叫/呼救声 | 音频：PANNs 检测 | `high` |
+| `FIGHT` | 打架/争吵声 | 音频：PANNs 检测 | `high` |
+| `GLASS_BREAK` | 玻璃破碎声 | 音频：PANNs 检测 | `medium` |
+| `CRYING` | 哭喊声（婴儿/成人） | 音频：PANNs 检测 | `medium` |
+| `EMERGENCY` | 音视频联动紧急事件 | 联动：AVCorrelationBuffer | `critical` |
+
+### 9.4 配置项（新增）
+
+在 `DETECTION_CONFIG` 字典中新增音频相关配置：
+
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `AUDIO_ENABLED` | `True` | 是否启用音频检测（RTSP 无音频时自动降级） |
+| `AUDIO_CHUNK_DURATION` | `3.0` | 音频分析块时长（秒） |
+| `AUDIO_SAMPLE_RATE` | `16000` | 音频重采样率 |
+| `AUDIO_N_MELS` | `64` | 梅尔频谱图频带数 |
+| `AUDIO_MODEL` | `panns_cnn14` | 音频分类模型 |
+| `AUDIO_CONFIDENCE_THRESHOLD` | `0.3` | 音频分类置信度阈值 |
+| `AV_CORRELATION_WINDOW` | `5.0` | 音视频联动时间窗口（秒） |
+| `AUDIO_ALERT_COOLDOWN` | `15` | 音频告警冷却时间（秒） |
+| `AUDIO_SNIPPET_DIR` | `snapshots/audio/` | 异常音频片段保存目录 |
+
+### 9.5 数据流：音频处理完整链路
+
+```
+1. Django video_stream worker 启动
+       │
+2. ──── spawn FFmpeg 子进程 ────→ stdout: PCM 16kHz mono
+       │
+3. AudioDetectionService 后台线程
+       │  循环读取 3 秒 PCM → numpy array
+       │
+4. librosa.feature.melspectrogram() → 梅尔频谱图
+       │
+5. PANNs CNN14 推理 → 527 类概率向量
+       │
+6. 映射到目标类别 + 阈值过滤
+       │
+7. 触发告警 → create_alert(AudioAlert)
+       │
+8. AVCorrelationBuffer.enqueue(audio_event)
+       │
+9. 检查窗口内是否有 video_event → 有 → create_alert(EMERGENCY, severity=critical)
+       │                             无 → 仅音频告警
+       │
+10. 保存音频片段 (.wav) → alert.snapshot_path 关联
+```
+
+### 9.6 性能评估
+
+| 环节 | 预估 CPU 开销 | 说明 |
+|------|-------------|------|
+| FFmpeg 音频解码 | 极低 (~1%) | 纯音频解码，无视频 |
+| 梅尔频谱图提取 | 极低 (~1%) | librosa 高度优化 |
+| PANNs CNN14 推理 (CPU) | **~15-20%** 单核 | 每 3 秒推理一次，约 50-80ms |
+| 联动缓冲器 | 忽略不计 | 纯内存操作 |
+
+- 音频推理频率：每 3 秒一次（远低于视频的每帧处理），CPU 开销可控
+- 推荐使用 ONNX Runtime 加速 PANNs 推理（参考 8.3 节 ONNX 建议）
+- 若 CPU 资源紧张，可增大 `AUDIO_CHUNK_DURATION` 至 5 秒降低推理频率
+
+### 9.7 依赖清单
+
+#### 9.7.1 系统级依赖
+
+| 组件 | 安装方式 | 说明 |
+|------|----------|------|
+| FFmpeg | `apt install ffmpeg` (Linux) / `choco install ffmpeg` (Windows) | 服务器可能已有；需确认版本 ≥ 4.0 |
+
+#### 9.7.2 Python 依赖（新增至 requirements.txt）
+
+```
+librosa>=0.10.0
+soundfile>=0.12.0
+torchaudio>=2.0.0
+ffmpeg-python>=0.2.0
+scipy>=1.10.0          # 可能已有，检查
+```
+
+#### 9.7.3 模型文件
+
+| 文件 | 大小 | 获取方式 |
+|------|------|----------|
+| `Cnn14_mAP=0.431.pth` | ~80MB | `torch.hub.load('qiuqiangkong/panns_audioset', 'cnn14')` 首次运行时自动下载至 `~/.cache/torch/hub/` |
+
+### 9.8 风险与降级策略
+
+| 风险 | 影响 | 降级方案 |
+|------|------|----------|
+| RTSP 流不含音频轨道 | 音频检测完全不可用 | FFmpeg 报错后自动禁用音频检测，仅视频检测正常工作 |
+| PANNs 模型下载失败 | 音频检测不可用 | 捕获异常，日志告警，仅视频检测正常工作 |
+| FFmpeg 子进程崩溃 | 音频管道中断 | 自动重连机制（最多 3 次重试），重连失败后降级 |
+| CPU 负载过高 | 视频帧处理延迟 | 调大音频 chunk duration 或暂时禁用音频检测 |
+| 模型误判（类间混淆） | 误报/漏报 | 通过置信度阈值 + 连续多帧确认 + 音视频联动降低误报 |
+
+### 9.9 验收标准对应
+
+| 验收项 | 实现情况 |
+|--------|----------|
+| 识别打架/争吵声 | 通过 PANNs AudioSet `Shout` + 多标签组合识别 |
+| 识别尖叫/呼救声 | 通过 PANNs AudioSet `Screaming`、`Crying, sobbing` 识别 |
+| 音视频联动分析 | AVCorrelationBuffer 滑动时间窗口 + 联动规则引擎 |
+| 提高异常行为检测可靠性 | 音频独立告警 + 视频独立告警 + 联动升级 → 三维检测 |
+
+### 9.10 实施计划（建议）
+
+| 阶段 | 内容 | 预估工时 |
+|------|------|----------|
+| Phase 1 | 环境准备：安装 FFmpeg、新增 Python 依赖、验证音频采集链路 | 0.5 天 |
+| Phase 2 | 实现 `audio_capture.py`：FFmpeg 子进程管理 + PCM 管道读取 | 1 天 |
+| Phase 3 | 实现 `audio_service.py`：PANNs 加载 + 梅尔频谱 + 分类推理 | 1.5 天 |
+| Phase 4 | 实现 `av_correlation.py`：联动缓冲器 + 规则引擎 | 1 天 |
+| Phase 5 | 集成到 `video_stream` 流水线 + 告警对接 | 0.5 天 |
+| Phase 6 | 测试音频文件 + 端到端联调 | 1 天 |
+| **合计** | | **5.5 天** |
+
+---
+
 *文档结束 — 变更请通知文档专员刘澎潮（F）。*

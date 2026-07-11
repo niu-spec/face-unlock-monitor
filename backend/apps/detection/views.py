@@ -1,8 +1,9 @@
 """检测 API 视图 — 危险区域与异常检测接口。
 
 提供检测相关的 REST API 端点：
-  - POST /api/detection/analyze/    对单帧执行检测分析
-  - GET  /api/detection/status/     获取检测服务运行状态
+  - POST /api/detection/analyze/       对单帧执行检测分析
+  - GET  /api/detection/status/        获取检测服务运行状态
+  - GET  /api/detection/audio/status/  获取音频检测服务状态 ★ v1.3
 
 由团队成员 D（李东礼）负责实现和维护。
 """
@@ -107,9 +108,77 @@ def detection_status(request):
                 "WATER",
                 "FIRE",
                 "FALL",
+                # ★ v1.3 音频检测能力
+                "SCREAM",
+                "FIGHT",
+                "CRYING",
+                "GLASS_BREAK",
+                "ABNORMAL_SOUND",
+                "EMERGENCY",
             ],
         }
     )
+
+
+@require_http_methods(["GET"])
+def audio_status(request):
+    """获取音频检测服务运行状态 ★ v1.3。
+
+    Query params:
+        stream_id: 可选，指定流 ID（默认返回所有活跃流的摘要）。
+
+    Returns:
+        JSON: {
+            "success": true,
+            "audio_service": {...},
+            "audio_captures": {...},
+            "av_correlation": {...}
+        }
+    """
+    stream_id = request.GET.get("stream_id", "")
+
+    try:
+        from .audio_service import get_audio_service
+        from .audio_capture import _captures
+        from .av_correlation import get_av_correlation_buffer
+
+        audio_svc = get_audio_service()
+        av_buffer = get_av_correlation_buffer()
+
+        # 全局音频服务状态
+        audio_status_data = audio_svc.get_global_status()
+
+        # 各流采集器状态
+        captures_status = {}
+        for sid, cap in _captures.items():
+            if not stream_id or sid == stream_id:
+                captures_status[sid] = cap.to_status()
+
+        # 音视频联动状态
+        av_status = av_buffer.get_status()
+
+        # 若指定了 stream_id，附加该流的详细信息
+        stream_detail = {}
+        if stream_id:
+            stream_status = audio_svc.get_stream_status(stream_id)
+            stream_events = av_buffer.get_stream_events(stream_id)
+            stream_detail = {
+                "stream_status": stream_status,
+                "correlation_events": stream_events,
+            }
+
+        return JsonResponse({
+            "success": True,
+            "audio_service": audio_status_data,
+            "audio_captures": captures_status,
+            "av_correlation": av_status,
+            **stream_detail,
+        })
+    except Exception as e:
+        logger.error("获取音频状态失败: %s", e, exc_info=True)
+        return JsonResponse(
+            {"success": False, "error": str(e)}, status=500
+        )
 
 
 def _parse_json_param(value):

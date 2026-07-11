@@ -37,12 +37,31 @@ The system SHALL provide `GET /api/events/` and `POST /api/events/` for event lo
 
 ### Requirement: Alert type taxonomy
 
-The system SHALL support alert types including `FACE_UNKNOWN`, `INTRUSION`, `WATER`, `FIRE`, and `FALL`.
+The system SHALL support alert types including `FACE_UNKNOWN`, `INTRUSION`, `PROXIMITY`, `LOITER`, `TAILGATE`, `WATER`, `FIRE`, `FALL`, `SCREAM`, `FIGHT`, `CRYING`, `GLASS_BREAK`, `ABNORMAL_SOUND`, and `EMERGENCY`.
 
 #### Scenario: Fire alert creation
 
 - **WHEN** the detection module detects fire and POSTs `type=FIRE`
 - **THEN** the alert is stored with type `FIRE` and displayed in AlertCenter
+
+#### Scenario: Audio scream alert creation
+
+- **WHEN** the audio detection module detects a scream and POSTs `type=SCREAM`
+- **THEN** the alert is stored with type `SCREAM` and displayed in AlertCenter
+
+#### Scenario: Audio-video emergency correlation
+
+- **WHEN** both audio and video anomalies co-occur within ±5s
+- **THEN** an `EMERGENCY` alert SHALL be created with level `CRITICAL`
+
+### Requirement: Alert severity levels
+
+The system SHALL support severity levels `CRITICAL`, `HIGH`, `MEDIUM`, and `LOW`.
+
+#### Scenario: Emergency uses CRITICAL
+
+- **WHEN** an audio-video emergency is detected
+- **THEN** the alert level SHALL be `CRITICAL`
 
 ### Requirement: Frontend alert center
 
