@@ -38,6 +38,7 @@ context: |
   团队 OpenSpec 约定:
     - 每个 feature PR 关联一个 change（propose → apply → archive）
     - 进行中 change: ai-video-integration（代码已完成，待 4.1/4.2 云验收后 archive）
+    - 进行中 change: audio-abnormal-sound-detection（v1.3 音频检测，代码已实现于 feature/detection）
     - 使用说明: docs/OpenSpec使用说明.md
 
 rules:
