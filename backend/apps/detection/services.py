@@ -5,6 +5,8 @@
   - 积水检测（HSV 颜色 + 形态分析）
   - 着火检测（HSV 火焰颜色 + 亮度分析）
   - 摔倒检测（人体框高宽比分析）
+  - 异常声学事件检测（PANNs CNN14 音频分类）★ v1.3 新增
+  - 音视频联动告警（AVCorrelationBuffer）★ v1.3 新增
 
 由团队成员 D（李东礼）负责实现和维护。
 
@@ -12,6 +14,7 @@
 被 AlertViewSet 的 IsAuthenticated 拦截，OpenSpec design.md 已注明同进程允许直调）。
 
 行人检测：优先使用 YOLOv8n，若不可用则自动降级为 HOG。
+音频检测：从 RTSP 流提取音频，PANNs CNN14 分类，RTSP 无音频轨道时自动降级。
 """
 
 import json
@@ -82,6 +85,13 @@ DETECTION_CONFIG = {
         "INTRUSION": 10,
         "PROXIMITY": 10,
         "LOITER": 15,
+        # 音频告警冷却 ★ v1.3
+        "SCREAM": 15,
+        "FIGHT": 20,
+        "CRYING": 20,
+        "GLASS_BREAK": 10,
+        "ABNORMAL_SOUND": 30,
+        "EMERGENCY": 30,  # 联动紧急告警
     },
 }
 
@@ -213,6 +223,10 @@ class DetectionService:
             lambda: defaultdict(int)
         )
 
+        # ★ v1.3 音视频联动
+        self._av_correlation = None
+        self._audio_service = None
+
         logger.info(
             "DetectionService initialized (detector=%s, Django)",
             self._detector_type,
@@ -277,6 +291,12 @@ class DetectionService:
 
         # 4. 摔倒检测
         results.extend(self._detect_fall(person_boxes, stream_id))
+
+        # ★ v1.3 视频检测事件入队音视频联动缓冲器
+        if results:
+            self._enqueue_video_results(
+                stream_id=stream_id, results=results
+            )
 
         self._current_snapshot_frame = None
         self._current_household_id = None
@@ -856,6 +876,50 @@ class DetectionService:
             hist["prev_time"] = now
 
         return results
+
+    # -----------------------------------------------------------------------
+    # ★ v1.3 音视频联动集成
+    # -----------------------------------------------------------------------
+
+    def _ensure_av_correlation(self):
+        """懒初始化音视频联动缓冲器（延迟导入，避免循环依赖）。"""
+        if self._av_correlation is None:
+            try:
+                from .av_correlation import get_av_correlation_buffer
+
+                self._av_correlation = get_av_correlation_buffer()
+                logger.info("AVCorrelationBuffer 已关联到 DetectionService")
+            except Exception as e:
+                logger.warning("音视频联动缓冲器初始化失败: %s", e)
+
+    def _enqueue_video_results(
+        self, stream_id: str, results: list[dict]
+    ):
+        """将视频检测结果入队到音视频联动缓冲器。
+
+        仅入队可能与音频事件联动的告警类型:
+          FALL, FIRE, INTRUSION, PROXIMITY
+        （WATER / LOITER 通常无典型关联声音，不入队以节省缓冲器空间）
+        """
+        self._ensure_av_correlation()
+        if self._av_correlation is None:
+            return
+
+        correlatable_types = {"FALL", "FIRE", "INTRUSION", "PROXIMITY"}
+        for r in results:
+            alert_type = r.get("alert_type", "")
+            if alert_type not in correlatable_types:
+                continue
+
+            try:
+                self._av_correlation.enqueue_video_event(
+                    stream_id=stream_id,
+                    alert_type=alert_type,
+                    confidence=1.0,
+                    description=r.get("message", ""),
+                )
+            except Exception as e:
+                logger.debug("视频事件入队联动缓冲器失败: %s", e)
 
     # -----------------------------------------------------------------------
     # 告警冷却

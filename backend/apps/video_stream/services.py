@@ -297,7 +297,38 @@ def get_worker(stream_id):
             worker = CameraWorker(stream_id)
             workers[stream_id] = worker
         worker.start()
-        return worker
+    # ★ v1.3 音频检测：为每个视频流启动音频采集（锁外执行，避免阻塞）
+    _start_audio_for_stream(stream_id)
+    return worker
+
+
+def _start_audio_for_stream(stream_id: str):
+    """为指定视频流启动音频异常检测（v1.3）。
+
+    仅在音频模型可加载且 RTSP 含音频轨道时生效。
+    RTSP 无音频时自动降级，不影响视频检测。
+    """
+    try:
+        from apps.detection.audio_service import get_audio_service
+        from apps.detection.av_correlation import get_av_correlation_buffer
+
+        # 先初始化联动缓冲器
+        av_buffer = get_av_correlation_buffer()
+
+        # 获取或创建音频服务（注入联动缓冲器）
+        audio_svc = get_audio_service(av_correlation_buffer=av_buffer)
+
+        # 检查是否已为此流启动
+        if stream_id in audio_svc._captures:
+            return
+
+        rtsp_url = build_rtsp_url(stream_id)
+        audio_svc.start_for_stream(
+            stream_id=_to_business_stream_id(str(stream_id)),
+            rtsp_url=rtsp_url,
+        )
+    except Exception as e:
+        logger.info("音频检测启动跳过 (stream=%s): %s", stream_id, e)
 
 
 def get_workers_status():
