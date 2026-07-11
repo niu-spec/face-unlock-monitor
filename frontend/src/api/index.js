@@ -38,6 +38,7 @@ export const memberApi = {
 export const faceApi = {
   register: (data) => request.post('/api/face/register/', data),
   analyze: (data) => request.post('/api/face/analyze/', data),
+  liveness: (data) => request.post('/api/face/liveness/', data),
 }
 
 // ── 区域 ──────────────────────────────────────────────

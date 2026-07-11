@@ -20,6 +20,8 @@ STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
 workers = {}
 workers_lock = threading.Lock()
+liveness_snapshots = {}
+liveness_lock = threading.Lock()
 
 
 def build_rtsp_url(stream_id):
@@ -74,6 +76,34 @@ def _map_face_roles_to_people(presence: dict, person_boxes: list[dict]) -> dict[
     return roles
 
 
+def _update_liveness_snapshot(stream_id: str, liveness: dict) -> None:
+    with liveness_lock:
+        liveness_snapshots[str(stream_id)] = {
+            "stream_id": str(stream_id),
+            "updated_at": time.time(),
+            "passed": bool(liveness.get("passed")),
+            "status": liveness.get("status", "unknown"),
+            "attack_type": liveness.get("attack_type"),
+            "score": liveness.get("score"),
+            "reason": liveness.get("reason", ""),
+            "details": liveness.get("details", {}),
+        }
+
+
+def get_liveness_status():
+    with liveness_lock:
+        return {stream_id: dict(value) for stream_id, value in liveness_snapshots.items()}
+
+
+def _mark_faces_untrusted(presence: dict, liveness: dict) -> None:
+    if liveness.get("status") != "attack":
+        return
+    for face in presence.get("faces") or []:
+        face["trusted"] = False
+        face["spoof_attack_type"] = liveness.get("attack_type")
+        face["spoof_reason"] = liveness.get("reason", "")
+
+
 def process_frame(frame, stream_id):
     """在 MJPEG 编码前执行实时 AI 处理链。"""
     try:
@@ -119,6 +149,9 @@ def process_frame(frame, stream_id):
             household_id=household_id,
             persist_alert=True,
         )
+        _mark_faces_untrusted(presence, liveness)
+        get_face_service().set_presence(presence)
+        _update_liveness_snapshot(biz_stream_id, liveness)
 
         zones_qs = Zone.objects.filter(stream_id=biz_stream_id, is_active=True)
         if household_id is not None:

@@ -253,9 +253,24 @@ class FaceRecognitionService:
             bottom = max(top + 1, min(bottom, height))
 
             known = bool(face.get("known"))
-            color = (0, 180, 0) if known else (0, 0, 255)
+            trusted = face.get("trusted", True) is not False
+            color = (0, 165, 255) if not trusted else ((0, 180, 0) if known else (0, 0, 255))
             name = str(face.get("name") or "").strip()
             role = str(face.get("role") or "").strip()
+            if not trusted:
+                label = "spoof suspected"
+                cv2.rectangle(output, (left, top), (right, bottom), color, 2)
+                cv2.putText(
+                    output,
+                    label,
+                    (left, max(20, top - 8)),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    color,
+                    2,
+                    cv2.LINE_AA,
+                )
+                continue
             if not known:
                 label = "陌生人"
             else:
@@ -406,6 +421,10 @@ class FaceRecognitionService:
     def get_presence(self) -> dict[str, Any]:
         with self._lock:
             return deepcopy(self._presence)
+
+    def set_presence(self, presence: dict[str, Any]) -> None:
+        with self._lock:
+            self._presence = deepcopy(presence)
 
     def list_registered_members(self) -> list[dict[str, Any]]:
         with self._lock:

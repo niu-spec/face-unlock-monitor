@@ -135,6 +135,16 @@ STATIC_URL = "static/"
 SNAPSHOT_ROOT = BASE_DIR / "snapshots"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+LIVENESS_CONFIG = {
+    "WINDOW_SIZE": int(os.getenv("LIVENESS_WINDOW_SIZE", "8")),
+    "MIN_SAMPLES": int(os.getenv("LIVENESS_MIN_SAMPLES", "4")),
+    "ALERT_COOLDOWN": int(os.getenv("LIVENESS_ALERT_COOLDOWN", "30")),
+    "STATIC_MOTION_THRESHOLD": float(os.getenv("LIVENESS_STATIC_MOTION_THRESHOLD", "0.003")),
+    "STATIC_BOX_THRESHOLD": float(os.getenv("LIVENESS_STATIC_BOX_THRESHOLD", "0.004")),
+    "REPLAY_THRESHOLD": float(os.getenv("LIVENESS_REPLAY_THRESHOLD", "0.95")),
+    "TEXTURE_THRESHOLD": float(os.getenv("LIVENESS_TEXTURE_THRESHOLD", "0.9")),
+}
+
 # ── CORS ─────────────────────────────────────────────────────────────
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG

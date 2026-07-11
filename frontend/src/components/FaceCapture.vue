@@ -3,11 +3,12 @@ import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { isMobileDevice } from '@/utils/device'
 
-const emit = defineEmits(['capture'])
+const emit = defineEmits(['capture', 'capture-sequence'])
 
 const videoRef = ref(null)
 const streaming = ref(false)
 const capturing = ref(false)
+const sequenceCapturing = ref(false)
 const facingMode = ref('user')
 const isMobile = ref(false)
 
@@ -58,26 +59,19 @@ function switchCamera() {
   startCamera()
 }
 
-function captureFrame() {
+function grabFrameFile() {
   const video = videoRef.value
-  if (!video || !streaming.value || capturing.value) return
+  if (!video || !streaming.value) return Promise.reject(new Error('camera not ready'))
 
   const width = video.videoWidth
   const height = video.videoHeight
-  if (!width || !height) {
-    ElMessage.warning('摄像头画面未就绪，请稍候再试')
-    return
-  }
+  if (!width || !height) return Promise.reject(new Error('video not ready'))
 
-  capturing.value = true
   const canvas = document.createElement('canvas')
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')
-  if (!ctx) {
-    capturing.value = false
-    return
-  }
+  if (!ctx) return Promise.reject(new Error('canvas not available'))
 
   if (mirrorPreview.value) {
     ctx.translate(width, 0)
@@ -85,21 +79,64 @@ function captureFrame() {
   }
   ctx.drawImage(video, 0, 0, width, height)
 
-  canvas.toBlob(
-    (blob) => {
-      capturing.value = false
-      if (!blob) {
-        ElMessage.error('截图失败')
-        return
-      }
-      const previewUrl = URL.createObjectURL(blob)
-      const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' })
-      emit('capture', { file, previewUrl })
-      ElMessage.success('已截取当前画面')
-    },
-    'image/jpeg',
-    0.92,
-  )
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          reject(new Error('capture failed'))
+          return
+        }
+        const previewUrl = URL.createObjectURL(blob)
+        const file = new File([blob], `capture_${Date.now()}.jpg`, { type: 'image/jpeg' })
+        resolve({ file, previewUrl })
+      },
+      'image/jpeg',
+      0.92,
+    )
+  })
+}
+
+async function captureFrame() {
+  if (capturing.value || sequenceCapturing.value) return
+
+  capturing.value = true
+  try {
+    const payload = await grabFrameFile()
+    emit('capture', payload)
+    ElMessage.success('已截取当前画面')
+  } catch (err) {
+    ElMessage.warning(err.message === 'video not ready' ? '摄像头画面未就绪，请稍候再试' : '截图失败')
+  } finally {
+    capturing.value = false
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function captureSequence(count = 4) {
+  if (capturing.value || sequenceCapturing.value) return
+
+  sequenceCapturing.value = true
+  const files = []
+  let previewUrl = ''
+  try {
+    for (let index = 0; index < count; index += 1) {
+      const payload = await grabFrameFile()
+      files.push(payload.file)
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      previewUrl = payload.previewUrl
+      if (index < count - 1) await sleep(350)
+    }
+    emit('capture-sequence', { files, previewUrl })
+    ElMessage.success(`已连续采集 ${files.length} 帧`)
+  } catch {
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    ElMessage.error('连续采集失败，请保持人脸在画面中')
+  } finally {
+    sequenceCapturing.value = false
+  }
 }
 
 onMounted(() => {
@@ -110,14 +147,14 @@ onMounted(() => {
 
 onBeforeUnmount(stopCamera)
 
-defineExpose({ startCamera, stopCamera, captureFrame, switchCamera })
+defineExpose({ startCamera, stopCamera, captureFrame, captureSequence, switchCamera })
 </script>
 
 <template>
   <div class="face-capture" :class="{ mobile: isMobile }">
     <el-alert
       v-if="isMobile"
-      title="手机录入模式：默认使用后置摄像头，对准被录入人面部后截取"
+      title="手机录入模式：默认使用后置摄像头，对准被录入人面部后连续采集"
       type="info"
       :closable="false"
       show-icon
@@ -132,7 +169,7 @@ defineExpose({ startCamera, stopCamera, captureFrame, switchCamera })
         webkit-playsinline
         muted
       />
-      <div v-if="!streaming" class="camera-placeholder">正在启动摄像头…</div>
+      <div v-if="!streaming" class="camera-placeholder">正在启动摄像头...</div>
     </div>
     <div class="camera-actions">
       <el-button @click="startCamera">重新打开</el-button>
@@ -142,9 +179,17 @@ defineExpose({ startCamera, stopCamera, captureFrame, switchCamera })
       <el-button type="primary" :loading="capturing" :disabled="!streaming" @click="captureFrame">
         截取当前画面
       </el-button>
+      <el-button
+        type="success"
+        :loading="sequenceCapturing"
+        :disabled="!streaming"
+        @click="captureSequence"
+      >
+        连续采集 4 帧
+      </el-button>
     </div>
     <p class="camera-hint">
-      {{ isMobile ? '由管理员手持手机，对准家人面部，确保只有一张人脸、光线充足。' : '请正对摄像头，确保只有一张人脸、光线充足，然后点击截取。' }}
+      {{ isMobile ? '请对准家人面部，按提示轻微转头或眨眼，确保只有一张人脸。' : '建议使用连续采集完成活体检测；只上传静态照片可能无法通过注册。' }}
     </p>
   </div>
 </template>

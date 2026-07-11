@@ -20,15 +20,18 @@ const form = reactive({ name: '', role: 'adult' })
 const inputMode = ref('camera')
 const previewUrl = ref('')
 const photoFile = ref(null)
+const photoFiles = ref([])
 const submitting = ref(false)
+const submitHint = ref('')
 const members = ref([])
 const captureRef = ref(null)
 
 let previewObjectUrl = ''
 
-function setPreview(file, url) {
+function setPreview(file, url, files = [file]) {
   if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl)
   photoFile.value = file
+  photoFiles.value = files.filter(Boolean)
   previewUrl.value = url
   previewObjectUrl = url
 }
@@ -39,6 +42,11 @@ function onFileChange(file) {
 
 function onCameraCapture({ file, previewUrl: url }) {
   setPreview(file, url)
+}
+
+function onCameraCaptureSequence({ files, previewUrl: url }) {
+  const selected = Array.isArray(files) ? files.filter(Boolean) : []
+  setPreview(selected[selected.length - 1], url, selected)
 }
 
 watch(inputMode, (mode) => {
@@ -76,6 +84,7 @@ function clearPhoto() {
   if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl)
   previewObjectUrl = ''
   photoFile.value = null
+  photoFiles.value = []
   previewUrl.value = ''
 }
 
@@ -98,11 +107,16 @@ async function onSubmit() {
   }
 
   submitting.value = true
+  submitHint.value = inputMode.value === 'camera' && photoFiles.value.length >= 3 ? '活体检测中...' : ''
   const data = new FormData()
   data.append('name', form.name.trim())
   data.append('role', form.role)
   data.append('household_id', activeHouseholdId.value)
-  data.append('image', photoFile.value)
+  if (inputMode.value === 'camera' && photoFiles.value.length >= 3) {
+    photoFiles.value.forEach((file) => data.append('images', file))
+  } else {
+    data.append('image', photoFile.value)
+  }
 
   try {
     await request.post('/api/face/register/', data, { silent: true })
@@ -129,6 +143,7 @@ async function onSubmit() {
     }
   } finally {
     submitting.value = false
+    submitHint.value = ''
   }
 }
 
@@ -208,6 +223,7 @@ onMounted(() => {
             v-if="inputMode === 'camera'"
             ref="captureRef"
             @capture="onCameraCapture"
+            @capture-sequence="onCameraCaptureSequence"
           />
           <template v-else>
             <el-upload drag :auto-upload="false" :show-file-list="false" accept="image/*" @change="onFileChange">
@@ -221,7 +237,9 @@ onMounted(() => {
           </div>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="submitting" @click="onSubmit">录入成员</el-button>
+          <el-button type="primary" :loading="submitting" @click="onSubmit">
+            {{ submitHint || '录入成员' }}
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>

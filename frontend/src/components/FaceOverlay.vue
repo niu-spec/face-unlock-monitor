@@ -27,6 +27,7 @@ function getContainer() {
 }
 
 function faceLabel(face) {
+  if (face.trusted === false) return '疑似欺骗'
   if (!face.known) return '陌生人'
   const roleLabels = { adult: '成人', child: '儿童' }
   const role = roleLabels[face.role] || face.role || '家人'
@@ -120,7 +121,8 @@ function drawOverlay() {
     const h = (bottom - top) * videoRect.scaleY
 
     const known = Boolean(face.known)
-    const color = known ? '#00b400' : '#ff0000'
+    const trusted = face.trusted !== false
+    const color = !trusted ? '#ff9800' : (known ? '#00b400' : '#ff0000')
     const label = faceLabel(face)
 
     ctx.strokeStyle = color

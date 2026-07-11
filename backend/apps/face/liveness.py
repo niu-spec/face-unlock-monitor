@@ -10,6 +10,7 @@ from typing import Any
 
 import cv2
 import numpy as np
+from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +22,39 @@ FACE_DEEPFAKE = "FACE_DEEPFAKE"
 class LivenessDetectionService:
     """Stateful, dependency-light liveness detector keyed by stream_id."""
 
-    def __init__(self, window_size: int = 8, min_samples: int = 4, alert_cooldown: int = 30) -> None:
-        self.window_size = int(window_size)
-        self.min_samples = int(min_samples)
-        self.alert_cooldown = int(alert_cooldown)
+    def __init__(
+        self,
+        window_size: int | None = None,
+        min_samples: int | None = None,
+        alert_cooldown: int | None = None,
+        static_motion_threshold: float | None = None,
+        static_box_threshold: float | None = None,
+        replay_threshold: float | None = None,
+        texture_threshold: float | None = None,
+    ) -> None:
+        try:
+            config = getattr(settings, "LIVENESS_CONFIG", {})
+        except Exception:
+            config = {}
+        self.window_size = int(window_size if window_size is not None else config.get("WINDOW_SIZE", 8))
+        self.min_samples = int(min_samples if min_samples is not None else config.get("MIN_SAMPLES", 4))
+        self.alert_cooldown = int(alert_cooldown if alert_cooldown is not None else config.get("ALERT_COOLDOWN", 30))
+        self.static_motion_threshold = float(
+            static_motion_threshold
+            if static_motion_threshold is not None
+            else config.get("STATIC_MOTION_THRESHOLD", 0.003)
+        )
+        self.static_box_threshold = float(
+            static_box_threshold
+            if static_box_threshold is not None
+            else config.get("STATIC_BOX_THRESHOLD", 0.004)
+        )
+        self.replay_threshold = float(
+            replay_threshold if replay_threshold is not None else config.get("REPLAY_THRESHOLD", 0.95)
+        )
+        self.texture_threshold = float(
+            texture_threshold if texture_threshold is not None else config.get("TEXTURE_THRESHOLD", 0.9)
+        )
         self._history = defaultdict(lambda: deque(maxlen=self.window_size))
         self._last_alert: dict[tuple[str, str], float] = {}
         self._lock = threading.RLock()
@@ -49,7 +79,7 @@ class LivenessDetectionService:
             event = self._build_event(result, str(stream_id))
             events.append(event)
             if persist_alert:
-                self._persist_alert(event, household_id)
+                self._persist_alert(event, household_id, frame=frame)
         return result, events
 
     def analyze_sequence(
@@ -147,11 +177,11 @@ class LivenessDetectionService:
         texture = self._texture_anomaly_score(face_items)
         details = self._details(face_items, motion, box_motion, replay, texture)
 
-        if motion < 0.003 and box_motion < 0.004:
+        if motion < self.static_motion_threshold and box_motion < self.static_box_threshold:
             return self._attack(FACE_SPOOF, 1.0 - max(motion, box_motion), "连续人脸区域几乎完全静止，疑似静态照片欺骗", details)
-        if replay >= 0.95:
+        if replay >= self.replay_threshold:
             return self._attack(FACE_REPLAY, replay, "检测到重复帧/循环播放特征，疑似视频重放攻击", details)
-        if texture >= 0.9:
+        if texture >= self.texture_threshold:
             return self._attack(FACE_DEEPFAKE, texture, "人脸区域纹理或清晰度异常，疑似 AI 换脸/屏幕翻拍", details)
         return {
             "passed": True,
@@ -254,7 +284,7 @@ class LivenessDetectionService:
         return True
 
     @staticmethod
-    def _persist_alert(event: dict[str, Any], household_id: int | None) -> None:
+    def _persist_alert(event: dict[str, Any], household_id: int | None, frame: np.ndarray | None = None) -> None:
         try:
             from apps.alerts.services import create_alert
 
@@ -264,6 +294,8 @@ class LivenessDetectionService:
                 stream_id=event["stream_id"],
                 description=event["description"],
                 household_id=household_id,
+                frame=frame,
+                metadata={"liveness": event.get("details", {})},
             )
         except Exception:
             logger.exception("持久化人脸活体攻击告警失败")

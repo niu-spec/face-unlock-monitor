@@ -16,6 +16,7 @@ from rest_framework.views import APIView
 
 from apps.accounts.models import FamilyMember
 from apps.households.filters import resolve_active_household_id
+from .liveness import get_liveness_service
 from .services import get_face_service
 
 
@@ -25,6 +26,52 @@ def _decode_request_image(request):
     if uploaded:
         return service.decode_image_bytes(uploaded.read())
     return service.decode_base64_image(request.data.get("image", ""))
+
+
+def _decode_request_images(request) -> list:
+    service = get_face_service()
+    frames = []
+    uploaded_files = request.FILES.getlist("images") or request.FILES.getlist("image")
+    for uploaded in uploaded_files:
+        frames.append(service.decode_image_bytes(uploaded.read()))
+
+    images = request.data.get("images")
+    if isinstance(images, list):
+        frames.extend(service.decode_base64_image(value) for value in images)
+
+    if not frames:
+        frames.append(_decode_request_image(request))
+    return frames
+
+
+def _presence_for_frames(frames: list, stream_id: str, household_id: int | None) -> list[dict]:
+    service = get_face_service()
+    presences = []
+    for frame in frames:
+        _output, presence, _events = service.process_frame(
+            frame,
+            stream_id=stream_id,
+            household_id=household_id,
+            annotate=False,
+            persist_alert=False,
+        )
+        presences.append(presence)
+    return presences
+
+
+def _best_registration_frame(frames: list, presences: list[dict]):
+    best_index = 0
+    best_area = -1
+    for index, presence in enumerate(presences):
+        for face in presence.get("faces") or []:
+            box = face.get("box") or {}
+            area = max(0, int(box.get("right", 0)) - int(box.get("left", 0))) * max(
+                0, int(box.get("bottom", 0)) - int(box.get("top", 0))
+            )
+            if area > best_area:
+                best_area = area
+                best_index = index
+    return frames[best_index]
 
 
 class FaceRegisterView(APIView):
@@ -52,7 +99,25 @@ class FaceRegisterView(APIView):
         if not name or role not in dict(FamilyMember.ROLE_CHOICES):
             return Response({"error": "name 或 role 无效"}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            frame = _decode_request_image(request)
+            frames = _decode_request_images(request)
+            frame = frames[0]
+            liveness_result = None
+            if len(frames) >= 3:
+                presences = _presence_for_frames(frames, "face_register", household_id)
+                liveness_result = get_liveness_service().analyze_sequence(
+                    frames, presences, stream_id="face_register"
+                )
+                if not liveness_result.get("passed"):
+                    return Response(
+                        {
+                            "error": "活体检测未通过",
+                            "attack_type": liveness_result.get("attack_type"),
+                            "reason": liveness_result.get("reason"),
+                            "liveness": liveness_result,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                frame = _best_registration_frame(frames, presences)
             encoding = get_face_service().encode_single_face(frame).astype(float).tolist()
             with transaction.atomic():
                 member_id = request.data.get("member_id")
@@ -76,8 +141,34 @@ class FaceRegisterView(APIView):
         except (ValueError, RuntimeError) as exc:
             return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(
-            {"success": True, "member": registered}, status=status.HTTP_201_CREATED
+            {"success": True, "member": registered, "liveness": liveness_result},
+            status=status.HTTP_201_CREATED,
         )
+
+
+class FaceLivenessView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    @swagger_auto_schema(
+        tags=["face"],
+        operation_description="Run passive liveness detection on 3-5 face frames.",
+        manual_parameters=[
+            openapi.Parameter("stream_id", openapi.IN_FORM, type=openapi.TYPE_STRING),
+            openapi.Parameter("images", openapi.IN_FORM, type=openapi.TYPE_FILE, required=True),
+        ],
+        consumes=["multipart/form-data"],
+    )
+    def post(self, request):
+        try:
+            frames = _decode_request_images(request)
+            stream_id = str(request.data.get("stream_id", "auth"))
+            household_id = resolve_active_household_id(request)
+            presences = _presence_for_frames(frames, stream_id, household_id)
+            result = get_liveness_service().analyze_sequence(frames, presences, stream_id=stream_id)
+        except (ValueError, RuntimeError) as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({"success": True, "liveness": result, "presence": presences[-1] if presences else None})
 
 
 class FaceAnalyzeView(APIView):

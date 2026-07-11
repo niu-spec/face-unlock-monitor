@@ -124,6 +124,23 @@ class FaceRecognitionServiceTests(TestCase):
 
         self.assertFalse(np.array_equal(annotated, self.frame))
 
+    def test_draw_face_boxes_marks_untrusted_faces(self):
+        presence = {
+            "faces": [
+                {
+                    "known": True,
+                    "trusted": False,
+                    "name": "tester",
+                    "role": "adult",
+                    "box": {"top": 10, "right": 40, "bottom": 40, "left": 10},
+                }
+            ]
+        }
+
+        annotated = FaceRecognitionService.draw_face_boxes(self.frame, presence)
+
+        self.assertFalse(np.array_equal(annotated, self.frame))
+
 from apps.face.liveness import FACE_SPOOF, LivenessDetectionService
 
 
@@ -191,3 +208,21 @@ class LivenessDetectionServiceTests(TestCase):
         self.assertEqual(result["status"], "passed")
         self.assertTrue(result["passed"])
         self.assertIsNone(result["attack_type"])
+
+    @patch("apps.alerts.services.create_alert")
+    def test_attack_alert_persists_current_frame_for_snapshot(self, create_alert):
+        service = LivenessDetectionService(window_size=4, min_samples=4, alert_cooldown=60)
+        frame = _liveness_pattern_frame(0)
+
+        for _ in range(4):
+            service.observe(
+                frame,
+                _liveness_presence(),
+                stream_id="cam-1",
+                household_id=2,
+                persist_alert=True,
+            )
+
+        create_alert.assert_called_once()
+        self.assertIs(create_alert.call_args.kwargs["frame"], frame)
+        self.assertEqual(create_alert.call_args.kwargs["household_id"], 2)
