@@ -82,14 +82,29 @@ def ensure_worker_for_query(stream_id: str | None) -> None:
     get_worker(video_stream_id)
 
 
-def worker_presence_is_stale(worker: dict | None) -> bool:
-    """推流停止后 last_frame_at 不再更新，超过阈值则视为无画面。"""
+def _worker_timestamp_is_stale(timestamp: float | None) -> bool:
+    if timestamp is None:
+        return True
+    return (time.time() - float(timestamp)) > PRESENCE_STALE_SECONDS
+
+
+def worker_stream_is_live(worker: dict | None) -> bool:
+    """RTSP 采集仍在更新则视为有推流（与 AI 处理耗时解耦）。"""
+    if not worker:
+        return False
+    return not _worker_timestamp_is_stale(worker.get("last_capture_at"))
+
+
+def worker_detection_is_lagging(worker: dict | None) -> bool:
+    """AI 处理完成时间过旧，检测/人数数据可能滞后于画面。"""
     if not worker:
         return True
-    last_frame_at = worker.get("last_frame_at")
-    if last_frame_at is None:
-        return True
-    return (time.time() - float(last_frame_at)) > PRESENCE_STALE_SECONDS
+    return _worker_timestamp_is_stale(worker.get("last_frame_at"))
+
+
+def worker_presence_is_stale(worker: dict | None) -> bool:
+    """推流是否已停止（用于清空 presence 与 stream_live）。"""
+    return not worker_stream_is_live(worker)
 
 
 def resolve_presence_payload(
@@ -100,8 +115,7 @@ def resolve_presence_payload(
     """返回 presence 与 stream_live；停推流后清空过期检测数据。"""
     from apps.face.services import FaceRecognitionService
 
-    stale = worker_presence_is_stale(worker)
-    if stale:
+    if not worker_stream_is_live(worker):
         presence = FaceRecognitionService._empty_presence()
         if biz_stream_id:
             presence["stream_id"] = biz_stream_id

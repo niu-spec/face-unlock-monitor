@@ -1,11 +1,15 @@
 from unittest.mock import patch
 import json
+import time
 
 from django.test import SimpleTestCase
 
 from apps.video_stream.services import (
     ensure_worker_for_query,
+    resolve_presence_payload,
     resolve_video_stream_id,
+    worker_detection_is_lagging,
+    worker_stream_is_live,
 )
 
 
@@ -66,19 +70,22 @@ class VideoStatusViewTests(SimpleTestCase):
         mock_ensure_worker.assert_called_once_with("2")
 
 
+def _workers_status_with_capture(*_args, **_kwargs):
+    now = time.time()
+    return {"2": {"last_capture_at": now, "last_frame_at": now - 30}}
+
+
 class VideoPresenceViewTests(SimpleTestCase):
     @patch("apps.video_stream.views.ensure_worker_for_query")
     @patch("apps.face.services.get_face_service")
     @patch("apps.video_stream.views.get_liveness_status", return_value={"kitchen": {"status": "passed"}})
-    @patch("apps.video_stream.services.worker_presence_is_stale", return_value=False)
     @patch(
         "apps.video_stream.views.get_workers_status",
-        return_value={"2": {"last_frame_at": 1.0}},
+        side_effect=_workers_status_with_capture,
     )
     def test_presence_returns_lightweight_payload(
         self,
         _mock_workers,
-        _mock_stale,
         _mock_liveness,
         mock_face_service,
         mock_ensure_worker,
@@ -99,6 +106,26 @@ class VideoPresenceViewTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["presence"]["total"], 1)
         self.assertTrue(payload["stream_live"])
+        self.assertTrue(payload["detection_lagging"])
         self.assertEqual(payload["liveness"]["status"], "passed")
         self.assertIsNotNone(payload["last_frame_at"])
         mock_ensure_worker.assert_called_once_with("2")
+
+
+class StreamSignalTests(SimpleTestCase):
+    def test_stream_live_uses_capture_timestamp_not_ai_finish(self):
+        now = time.time()
+        worker = {"last_capture_at": now, "last_frame_at": now - 30}
+        self.assertTrue(worker_stream_is_live(worker))
+        self.assertTrue(worker_detection_is_lagging(worker))
+
+    @patch("apps.face.services.get_face_service")
+    def test_resolve_presence_kept_when_ai_lagging(self, mock_face_service):
+        mock_face_service.return_value.get_presence.return_value = {"total": 2}
+        now = time.time()
+        worker = {"last_capture_at": now, "last_frame_at": now - 30}
+        presence, stream_live = resolve_presence_payload(
+            mock_face_service.return_value, "living_room", worker
+        )
+        self.assertTrue(stream_live)
+        self.assertEqual(presence["total"], 2)

@@ -10,6 +10,7 @@ const POLL_MS = 200
 const activeStream = ref(DEFAULT_STREAM_ID)
 const streamPresence = ref(null)
 const streamLive = ref(true)
+const detectionLagging = ref(false)
 const livenessByStream = ref({})
 
 const webrtcUrl = computed(() => webrtcPreviewUrl(activeStream.value))
@@ -41,6 +42,7 @@ async function refreshStreamData() {
     }
     streamPresence.value = data.presence || null
     streamLive.value = data.stream_live !== false
+    detectionLagging.value = data.detection_lagging === true
     const legacyId = toZoneStreamId(activeStream.value)
     const liveness = data.liveness
     if (legacyId && liveness) {
@@ -77,6 +79,7 @@ function stopPolling() {
 watch(activeStream, () => {
   streamPresence.value = null
   streamLive.value = true
+  detectionLagging.value = false
   startPolling()
 })
 
@@ -100,6 +103,9 @@ onBeforeUnmount(() => {
               <div class="header-actions">
                 <el-tag v-if="!streamLive" type="info" effect="plain" size="small">
                   无推流信号
+                </el-tag>
+                <el-tag v-else-if="detectionLagging" type="warning" effect="plain" size="small">
+                  AI 检测滞后
                 </el-tag>
                 <el-tag :type="livenessTag.type" effect="plain" size="small">
                   {{ livenessTag.text }}

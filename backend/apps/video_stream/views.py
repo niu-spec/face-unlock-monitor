@@ -15,6 +15,7 @@ from .services import (
     resolve_presence_payload,
     resolve_presence_stream_id,
     resolve_video_stream_id,
+    worker_detection_is_lagging,
 )
 
 
@@ -55,8 +56,10 @@ def video_presence(request):
             "code": 200,
             "presence": presence,
             "stream_live": stream_live,
+            "detection_lagging": worker_detection_is_lagging(worker),
             "liveness": liveness_all.get(biz_stream_id) if biz_stream_id else None,
             "last_frame_at": worker.get("last_frame_at") if worker else None,
+            "last_capture_at": worker.get("last_capture_at") if worker else None,
         }
     )
 
@@ -92,6 +95,7 @@ def video_status(request):
             "rtmp_public_base_url": RTMP_PUBLIC_BASE_URL,
             "presence": presence,
             "stream_live": stream_live,
+            "detection_lagging": worker_detection_is_lagging(worker),
             "presences": presences,
             "liveness": get_liveness_status(),
             "workers": workers,
