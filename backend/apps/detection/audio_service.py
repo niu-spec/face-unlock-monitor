@@ -41,8 +41,8 @@ logger = logging.getLogger(__name__)
 AUDIO_SERVICE_CONFIG = {
     # 模型
     "AUDIO_MODEL": "panns_cnn14",
-    "AUDIO_CONFIDENCE_THRESHOLD": 0.25,   # 单类置信度阈值（AudioSet 527 类，sigmoid 输出）
-    "AUDIO_MULTI_LABEL_THRESHOLD": 0.20,  # 多标签组合判断使用的宽松阈值
+    "AUDIO_CONFIDENCE_THRESHOLD": 0.15,   # 单类置信度阈值（AudioSet 527 类，sigmoid 输出）
+    "AUDIO_MULTI_LABEL_THRESHOLD": 0.12,  # 多标签组合判断使用的宽松阈值
     # 音频预处理
     "SAMPLE_RATE": 32000,
     "N_FFT": 1024,
@@ -539,9 +539,17 @@ class AudioDetectionService:
 
         # 4. 推理
         with torch.no_grad():
-            output = self._model(tensor)  # (1, 527), sigmoid 已内置于模型
+            output = self._model(tensor)
 
-        probs = output.squeeze(0).numpy()  # (527,)
+        # PANNs torch.hub 模型返回 dict {'clipwise_output': ..., 'framewise_output': ...}
+        # _build_cnn14 fallback 直接返回 tensor
+        # 统一提取 logits 并做 sigmoid → 概率 (0~1)
+        if isinstance(output, dict):
+            logits = output["clipwise_output"]
+        else:
+            logits = output
+
+        probs = torch.sigmoid(logits).squeeze(0).cpu().numpy()  # (527,)
 
         # 5. 映射到业务告警类型
         results: dict[str, float] = {}
@@ -975,8 +983,8 @@ def _build_cnn14(num_classes: int = 527):
             x = F.dropout(x, p=0.5, training=self.training)
             output = self.fc_audioset(x)
 
-            # PANNs 输出 clip-wise logits → sigmoid 获取概率
-            return torch.sigmoid(output)
+            # 返回 logits（sigmoid 由 _classify_chunk 统一处理）
+            return output
 
     return Cnn14(num_classes)
 

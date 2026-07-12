@@ -23,7 +23,7 @@ class ZoneViolationTests(SimpleTestCase):
         self.service._loiter_since = {}
         self.service._intrusion_counter = defaultdict(lambda: defaultdict(int))
         self.service._fall_counter = defaultdict(int)
-        self.service._person_history = {}
+        self.service._fall_last_seen = {}
         # 新增的 IoU 追踪器（Mock，测试中 zone 检测不依赖真实追踪）
         self.service._person_tracker = MagicMock()
         self.service._person_tracker._tracks = {}

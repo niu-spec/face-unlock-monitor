@@ -31,6 +31,16 @@ class FakeTensor:
     def numpy(self):
         return self.values
 
+    def cpu(self):
+        return self
+
+
+def _fake_sigmoid(x):
+    """Element-wise sigmoid that works with FakeTensor or numpy."""
+    import numpy as np
+    values = x.values if hasattr(x, "values") else np.asarray(x)
+    return FakeTensor(1.0 / (1.0 + np.exp(-values)))
+
 
 class AudioDetectionServiceTests(TestCase):
     def test_load_uses_fallback_when_github_is_unavailable(self):
@@ -57,6 +67,7 @@ class AudioDetectionServiceTests(TestCase):
         fake_torch = SimpleNamespace(
             from_numpy=FakeTensor,
             no_grad=nullcontext,
+            sigmoid=_fake_sigmoid,
         )
 
         with patch.dict(sys.modules, {"torch": fake_torch}):

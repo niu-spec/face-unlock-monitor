@@ -4,7 +4,7 @@
   - 危险区域闯入 / 距边缘过近 / 异常停留检测（YOLO 行人检测 + IoU 追踪 + 多边形碰撞）
   - 积水检测（镜面反射 + 边缘纹理分析 + 颜色辅助，三信号融合）
   - 着火检测（三区间 HSV + 亮度 + 连通域滤波）
-  - 摔倒检测（跨帧追踪 + 双路径判定：标准骤降 + 极端姿态快速触发）
+  - 摔倒检测（IoU 跨帧追踪 + 状态持久化 + 双路径判定；容忍 YOLO 横向人体间歇丢帧）
   - 异常声学事件检测（PANNs CNN14 音频分类）★ v1.3 新增
   - 音视频联动告警（AVCorrelationBuffer）★ v1.3 新增
 
@@ -66,36 +66,28 @@ DETECTION_CONFIG = {
     # 综合判定：至少满足 (A + B) 或 C 才触发告警
     # --- 着火（FIRE）---
     # 火焰颜色范围：三个 HSV 区间覆盖明焰、暗焰与红热区域
-    # Range 1: 红/橙/黄明焰（低饱和也能捕获，避免过滤暗火）
-    "FIRE_HSV_LOWER_1": (0, 55, 80),
-    "FIRE_HSV_UPPER_1": (35, 255, 255),
+    # Range 1: 红/橙/黄明焰
+    "FIRE_HSV_LOWER_1": (0, 50, 60),
+    "FIRE_HSV_UPPER_1": (40, 255, 255),
     # Range 2: 深红/品红区域
-    "FIRE_HSV_LOWER_2": (155, 55, 80),
+    "FIRE_HSV_LOWER_2": (150, 50, 60),
     "FIRE_HSV_UPPER_2": (180, 255, 255),
-    # Range 3: 黄/白热焰（高亮高温核心）
-    "FIRE_HSV_LOWER_3": (18, 20, 200),
-    "FIRE_HSV_UPPER_3": (38, 120, 255),
-    # 亮度阈值（大幅降低，捕获焰体而非仅核心））
-    "FIRE_BRIGHTNESS_THRESHOLD": 130,
-    # 面积阈值（降低以检测初起小火）
-    "FIRE_AREA_THRESHOLD": 0.02,
+    # Range 3: 黄/白热焰核心（低饱和高亮）
+    "FIRE_HSV_LOWER_3": (15, 15, 180),
+    "FIRE_HSV_UPPER_3": (45, 130, 255),
+    # 不再使用独立的亮度阈值（颜色掩码的 V 下限已足够）
+    # 面积阈值
+    "FIRE_AREA_THRESHOLD": 0.01,
     # 火焰区域最小连通域（过滤噪声）
-    "FIRE_MIN_CONTOUR_AREA": 80,
+    "FIRE_MIN_CONTOUR_AREA": 60,
     # --- 摔倒（FALL）---
-    # 判定策略：双路径
-    #   Path 1（标准）: 曾站立 → 姿态突变 → 横向姿态（多帧确认）
-    #   Path 2（快速）: 极端横向姿态（h/w < 0.55），无需曾站立直接告警
-    "FALL_ASPECT_RATIO_THRESHOLD": 0.90,       # 高宽比阈值（放松，1.0=正方形）
-    "FALL_EXTREME_AR_THRESHOLD": 0.55,         # 极端高宽比（直接触发，不要求曾站立）
-    "FALL_PERSIST_FRAMES": 4,                  # 持续帧数（从5降到4，更快响应）
-    "FALL_MIN_STANDING_RATIO": 1.45,           # 站立高宽比（1.6→1.45，坐姿也能识别）
-    "FALL_CENTER_DROP_RATIO": 0.20,            # 中心下移比（0.30→0.20，更敏感）
-    "FALL_AR_VELOCITY_THRESHOLD": 0.50,        # AR变化速率（1.0→0.50，慢摔倒也能检测）
-    "FALL_MAX_STANDING_FRAMES_TO_RESET": 2,    # 非站立帧数阈值（降低，避免短暂遮挡重置）
+    # 极简策略：人体框宽大于高 = 横向姿态 = 疑似摔倒。
+    # 连续 N 帧确认后告警，无需曾站立/速度/位移等前置条件。
+    "FALL_PERSIST_FRAMES": 3,                  # 横向姿态持续帧数
     # --- YOLO 行人检测（优先）---
     "YOLO_MODEL": "yolov8n.pt",
     "YOLO_IMGSZ": 480,
-    "YOLO_CONFIDENCE_THRESHOLD": 0.5,
+    "YOLO_CONFIDENCE_THRESHOLD": 0.35,
     "YOLO_IOU_THRESHOLD": 0.45,
     "YOLO_PERSON_CLASS_ID": 0,
     # --- HOG 行人检测（YOLO 不可用时降级）---
@@ -403,16 +395,16 @@ class DetectionService:
 
         self._cooldown: dict[str, dict[str, float]] = defaultdict(dict)
         self._fall_counter: dict[int, int] = defaultdict(int)
+        self._fall_last_seen: dict[int, float] = {}   # 摔倒状态最后活跃时间（秒级 epoch）
         self._loiter_since: dict[tuple[int, int], float] = {}
         self._current_snapshot_frame = None
         self._current_household_id: int | None = None
-        self._person_history: dict[int, dict] = {}
         self._intrusion_counter: dict[str, dict[int, int]] = defaultdict(
             lambda: defaultdict(int)
         )
         # 跨帧人员追踪器（解决 YOLO/HOG 每帧独立检测导致的 track_id 不连续）
         self._person_tracker = SimplePersonTracker(
-            max_lost_frames=15, iou_threshold=0.25
+            max_lost_frames=15, iou_threshold=0.20
         )
 
         # ★ v1.3 音视频联动
@@ -513,20 +505,26 @@ class DetectionService:
         """YOLO 行人检测，不可用时自动降级为 HOG。
 
         检测后通过 SimplePersonTracker 分配跨帧稳定的 track_id。
+        YOLO 第一轮 0 人时自动降置信度重扫，应对横向/非直立人体。
         """
         if self._detector_type == "YOLO" and self._yolo is not None:
             boxes = self._detect_pedestrians_yolo(frame)
+            if not boxes:
+                # 低置信度重扫：摔倒/横向人体 YOLO 检测不稳定
+                boxes = self._detect_pedestrians_yolo(frame, conf=0.20)
         else:
             boxes = self._detect_pedestrians_hog(frame)
         # 跨帧追踪：为每个检测框分配稳定的 track_id
         return self._person_tracker.update(boxes)
 
-    def _detect_pedestrians_yolo(self, frame: np.ndarray) -> list[dict]:
+    def _detect_pedestrians_yolo(
+        self, frame: np.ndarray, conf: float | None = None
+    ) -> list[dict]:
         """使用 YOLOv8n 检测行人（class_id=0 即 person）。"""
         results = self._yolo(
             frame,
             imgsz=_cfg("YOLO_IMGSZ"),
-            conf=_cfg("YOLO_CONFIDENCE_THRESHOLD"),
+            conf=conf if conf is not None else _cfg("YOLO_CONFIDENCE_THRESHOLD"),
             iou=_cfg("YOLO_IOU_THRESHOLD"),
             classes=[_cfg("YOLO_PERSON_CLASS_ID")],
             verbose=False,
@@ -938,14 +936,10 @@ class DetectionService:
     # -----------------------------------------------------------------------
 
     def _detect_fire(self, frame: np.ndarray, stream_id: str) -> list[dict]:
-        """检测画面中火焰区域（三区间 HSV + 亮度 + 形态滤波）。
+        """检测画面中火焰区域（纯 HSV 颜色 + 饱和度 + 形态滤波）。
 
-        改进要点：
-          1. 三区间 HSV 覆盖明焰、暗焰、高温白热核心
-          2. 降低饱和度下限（100→55）捕获暗火
-          3. 降低亮度阈值（180→130）捕获焰体而非仅核心
-          4. 面积阈值从 5% → 2%，可检测初起小火
-          5. 形态滤波过滤零星噪点
+        策略：三区间 HSV 掩码 OR 合并 → 形态滤波 → 连通域去噪 → 面积判定。
+        无独立亮度阈值（颜色掩码 V 下限已足够排除暗区噪点）。
         """
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         h, w = frame.shape[:2]
@@ -970,17 +964,10 @@ class DetectionService:
         color_mask = cv2.bitwise_or(mask1, mask2)
         color_mask = cv2.bitwise_or(color_mask, mask3)
 
-        # 亮度掩码（明度通道独立阈值）
-        v_channel = hsv[:, :, 2]
-        _, bright_mask = cv2.threshold(
-            v_channel, _cfg("FIRE_BRIGHTNESS_THRESHOLD"), 255, cv2.THRESH_BINARY
-        )
-        mask = cv2.bitwise_and(color_mask, bright_mask)
-
         # 形态滤波：先去噪再连接断裂区域
         kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
+        mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_large, iterations=2)
 
         # 过滤小面积噪点
@@ -1043,132 +1030,65 @@ class DetectionService:
     # -----------------------------------------------------------------------
 
     def _cleanup_stale_tracks(self, active_ids: set[int]) -> None:
-        """清理已离开画面的 track_id 残留计数器与历史状态。"""
-        for tid in list(self._fall_counter.keys()):
-            if tid not in active_ids:
-                del self._fall_counter[tid]
-        for tid in list(self._person_history.keys()):
-            if tid not in active_ids:
-                del self._person_history[tid]
+        """清理已离开画面的 track_id 残留计数器与历史状态。
+
+        重要：摔倒检测的 _fall_counter 和 _person_tracker
+        **不在此处清理**。原因：YOLO 对横向/非直立人体检测不稳定，
+        若人摔倒后短暂丢检测，立即清空计数器会导致摔倒永远无法触发。
+        这些结构由各自的管理逻辑自行维护生命周期。
+        """
+        # 仅清理闯入计数器（zone violations，不跨检测间隙持久化）
         for zone_key in list(self._intrusion_counter.keys()):
             for tid in list(self._intrusion_counter[zone_key].keys()):
                 if tid not in active_ids:
                     del self._intrusion_counter[zone_key][tid]
-        # 同步清理追踪器中的失联轨迹
-        if hasattr(self, "_person_tracker") and self._person_tracker is not None:
-            for tid in list(self._person_tracker._tracks.keys()):
-                if tid not in active_ids:
-                    self._person_tracker.remove_track(tid)
+        # _fall_counter / _person_tracker 由各自逻辑管理
+        self._expire_fall_state(time.time())
+
+    def _expire_fall_state(self, now: float, max_age: float = 30.0):
+        """清理超过 max_age 秒未出现的摔倒追踪状态，防止内存泄漏。"""
+        stale_fall_ids = [
+            tid for tid, ts in self._fall_last_seen.items()
+            if now - ts > max_age
+        ]
+        for tid in stale_fall_ids:
+            self._fall_counter.pop(tid, None)
+            self._fall_last_seen.pop(tid, None)
 
     def _detect_fall(
         self, person_boxes: list[dict], stream_id: str
     ) -> list[dict]:
-        """检测人员摔倒（双路径多信号融合）。
+        """检测人员摔倒 — 极简策略。
 
-        Path 1 — 标准摔倒（曾站立 → 姿态骤变 → 横向姿态）:
-          条件 a: 高宽比 < FALL_ASPECT_RATIO_THRESHOLD（人横向）
-          条件 b: 曾站立（h/w > FALL_MIN_STANDING_RATIO 持续 ≥ 3 帧）
-          条件 c: 骤变确认（AR 变化速率 或 中心点大幅下移）
-          持续 FALL_PERSIST_FRAMES 帧后告警。
-
-        Path 2 — 极端姿态（无需曾站立，直接触发）:
-          条件: 高宽比 < FALL_EXTREME_AR_THRESHOLD（人几乎平躺）
-          持续 FALL_PERSIST_FRAMES 帧后立即告警。
-
-        蹲下 vs 摔倒区分:
-          - 蹲下: h/w ≈ 0.8~1.2, 变化缓慢, 中心点小幅下移 → 不告警
-          - 摔倒: h/w < 0.9, 变化快, 或极端姿态 h/w < 0.55 → 告警
+        判定：人体框宽大于高（横向姿态）连续 FALL_PERSIST_FRAMES 帧 → 告警。
+        无前置条件（不要求曾站立/速度/位移），蹲下（近似方形）不会触发。
         """
         results = []
         now = time.time()
+        fall_persist = _cfg("FALL_PERSIST_FRAMES")
 
         active_ids = {box.get("track_id", -1) for box in person_boxes}
+        for tid in active_ids:
+            if tid >= 0:
+                self._fall_last_seen[tid] = now
         self._cleanup_stale_tracks(active_ids)
-
-        # 缓存配置（避免循环内频繁 Django settings 查询）
-        fall_ar_threshold = _cfg("FALL_ASPECT_RATIO_THRESHOLD")
-        fall_extreme_ar = _cfg("FALL_EXTREME_AR_THRESHOLD")
-        fall_min_standing = _cfg("FALL_MIN_STANDING_RATIO")
-        fall_persist = _cfg("FALL_PERSIST_FRAMES")
-        fall_ar_velocity = _cfg("FALL_AR_VELOCITY_THRESHOLD")
-        fall_center_drop = _cfg("FALL_CENTER_DROP_RATIO")
-        max_standing_reset = _cfg("FALL_MAX_STANDING_FRAMES_TO_RESET")
 
         for box in person_boxes:
             bw, bh = box["w"], box["h"]
             if bw <= 0 or bh <= 0:
                 continue
 
-            aspect_ratio = bh / bw
             tid = box.get("track_id", -1)
-            center_y = box["y"] + bh // 2
+            is_horizontal = bw > bh  # 宽 > 高 = 横向姿态
 
-            # ---- 初始化 / 获取该人物历史状态 ----
-            if tid not in self._person_history:
-                self._person_history[tid] = {
-                    "prev_ar": aspect_ratio,
-                    "prev_cy": center_y,
-                    "prev_h": bh,
-                    "prev_time": now,
-                    "was_standing": False,
-                    "standing_frames": 0,
-                }
-
-            hist = self._person_history[tid]
-            dt = max(0.001, now - hist["prev_time"])  # 避免除零
-
-            # ---- 追踪站立历史 ----
-            if aspect_ratio >= fall_min_standing:
-                hist["standing_frames"] += 1
-                if hist["standing_frames"] >= 3:
-                    hist["was_standing"] = True
-            else:
-                # 衰减（但不过快，避免短暂遮挡导致站立历史丢失）
-                hist["standing_frames"] = max(0, hist["standing_frames"] - 1)
-                if hist["standing_frames"] <= 0:
-                    hist["was_standing"] = False
-
-            # ---- 计算骤变信号 ----
-            ar_velocity = 0.0
-            center_drop_ratio = 0.0
-            is_rapid_drop = False
-            is_center_dropped = False
-
-            if hist["prev_ar"] > 0:
-                ar_velocity = (hist["prev_ar"] - aspect_ratio) / dt
-                is_rapid_drop = ar_velocity > fall_ar_velocity
-
-            cy_drop = center_y - hist["prev_cy"]
-            ref_h = max(bh, hist.get("prev_h", bh))
-            center_drop_ratio = cy_drop / ref_h if ref_h > 0 else 0
-            is_center_dropped = center_drop_ratio > fall_center_drop
-
-            is_sudden = is_rapid_drop or is_center_dropped
-            is_low_ar = aspect_ratio < fall_ar_threshold
-            is_extreme = aspect_ratio < fall_extreme_ar
-            is_fallen_pose = bw > bh  # 宽大于高 = 横向姿态
-
-            # ---- 判定 ----
-            path1 = (
-                is_low_ar and is_fallen_pose
-                and hist["was_standing"] and is_sudden
-            )
-            path2 = is_extreme and is_fallen_pose
-
-            if path1 or path2:
-                trigger_path = "extreme_pose" if (path2 and not path1) else "standard"
+            if is_horizontal:
                 self._fall_counter[tid] += 1
 
                 if self._fall_counter[tid] >= fall_persist:
                     if not self._check_cooldown("FALL", stream_id):
                         continue
 
-                    msg = (
-                        f"检测到人员疑似摔倒"
-                        f"（高宽比 {aspect_ratio:.2f}, "
-                        f"路径 {trigger_path}, "
-                        f"变化速率 {ar_velocity:.1f}/s）"
-                    )
+                    msg = f"检测到人员疑似摔倒（宽高比 {bh / bw:.2f}，连续 {fall_persist} 帧）"
 
                     self._create_alert(
                         alert_type="FALL",
@@ -1177,7 +1097,7 @@ class DetectionService:
                         description=msg,
                     )
 
-                    logger.info("Fall detected [%s]: %s", trigger_path, msg)
+                    logger.info("Fall detected (track=%d): %s", tid, msg)
                     results.append(
                         {
                             "alert_type": "FALL",
@@ -1185,28 +1105,15 @@ class DetectionService:
                             "bbox": (box["x"], box["y"], bw, bh),
                             "severity": "high",
                             "detail": {
-                                "aspect_ratio": round(aspect_ratio, 2),
+                                "aspect_ratio": round(bh / bw, 2),
                                 "track_id": tid,
-                                "ar_velocity": round(ar_velocity, 2),
-                                "center_drop_ratio": round(center_drop_ratio, 2),
-                                "trigger_path": trigger_path,
                             },
                         }
                     )
-                    # 告警后重置计数器（保留站立历史不用重置）
                     self._fall_counter[tid] = 0
-            elif is_low_ar and is_fallen_pose and not is_sudden:
-                # 低高宽比但变化缓慢 → 蹲下/坐下，递减计数器
-                self._fall_counter[tid] = max(0, self._fall_counter[tid] - 1)
             else:
-                # 站起来了 → 重置计数器
+                # 直立或蹲姿 → 重置计数器
                 self._fall_counter[tid] = 0
-
-            # ---- 更新历史 ----
-            hist["prev_ar"] = aspect_ratio
-            hist["prev_cy"] = center_y
-            hist["prev_h"] = bh
-            hist["prev_time"] = now
 
         return results
 
