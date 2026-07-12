@@ -4,7 +4,7 @@
   - 危险区域闯入 / 距边缘过近 / 异常停留检测（YOLO 行人检测 + IoU 追踪 + 多边形碰撞）
   - 积水检测（镜面反射 + 边缘纹理分析 + 颜色辅助，三信号融合）
   - 着火检测（三区间 HSV + 亮度 + 连通域滤波）
-  - 摔倒检测（跨帧追踪 + 双路径判定：标准骤降 + 极端姿态快速触发）
+  - 摔倒检测（IoU 跨帧追踪 + 状态持久化 + 双路径判定；容忍 YOLO 横向人体间歇丢帧）
   - 异常声学事件检测（PANNs CNN14 音频分类）★ v1.3 新增
   - 音视频联动告警（AVCorrelationBuffer）★ v1.3 新增
 
@@ -95,7 +95,7 @@ DETECTION_CONFIG = {
     # --- YOLO 行人检测（优先）---
     "YOLO_MODEL": "yolov8n.pt",
     "YOLO_IMGSZ": 480,
-    "YOLO_CONFIDENCE_THRESHOLD": 0.5,
+    "YOLO_CONFIDENCE_THRESHOLD": 0.35,
     "YOLO_IOU_THRESHOLD": 0.45,
     "YOLO_PERSON_CLASS_ID": 0,
     # --- HOG 行人检测（YOLO 不可用时降级）---
@@ -403,6 +403,7 @@ class DetectionService:
 
         self._cooldown: dict[str, dict[str, float]] = defaultdict(dict)
         self._fall_counter: dict[int, int] = defaultdict(int)
+        self._fall_last_seen: dict[int, float] = {}   # 摔倒状态最后活跃时间（秒级 epoch）
         self._loiter_since: dict[tuple[int, int], float] = {}
         self._current_snapshot_frame = None
         self._current_household_id: int | None = None
@@ -412,7 +413,7 @@ class DetectionService:
         )
         # 跨帧人员追踪器（解决 YOLO/HOG 每帧独立检测导致的 track_id 不连续）
         self._person_tracker = SimplePersonTracker(
-            max_lost_frames=15, iou_threshold=0.25
+            max_lost_frames=15, iou_threshold=0.20
         )
 
         # ★ v1.3 音视频联动
@@ -1043,22 +1044,31 @@ class DetectionService:
     # -----------------------------------------------------------------------
 
     def _cleanup_stale_tracks(self, active_ids: set[int]) -> None:
-        """清理已离开画面的 track_id 残留计数器与历史状态。"""
-        for tid in list(self._fall_counter.keys()):
-            if tid not in active_ids:
-                del self._fall_counter[tid]
-        for tid in list(self._person_history.keys()):
-            if tid not in active_ids:
-                del self._person_history[tid]
+        """清理已离开画面的 track_id 残留计数器与历史状态。
+
+        重要：摔倒检测的 _fall_counter / _person_history 和 _person_tracker
+        **不在此处清理**。原因：YOLO 对横向/非直立人体检测不稳定，
+        若人摔倒后短暂丢检测，立即清空计数器会导致摔倒永远无法触发。
+        这些结构由各自的管理逻辑自行维护生命周期。
+        """
+        # 仅清理闯入计数器（zone violations，不跨检测间隙持久化）
         for zone_key in list(self._intrusion_counter.keys()):
             for tid in list(self._intrusion_counter[zone_key].keys()):
                 if tid not in active_ids:
                     del self._intrusion_counter[zone_key][tid]
-        # 同步清理追踪器中的失联轨迹
-        if hasattr(self, "_person_tracker") and self._person_tracker is not None:
-            for tid in list(self._person_tracker._tracks.keys()):
-                if tid not in active_ids:
-                    self._person_tracker.remove_track(tid)
+        # _fall_counter / _person_history / _person_tracker 由各自逻辑管理
+        self._expire_fall_state(time.time())
+
+    def _expire_fall_state(self, now: float, max_age: float = 30.0):
+        """清理超过 max_age 秒未出现的摔倒追踪状态，防止内存泄漏。"""
+        stale_fall_ids = [
+            tid for tid, ts in self._fall_last_seen.items()
+            if now - ts > max_age
+        ]
+        for tid in stale_fall_ids:
+            self._fall_counter.pop(tid, None)
+            self._person_history.pop(tid, None)
+            self._fall_last_seen.pop(tid, None)
 
     def _detect_fall(
         self, person_boxes: list[dict], stream_id: str
@@ -1083,6 +1093,10 @@ class DetectionService:
         now = time.time()
 
         active_ids = {box.get("track_id", -1) for box in person_boxes}
+        # 标记所有活跃 track 的最后出现时间（跨 YOLO 丢帧持久化计数器）
+        for tid in active_ids:
+            if tid >= 0:
+                self._fall_last_seen[tid] = now
         self._cleanup_stale_tracks(active_ids)
 
         # 缓存配置（避免循环内频繁 Django settings 查询）
