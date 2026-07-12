@@ -936,16 +936,16 @@ class DetectionService:
     # -----------------------------------------------------------------------
 
     def _detect_fire(self, frame: np.ndarray, stream_id: str) -> list[dict]:
-        """检测画面中火焰区域（纯 HSV 颜色 + 饱和度 + 形态滤波）。
+        """检测画面中火焰区域（HSV 颜色 + RGB 暖色双路融合）。
 
-        策略：三区间 HSV 掩码 OR 合并 → 形态滤波 → 连通域去噪 → 面积判定。
-        无独立亮度阈值（颜色掩码 V 下限已足够排除暗区噪点）。
+        策略：HSV 三区间掩码 + RGB 暖色掩码 → OR 合并 → 形态滤波 → 连通域去噪 → 面积判定。
+        RGB 暖色作为兜底：R 通道明显大于 G 和 B 的像素（火焰独有特征）。
         """
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         h, w = frame.shape[:2]
         frame_area = h * w
 
-        # 三区间火焰颜色掩码
+        # ---- HSV 三区间火焰颜色掩码 ----
         mask1 = cv2.inRange(
             hsv,
             np.array(_cfg("FIRE_HSV_LOWER_1")),
@@ -964,7 +964,17 @@ class DetectionService:
         color_mask = cv2.bitwise_or(mask1, mask2)
         color_mask = cv2.bitwise_or(color_mask, mask3)
 
-        # 形态滤波：先去噪再连接断裂区域
+        # ---- RGB 暖色兜底：R 通道显著大于 G 和 B ----
+        r = frame[:, :, 2].astype(np.float32)
+        g = frame[:, :, 1].astype(np.float32)
+        b = frame[:, :, 0].astype(np.float32)
+        rgb_warm = (
+            (r > g * 1.15) & (r > b * 1.3) & (r > 60)
+        )
+        rgb_mask = (rgb_warm * 255).astype(np.uint8)
+        color_mask = cv2.bitwise_or(color_mask, rgb_mask)
+
+        # ---- 形态滤波：先去噪再连接断裂区域 ----
         kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
         mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
