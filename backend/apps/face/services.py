@@ -184,17 +184,18 @@ class FaceRecognitionService:
     def encode_single_face(self, frame: np.ndarray) -> np.ndarray:
         if frame is None or frame.size == 0:
             raise ValueError("图片为空")
-        face_recognition = _load_face_recognition()
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        locations = face_recognition.face_locations(rgb, model="hog")
-        if not locations:
-            raise ValueError("图片中未检测到人脸")
-        if len(locations) != 1:
-            raise ValueError("注册图片必须且只能包含一张人脸")
-        encodings = face_recognition.face_encodings(rgb, locations)
-        if not encodings or len(encodings[0]) != 128:
-            raise ValueError("无法提取128维人脸特征")
-        return np.asarray(encodings[0], dtype=np.float64)
+        with self._lock:
+            face_recognition = _load_face_recognition()
+            locations = face_recognition.face_locations(rgb, model="hog")
+            if not locations:
+                raise ValueError("图片中未检测到人脸")
+            if len(locations) != 1:
+                raise ValueError("注册图片必须且只能包含一张人脸")
+            encodings = face_recognition.face_encodings(rgb, locations)
+            if not encodings or len(encodings[0]) != 128:
+                raise ValueError("无法提取128维人脸特征")
+            return np.asarray(encodings[0], dtype=np.float64)
 
     def register_encoding(
         self,
@@ -317,76 +318,85 @@ class FaceRecognitionService:
         if frame is None or frame.size == 0:
             raise ValueError("视频帧为空")
         self.sync_members_from_database()
-        face_recognition = _load_face_recognition()
         scale = self.resize_scale
         analysis = cv2.resize(frame, None, fx=scale, fy=scale) if scale != 1 else frame
         rgb = cv2.cvtColor(analysis, cv2.COLOR_BGR2RGB)
-        locations = face_recognition.face_locations(rgb, model="hog")
-        encodings = face_recognition.face_encodings(rgb, locations)
 
+        # dlib/face_recognition 不是线程安全的；多路视频 worker 共享单例时必须串行。
         with self._lock:
+            face_recognition = _load_face_recognition()
             candidates = [
                 (member_id, deepcopy(member))
                 for member_id, member in self._members.items()
                 if household_id is None or member.get("household_id") == household_id
             ]
-        known_ids = [item[0] for item in candidates]
-        known_members = [item[1] for item in candidates]
-        known_encodings = [np.asarray(item["encoding"]) for item in known_members]
+            known_ids = [item[0] for item in candidates]
+            known_members = [item[1] for item in candidates]
+            known_encodings = [np.asarray(item["encoding"]) for item in known_members]
+            locations = face_recognition.face_locations(rgb, model="hog")
+            encodings = face_recognition.face_encodings(rgb, locations)
+
+            faces: list[dict[str, Any]] = []
+            members: list[dict[str, Any]] = []
+            seen_members: set[str] = set()
+            stranger_count = 0
+
+            for track_id, (location, encoding) in enumerate(zip(locations, encodings)):
+                matched_index = None
+                distance = None
+                if known_encodings:
+                    distances = face_recognition.face_distance(known_encodings, encoding)
+                    best = int(np.argmin(distances))
+                    distance = float(distances[best])
+                    if distance <= self.tolerance:
+                        matched_index = best
+
+                top, right, bottom, left = (
+                    int(round(value / scale)) for value in location
+                )
+                real_name = None
+                identity = ""
+                if matched_index is None:
+                    member_id, name, role, known = None, "Stranger", "stranger", False
+                    stranger_count += 1
+                else:
+                    member_id = known_ids[matched_index]
+                    registered = known_members[matched_index]
+                    real_name = registered["name"]
+                    identity = str(registered.get("identity") or "").strip()
+                    display_name = _member_display_name(registered)
+                    name, role, known = display_name, registered["role"], True
+                    if member_id not in seen_members:
+                        members.append(
+                            {
+                                "member_id": member_id,
+                                "name": display_name,
+                                "real_name": real_name,
+                                "identity": identity,
+                                "role": role,
+                            }
+                        )
+                        seen_members.add(member_id)
+                faces.append(
+                    {
+                        "track_id": track_id,
+                        "member_id": member_id,
+                        "name": name,
+                        "real_name": real_name,
+                        "identity": identity,
+                        "role": role,
+                        "known": known,
+                        "distance": round(distance, 4) if distance is not None else None,
+                        "box": {
+                            "top": top,
+                            "right": right,
+                            "bottom": bottom,
+                            "left": left,
+                        },
+                    }
+                )
 
         output = frame.copy() if annotate else frame
-        faces: list[dict[str, Any]] = []
-        members: list[dict[str, Any]] = []
-        seen_members: set[str] = set()
-        stranger_count = 0
-
-        for track_id, (location, encoding) in enumerate(zip(locations, encodings)):
-            matched_index = None
-            distance = None
-            if known_encodings:
-                distances = face_recognition.face_distance(known_encodings, encoding)
-                best = int(np.argmin(distances))
-                distance = float(distances[best])
-                if distance <= self.tolerance:
-                    matched_index = best
-
-            top, right, bottom, left = (int(round(value / scale)) for value in location)
-            real_name = None
-            identity = ""
-            if matched_index is None:
-                member_id, name, role, known = None, "Stranger", "stranger", False
-                stranger_count += 1
-            else:
-                member_id = known_ids[matched_index]
-                registered = known_members[matched_index]
-                real_name = registered["name"]
-                identity = str(registered.get("identity") or "").strip()
-                display_name = _member_display_name(registered)
-                name, role, known = display_name, registered["role"], True
-                if member_id not in seen_members:
-                    members.append(
-                        {
-                            "member_id": member_id,
-                            "name": display_name,
-                            "real_name": real_name,
-                            "identity": identity,
-                            "role": role,
-                        }
-                    )
-                    seen_members.add(member_id)
-            faces.append(
-                {
-                    "track_id": track_id,
-                    "member_id": member_id,
-                    "name": name,
-                    "real_name": real_name,
-                    "identity": identity,
-                    "role": role,
-                    "known": known,
-                    "distance": round(distance, 4) if distance is not None else None,
-                    "box": {"top": top, "right": right, "bottom": bottom, "left": left},
-                }
-            )
 
         updated_at = datetime.now(timezone.utc).isoformat()
         height, width = frame.shape[:2]
