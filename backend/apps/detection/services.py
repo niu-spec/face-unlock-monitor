@@ -66,21 +66,20 @@ DETECTION_CONFIG = {
     # 综合判定：至少满足 (A + B) 或 C 才触发告警
     # --- 着火（FIRE）---
     # 火焰颜色范围：三个 HSV 区间覆盖明焰、暗焰与红热区域
-    # Range 1: 红/橙/黄明焰（低饱和也能捕获，避免过滤暗火）
-    "FIRE_HSV_LOWER_1": (0, 55, 80),
-    "FIRE_HSV_UPPER_1": (35, 255, 255),
+    # Range 1: 红/橙/黄明焰
+    "FIRE_HSV_LOWER_1": (0, 50, 60),
+    "FIRE_HSV_UPPER_1": (40, 255, 255),
     # Range 2: 深红/品红区域
-    "FIRE_HSV_LOWER_2": (155, 55, 80),
+    "FIRE_HSV_LOWER_2": (150, 50, 60),
     "FIRE_HSV_UPPER_2": (180, 255, 255),
-    # Range 3: 黄/白热焰（高亮高温核心）
-    "FIRE_HSV_LOWER_3": (18, 20, 200),
-    "FIRE_HSV_UPPER_3": (38, 120, 255),
-    # 亮度阈值（大幅降低，捕获焰体而非仅核心））
-    "FIRE_BRIGHTNESS_THRESHOLD": 130,
-    # 面积阈值（降低以检测初起小火）
-    "FIRE_AREA_THRESHOLD": 0.02,
+    # Range 3: 黄/白热焰核心（低饱和高亮）
+    "FIRE_HSV_LOWER_3": (15, 15, 180),
+    "FIRE_HSV_UPPER_3": (45, 130, 255),
+    # 不再使用独立的亮度阈值（颜色掩码的 V 下限已足够）
+    # 面积阈值
+    "FIRE_AREA_THRESHOLD": 0.01,
     # 火焰区域最小连通域（过滤噪声）
-    "FIRE_MIN_CONTOUR_AREA": 80,
+    "FIRE_MIN_CONTOUR_AREA": 60,
     # --- 摔倒（FALL）---
     # 极简策略：人体框宽大于高 = 横向姿态 = 疑似摔倒。
     # 连续 N 帧确认后告警，无需曾站立/速度/位移等前置条件。
@@ -969,17 +968,10 @@ class DetectionService:
         color_mask = cv2.bitwise_or(mask1, mask2)
         color_mask = cv2.bitwise_or(color_mask, mask3)
 
-        # 亮度掩码（明度通道独立阈值）
-        v_channel = hsv[:, :, 2]
-        _, bright_mask = cv2.threshold(
-            v_channel, _cfg("FIRE_BRIGHTNESS_THRESHOLD"), 255, cv2.THRESH_BINARY
-        )
-        mask = cv2.bitwise_and(color_mask, bright_mask)
-
         # 形态滤波：先去噪再连接断裂区域
         kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
+        mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_large, iterations=2)
 
         # 过滤小面积噪点
