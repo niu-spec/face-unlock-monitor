@@ -534,7 +534,8 @@ class AudioDetectionService:
 
         # 3. 转换为模型输入 tensor
         # PANNs 期望形状: (batch=1, channel=1, time_frames, mel_bins)
-        tensor = torch.from_numpy(log_mel).float().unsqueeze(0).unsqueeze(0)
+        model_input = np.ascontiguousarray(log_mel.T)
+        tensor = torch.from_numpy(model_input).float().unsqueeze(0).unsqueeze(0)
 
         # 4. 推理
         with torch.no_grad():
