@@ -184,7 +184,7 @@ class OverlayPublicationTests(SimpleTestCase):
                 "severity": "high",
             },
             {
-                "alert_type": "INTRUSION",
+                "alert_type": "WATER",
                 "bbox": (1, 2, 3, 4),
             },
             {
