@@ -5,7 +5,11 @@ from unittest.mock import Mock, patch
 import numpy as np
 from django.test import SimpleTestCase
 
-from apps.video_stream.services import CameraWorker, process_frame
+from apps.video_stream.services import (
+    CameraWorker,
+    _person_overlay_snapshot,
+    process_frame,
+)
 
 
 class CameraWorkerTests(SimpleTestCase):
@@ -104,6 +108,28 @@ class CameraWorkerTests(SimpleTestCase):
 
 
 class OverlayPublicationTests(SimpleTestCase):
+    def test_person_snapshot_carries_matched_face_identity(self):
+        presence = {
+            "faces": [
+                {
+                    "box": {"left": 20, "top": 10, "right": 40, "bottom": 30},
+                    "known": True,
+                    "name": "Alice",
+                    "role": "adult",
+                    "trusted": False,
+                }
+            ]
+        }
+
+        result = _person_overlay_snapshot(
+            presence,
+            [{"x": 0, "y": 0, "w": 100, "h": 200, "track_id": 3}],
+        )
+
+        self.assertEqual(result[0]["name"], "Alice")
+        self.assertTrue(result[0]["known"])
+        self.assertFalse(result[0]["trusted"])
+
     @patch("apps.video_stream.services._get_active_zones", return_value=[])
     @patch("apps.video_stream.services._resolve_household_id_for_stream", return_value=1)
     @patch("apps.face.liveness.get_liveness_service")
@@ -126,6 +152,7 @@ class OverlayPublicationTests(SimpleTestCase):
         }
 
         face_service = Mock()
+        face_service.get_presence.return_value = {"persons": []}
         face_service.process_frame.return_value = (frame, presence, [])
         face_service.set_presence.side_effect = lambda _value: calls.append("publish")
         face_service.draw_face_boxes.side_effect = lambda output, _presence: output
@@ -133,7 +160,8 @@ class OverlayPublicationTests(SimpleTestCase):
 
         detection_service = Mock()
         detection_service.detect_people.side_effect = lambda _frame: (
-            calls.append("detect_people") or []
+            calls.append("detect_people")
+            or [{"x": 0, "y": 0, "w": 6, "h": 4, "track_id": 7, "confidence": 0.9}]
         )
         detection_service.process_frame.return_value = []
         detection_service.draw_overlays.side_effect = (
@@ -156,3 +184,8 @@ class OverlayPublicationTests(SimpleTestCase):
         first_published = face_service.set_presence.call_args_list[0].args[0]
         self.assertEqual(first_published["frame_captured_at"], 123.5)
         self.assertEqual(first_published["frame_sequence"], 42)
+        person_published = face_service.set_presence.call_args_list[1].args[0]
+        self.assertEqual(
+            person_published["persons"],
+            [{"x": 0, "y": 0, "w": 6, "h": 4, "track_id": 7, "confidence": 0.9}],
+        )

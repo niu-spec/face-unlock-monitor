@@ -242,6 +242,47 @@ def _map_face_roles_to_people(presence: dict, person_boxes: list[dict]) -> dict[
     return roles
 
 
+def _person_overlay_snapshot(presence: dict, person_boxes: list[dict]) -> list[dict]:
+    """Build a JSON-safe person-box snapshot for the browser canvas overlay."""
+    overlays: list[dict] = []
+    faces = presence.get("faces") or []
+    for person in person_boxes:
+        x = int(person.get("x", 0))
+        y = int(person.get("y", 0))
+        width = int(person.get("w", 0))
+        height = int(person.get("h", 0))
+        if width <= 0 or height <= 0:
+            continue
+
+        item = {
+            "x": x,
+            "y": y,
+            "w": width,
+            "h": height,
+            "track_id": int(person.get("track_id", len(overlays))),
+        }
+        confidence = person.get("confidence")
+        if confidence is not None:
+            item["confidence"] = round(float(confidence), 3)
+
+        for face in faces:
+            box = face.get("box") or {}
+            face_x = (int(box.get("left", 0)) + int(box.get("right", 0))) // 2
+            face_y = (int(box.get("top", 0)) + int(box.get("bottom", 0))) // 2
+            if x <= face_x <= x + width and y <= face_y <= y + height:
+                item.update(
+                    {
+                        "known": bool(face.get("known")),
+                        "name": face.get("name"),
+                        "role": face.get("role"),
+                        "trusted": face.get("trusted", True),
+                    }
+                )
+                break
+        overlays.append(item)
+    return overlays
+
+
 def _update_liveness_snapshot(stream_id: str, liveness: dict) -> None:
     with liveness_lock:
         liveness_snapshots[str(stream_id)] = {
@@ -302,7 +343,9 @@ def process_frame(
         from apps.face.services import get_face_service
 
         household_id = _resolve_household_id_for_stream(biz_stream_id)
-        output, presence, _events = get_face_service().process_frame(
+        face_service = get_face_service()
+        previous_persons = face_service.get_presence(biz_stream_id).get("persons", [])
+        output, presence, _events = face_service.process_frame(
             original,
             stream_id=biz_stream_id,
             household_id=household_id,
@@ -316,12 +359,20 @@ def process_frame(
             presence["frame_captured_at"] = frame_captured_at
         if frame_sequence is not None:
             presence["frame_sequence"] = frame_sequence
-        get_face_service().set_presence(presence)
+        # Keep the last whole-person boxes visible while the current person
+        # detector is running; otherwise every face-first publication would
+        # briefly clear the canvas and make the overlay flicker.
+        presence["persons"] = previous_persons
+        face_service.set_presence(presence)
 
         detection_service = get_detection_service()
         person_boxes = detection_service.detect_people(original)
         person_boxes = _person_boxes_from_faces(presence, person_boxes)
         face_roles = _map_face_roles_to_people(presence, person_boxes)
+        # Publish person boxes immediately for the canvas over the WebRTC
+        # preview, without waiting for liveness, zones, alerts, or JPEG encode.
+        presence["persons"] = _person_overlay_snapshot(presence, person_boxes)
+        face_service.set_presence(presence)
         liveness, _liveness_events = get_liveness_service().observe(
             original,
             presence,
@@ -330,8 +381,9 @@ def process_frame(
             persist_alert=True,
         )
         _mark_faces_untrusted(presence, liveness)
+        presence["persons"] = _person_overlay_snapshot(presence, person_boxes)
         # Publish again because liveness may change the trust label/color.
-        get_face_service().set_presence(presence)
+        face_service.set_presence(presence)
         _update_liveness_snapshot(biz_stream_id, liveness)
 
         zones = _get_active_zones(biz_stream_id, household_id)
@@ -355,7 +407,7 @@ def process_frame(
         )
         # 保底：D 组 draw_overlays 可能覆盖人脸层，最终由 C 组统一重绘人脸框
         if face_count:
-            output = get_face_service().draw_face_boxes(output, presence)
+            output = face_service.draw_face_boxes(output, presence)
         ai_ok = True
     except Exception as exc:
         logger.warning(

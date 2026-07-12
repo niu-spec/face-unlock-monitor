@@ -30,6 +30,7 @@ let pollTimer = null
 let resizeObserver = null
 let drawFrameId = null
 let faces = []
+let persons = []
 let frameSize = { ...DEFAULT_FRAME }
 
 function getContainer() {
@@ -43,6 +44,15 @@ function faceLabel(face) {
   const role = roleLabels[face.role] || face.role || '家人'
   const name = (face.name || '').trim() || '家人'
   return `${name} (${role})`
+}
+
+function personLabel(person) {
+  if (person.trusted === false) return '疑似欺骗'
+  if (person.known && person.name) return person.name
+  const confidence = Number(person.confidence)
+  return Number.isFinite(confidence)
+    ? `人物 ${Math.round(confidence * 100)}%`
+    : '人物'
 }
 
 function computeVideoRect(containerW, containerH, videoW, videoH) {
@@ -112,7 +122,7 @@ function drawOverlay() {
   if (!ctx) return
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  if (!faces.length) return
+  if (!faces.length && !persons.length) return
 
   const videoRect = computeVideoRect(
     canvas.width,
@@ -120,6 +130,27 @@ function drawOverlay() {
     frameSize.width,
     frameSize.height,
   )
+
+  for (const person of persons) {
+    const left = Number(person.x ?? 0)
+    const top = Number(person.y ?? 0)
+    const boxWidth = Number(person.w ?? 0)
+    const boxHeight = Number(person.h ?? 0)
+    if (boxWidth <= 0 || boxHeight <= 0) continue
+
+    const x = videoRect.x + left * videoRect.scaleX
+    const y = videoRect.y + top * videoRect.scaleY
+    const w = boxWidth * videoRect.scaleX
+    const h = boxHeight * videoRect.scaleY
+    const color = person.trusted === false ? '#ff9800' : '#00e5ff'
+
+    ctx.strokeStyle = color
+    ctx.lineWidth = 3
+    ctx.strokeRect(x, y, w, h)
+    ctx.font = '600 14px system-ui, sans-serif'
+    ctx.fillStyle = color
+    ctx.fillText(personLabel(person), x, Math.max(18, y - 6))
+  }
 
   for (const face of faces) {
     const box = face.box
@@ -168,11 +199,13 @@ function presenceMatchesStream(presence) {
 function applyPresence(presence) {
   if (!presenceMatchesStream(presence)) {
     faces = []
+    persons = []
     clearCanvas()
     return
   }
 
   faces = Array.isArray(presence.faces) ? presence.faces : []
+  persons = Array.isArray(presence.persons) ? presence.persons : []
 
   const size = presence.frame_size
   if (size?.width && size?.height) {
@@ -227,6 +260,7 @@ watch(
   () => [props.streamId, props.active],
   () => {
     faces = []
+    persons = []
     frameSize = { ...DEFAULT_FRAME }
     clearCanvas()
     if (props.active && !props.managedExternally) startPolling()
