@@ -270,7 +270,13 @@ def _mark_faces_untrusted(presence: dict, liveness: dict) -> None:
         face["spoof_reason"] = liveness.get("reason", "")
 
 
-def process_frame(frame, stream_id):
+def process_frame(
+    frame,
+    stream_id,
+    *,
+    frame_captured_at: float | None = None,
+    frame_sequence: int | None = None,
+):
     """在 MJPEG 编码前执行实时 AI 处理链。"""
     try:
         from django.db import close_old_connections
@@ -295,9 +301,6 @@ def process_frame(frame, stream_id):
         from apps.face.liveness import get_liveness_service
         from apps.face.services import get_face_service
 
-        detection_service = get_detection_service()
-        person_boxes = detection_service.detect_people(original)
-
         household_id = _resolve_household_id_for_stream(biz_stream_id)
         output, presence, _events = get_face_service().process_frame(
             original,
@@ -306,6 +309,17 @@ def process_frame(frame, stream_id):
             annotate=True,
             persist_alert=True,
         )
+        # Canvas overlays only need face metadata. Publish it before the slower
+        # liveness/YOLO/zone stages so the browser does not wait for the whole
+        # alert pipeline before it can move a face box.
+        if frame_captured_at is not None:
+            presence["frame_captured_at"] = frame_captured_at
+        if frame_sequence is not None:
+            presence["frame_sequence"] = frame_sequence
+        get_face_service().set_presence(presence)
+
+        detection_service = get_detection_service()
+        person_boxes = detection_service.detect_people(original)
         person_boxes = _person_boxes_from_faces(presence, person_boxes)
         face_roles = _map_face_roles_to_people(presence, person_boxes)
         liveness, _liveness_events = get_liveness_service().observe(
@@ -316,6 +330,7 @@ def process_frame(frame, stream_id):
             persist_alert=True,
         )
         _mark_faces_untrusted(presence, liveness)
+        # Publish again because liveness may change the trust label/color.
         get_face_service().set_presence(presence)
         _update_liveness_snapshot(biz_stream_id, liveness)
 
@@ -432,6 +447,7 @@ class CameraWorker:
         self._capture_thread = None
         self._process_thread = None
         self._raw_frame = None
+        self._raw_frame_captured_at = None
         self._capture_sequence = 0
         self._processed_version = 0
         self._processed_input_sequence = 0
@@ -485,6 +501,7 @@ class CameraWorker:
                     now = time.time()
                     with self._condition:
                         self._raw_frame = frame
+                        self._raw_frame_captured_at = now
                         self._capture_sequence += 1
                         self.last_capture_at = now
                         self._condition.notify_all()
@@ -509,11 +526,17 @@ class CameraWorker:
                 if self._raw_frame is None:
                     continue
                 frame = self._raw_frame.copy()
+                frame_captured_at = self._raw_frame_captured_at
                 input_sequence = self._capture_sequence
 
             started_at = time.perf_counter()
             try:
-                processed_frame = process_frame(frame, self.stream_id)
+                processed_frame = process_frame(
+                    frame,
+                    self.stream_id,
+                    frame_captured_at=frame_captured_at,
+                    frame_sequence=input_sequence,
+                )
                 jpeg_bytes = encode_frame(processed_frame)
                 if jpeg_bytes is None:
                     raise RuntimeError("failed to encode processed frame")

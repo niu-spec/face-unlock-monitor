@@ -1,11 +1,11 @@
 import threading
 import time
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import numpy as np
 from django.test import SimpleTestCase
 
-from apps.video_stream.services import CameraWorker
+from apps.video_stream.services import CameraWorker, process_frame
 
 
 class CameraWorkerTests(SimpleTestCase):
@@ -16,9 +16,18 @@ class CameraWorkerTests(SimpleTestCase):
         release_first = threading.Event()
         processed_values = []
 
-        def fake_process(frame, stream_id):
+        processed_metadata = []
+
+        def fake_process(
+            frame,
+            stream_id,
+            *,
+            frame_captured_at=None,
+            frame_sequence=None,
+        ):
             value = int(frame[0, 0, 0])
             processed_values.append(value)
+            processed_metadata.append((frame_captured_at, frame_sequence))
             if value == 1:
                 first_started.set()
                 release_first.wait(timeout=2)
@@ -39,6 +48,7 @@ class CameraWorkerTests(SimpleTestCase):
                 thread.start()
                 with worker._condition:
                     worker._raw_frame = np.full((2, 2, 3), 1, dtype=np.uint8)
+                    worker._raw_frame_captured_at = 101.0
                     worker._capture_sequence = 1
                     worker._condition.notify_all()
 
@@ -51,6 +61,7 @@ class CameraWorkerTests(SimpleTestCase):
                         worker._raw_frame = np.full(
                             (2, 2, 3), value, dtype=np.uint8
                         )
+                        worker._raw_frame_captured_at = 100.0 + value
                         worker._capture_sequence = value
                     worker._condition.notify_all()
 
@@ -64,6 +75,7 @@ class CameraWorkerTests(SimpleTestCase):
 
                 self.assertGreaterEqual(worker._processed_version, 2)
                 self.assertEqual(processed_values[:2], [1, 10])
+                self.assertEqual(processed_metadata[:2], [(101.0, 1), (110.0, 10)])
                 self.assertEqual(worker.latest_jpeg, b"jpeg-10")
                 self.assertGreaterEqual(worker._dropped_stale_frames, 8)
         finally:
@@ -89,3 +101,58 @@ class CameraWorkerTests(SimpleTestCase):
         self.assertEqual(status["captured_sequence"], 20)
         self.assertEqual(status["processed_sequence"], 15)
         self.assertEqual(status["dropped_stale_frames"], 10)
+
+
+class OverlayPublicationTests(SimpleTestCase):
+    @patch("apps.video_stream.services._get_active_zones", return_value=[])
+    @patch("apps.video_stream.services._resolve_household_id_for_stream", return_value=1)
+    @patch("apps.face.liveness.get_liveness_service")
+    @patch("apps.detection.services.get_detection_service")
+    @patch("apps.face.services.get_face_service")
+    def test_face_presence_is_published_before_person_detection(
+        self,
+        mock_get_face_service,
+        mock_get_detection_service,
+        mock_get_liveness_service,
+        _mock_household,
+        _mock_zones,
+    ):
+        calls = []
+        frame = np.zeros((4, 6, 3), dtype=np.uint8)
+        presence = {
+            "stream_id": "living_room",
+            "faces": [],
+            "frame_size": {"width": 6, "height": 4},
+        }
+
+        face_service = Mock()
+        face_service.process_frame.return_value = (frame, presence, [])
+        face_service.set_presence.side_effect = lambda _value: calls.append("publish")
+        face_service.draw_face_boxes.side_effect = lambda output, _presence: output
+        mock_get_face_service.return_value = face_service
+
+        detection_service = Mock()
+        detection_service.detect_people.side_effect = lambda _frame: (
+            calls.append("detect_people") or []
+        )
+        detection_service.process_frame.return_value = []
+        detection_service.draw_overlays.side_effect = (
+            lambda output, _results, **_kwargs: output
+        )
+        mock_get_detection_service.return_value = detection_service
+
+        liveness_service = Mock()
+        liveness_service.observe.return_value = ({"status": "passed"}, [])
+        mock_get_liveness_service.return_value = liveness_service
+
+        process_frame(
+            frame,
+            "1",
+            frame_captured_at=123.5,
+            frame_sequence=42,
+        )
+
+        self.assertLess(calls.index("publish"), calls.index("detect_people"))
+        first_published = face_service.set_presence.call_args_list[0].args[0]
+        self.assertEqual(first_published["frame_captured_at"], 123.5)
+        self.assertEqual(first_published["frame_sequence"], 42)

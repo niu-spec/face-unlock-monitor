@@ -28,6 +28,7 @@ const DEFAULT_FRAME = { width: 1280, height: 720 }
 const canvasRef = ref(null)
 let pollTimer = null
 let resizeObserver = null
+let drawFrameId = null
 let faces = []
 let frameSize = { ...DEFAULT_FRAME }
 
@@ -83,8 +84,10 @@ function clearCanvas() {
   if (!canvas || !container) return
 
   const rect = container.getBoundingClientRect()
-  canvas.width = rect.width
-  canvas.height = rect.height
+  const width = Math.max(1, Math.round(rect.width))
+  const height = Math.max(1, Math.round(rect.height))
+  if (canvas.width !== width) canvas.width = width
+  if (canvas.height !== height) canvas.height = height
 
   const ctx = canvas.getContext('2d')
   if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height)
@@ -98,8 +101,12 @@ function drawOverlay() {
   const rect = container.getBoundingClientRect()
   if (rect.width <= 0 || rect.height <= 0) return
 
-  canvas.width = rect.width
-  canvas.height = rect.height
+  const width = Math.max(1, Math.round(rect.width))
+  const height = Math.max(1, Math.round(rect.height))
+  // Assigning width/height clears and reallocates the entire backing store.
+  // Only resize when layout actually changed, not on every polling response.
+  if (canvas.width !== width) canvas.width = width
+  if (canvas.height !== height) canvas.height = height
 
   const ctx = canvas.getContext('2d')
   if (!ctx) return
@@ -144,6 +151,14 @@ function drawOverlay() {
   }
 }
 
+function scheduleDraw() {
+  if (drawFrameId !== null) return
+  drawFrameId = window.requestAnimationFrame(() => {
+    drawFrameId = null
+    drawOverlay()
+  })
+}
+
 function presenceMatchesStream(presence) {
   if (!presence?.stream_id) return false
   const legacyId = toZoneStreamId(props.streamId)
@@ -164,7 +179,7 @@ function applyPresence(presence) {
     frameSize = { width: size.width, height: size.height }
   }
 
-  drawOverlay()
+  scheduleDraw()
 }
 
 async function fetchPresence() {
@@ -196,7 +211,7 @@ function stopPolling() {
 function setupResizeObserver() {
   const container = getContainer()
   if (!container || typeof ResizeObserver === 'undefined') return
-  resizeObserver = new ResizeObserver(() => drawOverlay())
+  resizeObserver = new ResizeObserver(() => scheduleDraw())
   resizeObserver.observe(container)
 }
 
@@ -227,6 +242,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopPolling()
+  if (drawFrameId !== null) window.cancelAnimationFrame(drawFrameId)
   resizeObserver?.disconnect()
 })
 </script>
