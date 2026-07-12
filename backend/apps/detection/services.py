@@ -506,20 +506,26 @@ class DetectionService:
         """YOLO 行人检测，不可用时自动降级为 HOG。
 
         检测后通过 SimplePersonTracker 分配跨帧稳定的 track_id。
+        YOLO 第一轮 0 人时自动降置信度重扫，应对横向/非直立人体。
         """
         if self._detector_type == "YOLO" and self._yolo is not None:
             boxes = self._detect_pedestrians_yolo(frame)
+            if not boxes:
+                # 低置信度重扫：摔倒/横向人体 YOLO 检测不稳定
+                boxes = self._detect_pedestrians_yolo(frame, conf=0.20)
         else:
             boxes = self._detect_pedestrians_hog(frame)
         # 跨帧追踪：为每个检测框分配稳定的 track_id
         return self._person_tracker.update(boxes)
 
-    def _detect_pedestrians_yolo(self, frame: np.ndarray) -> list[dict]:
+    def _detect_pedestrians_yolo(
+        self, frame: np.ndarray, conf: float | None = None
+    ) -> list[dict]:
         """使用 YOLOv8n 检测行人（class_id=0 即 person）。"""
         results = self._yolo(
             frame,
             imgsz=_cfg("YOLO_IMGSZ"),
-            conf=_cfg("YOLO_CONFIDENCE_THRESHOLD"),
+            conf=conf if conf is not None else _cfg("YOLO_CONFIDENCE_THRESHOLD"),
             iou=_cfg("YOLO_IOU_THRESHOLD"),
             classes=[_cfg("YOLO_PERSON_CLASS_ID")],
             verbose=False,
