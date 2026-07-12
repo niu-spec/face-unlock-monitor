@@ -1083,6 +1083,19 @@ class DetectionService:
                 self._fall_last_seen[tid] = now
         self._cleanup_stale_tracks(active_ids)
 
+        # 每 30 帧输出一次摘要（避免刷屏）
+        if not hasattr(self, "_fall_debug_frame"):
+            self._fall_debug_frame = 0
+        self._fall_debug_frame += 1
+        should_log = self._fall_debug_frame % 30 == 0
+
+        if person_boxes and should_log:
+            logger.info(
+                "[FALL DEBUG] 帧#%d stream=%s boxes=%d counters=%s",
+                self._fall_debug_frame, stream_id, len(person_boxes),
+                dict(self._fall_counter) if self._fall_counter else "{}",
+            )
+
         for box in person_boxes:
             bw, bh = box["w"], box["h"]
             if bw <= 0 or bh <= 0:
@@ -1091,11 +1104,21 @@ class DetectionService:
             tid = box.get("track_id", -1)
             is_horizontal = bw > bh  # 宽 > 高 = 横向姿态
 
+            if should_log:
+                logger.info(
+                    "[FALL DEBUG] tid=%d box=%dx%d ar=%.2f horizontal=%s counter=%d/%d",
+                    tid, bw, bh, bh / bw if bw > 0 else 0,
+                    is_horizontal,
+                    self._fall_counter.get(tid, 0), fall_persist,
+                )
+
             if is_horizontal:
                 self._fall_counter[tid] += 1
 
                 if self._fall_counter[tid] >= fall_persist:
                     if not self._check_cooldown("FALL", stream_id):
+                        if should_log:
+                            logger.info("[FALL DEBUG] tid=%d 已达阈值但冷却中", tid)
                         continue
 
                     msg = f"检测到人员疑似摔倒（宽高比 {bh / bw:.2f}，连续 {fall_persist} 帧）"
@@ -1123,6 +1146,11 @@ class DetectionService:
                     self._fall_counter[tid] = 0
             else:
                 # 直立或蹲姿 → 重置计数器
+                if self._fall_counter.get(tid, 0) > 0 and should_log:
+                    logger.info(
+                        "[FALL DEBUG] tid=%d 恢复直立，计数器 %d→0",
+                        tid, self._fall_counter[tid],
+                    )
                 self._fall_counter[tid] = 0
 
         return results
