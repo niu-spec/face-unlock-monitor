@@ -34,10 +34,10 @@ openspec/
 │   ├── home-monitor/
 │   ├── alerts-events/
 │   ├── frontend-integration/
-│   └── ai-video-integration/   # AI 视频联调（代码已完成）
+│   └── ai-video-integration/   # AI 视频联调（已归档 2026-07-12）
 └── changes/
-    ├── ai-video-integration/   # 进行中的 change（C/D 使用）
-    └── archive/                # 已归档 change
+    ├── audio-abnormal-sound-detection/   # 进行中的 change（D 组音频检测）
+    └── archive/                # 已归档 change（含 ai-video-integration）
 ```
 
 ---
@@ -71,18 +71,18 @@ openspec/
 | `bootstrap-from-docs` | 2026-07-08 | 从架构文档提炼 6 个 capability spec | f55be66 |
 | `frontend-zone-stream-alignment` | 2026-07-08 | 流 ID 对齐 + ZoneEditor Canvas | 57a0cc1 |
 | `user-manage-page` | 2026-07-08 | 用户管理聚合页 `/users` | bb7f280 |
+| `ai-video-integration` | 2026-07-12 | C/D 接入 process_frame；WebRTC + overlay API 云验收 | 2e9b4ba |
 
 ---
 
 ## 6. 进行中的 change（组员使用）
 
-### `ai-video-integration` — 代码已完成，待云验收
+### `audio-abnormal-sound-detection` — 代码已完成，待云验收后归档
 
-- **tasks 1–3**：处理器链、face、detection 已实现并合入 `dev`
-- **tasks 4.1–4.2**：OBS 推流 MJPEG/WebRTC 画框 + 告警中心验收（待 B 组部署后勾选）
-- 验收通过后执行 `/opsx-archive ai-video-integration`
+- 规格详见：`openspec/changes/audio-abnormal-sound-detection/specs/`
+- 验收通过后执行 `/opsx-archive audio-abnormal-sound-detection`
 
-规格详见：`openspec/changes/ai-video-integration/specs/`
+已归档的 `ai-video-integration` 见 `openspec/changes/archive/2026-07-12-ai-video-integration/`。
 
 ---
 

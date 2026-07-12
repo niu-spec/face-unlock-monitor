@@ -19,18 +19,21 @@
 - MJPEG 备用：`http://{IP}/video_feed/{stream_id}`
 - 典型 stream_id：`1`（客厅）、`2`（厨房）
 
-生产 Nginx 反代示例：
+生产 Nginx 反代示例（**业务 + AI + 视频 API 均在 8010 单体后端**）：
 
 ```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:8010;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+
 location /video_feed/ {
     proxy_pass http://127.0.0.1:8010/video_feed/;
     proxy_buffering off;
     proxy_cache off;
-}
-
-location /api/video/ {
-    proxy_pass http://127.0.0.1:8010/api/video/;
+    proxy_read_timeout 3600;
 }
 ```
 
-> 生产环境视频后端绑定 `127.0.0.1:8010`（`home-camera-backend.service`），主业务 API 在 `:8000`。详见 WebRTC 对接文档。
+> 生产环境 `home-camera-backend.service` 绑定 `127.0.0.1:8010`；本地开发 `runserver :8000`。详见 [video-stream-webrtc-integration.md](../docs/部署运维/video-stream-webrtc-integration.md)。

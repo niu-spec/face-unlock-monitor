@@ -20,8 +20,8 @@ PROD_SERVER = "152.136.29.158"
 PROD_PATH = "/service/home-camera-monitor"
 FONT_PATH = r"C:\Windows\Fonts\msyh.ttc"
 FONT_NAME = "MicrosoftYaHei"
-DOCUMENT_DATE = date(2026, 7, 11)
-ARCH_VERSION = "v1.5"
+DOCUMENT_DATE = date(2026, 7, 12)
+ARCH_VERSION = "v1.6"
 
 # A4 可用宽度（左右边距各 1.5cm）
 PAGE_WIDTH = 18.0 * cm
@@ -54,8 +54,8 @@ STATUS_COLORS = {
 TASKS = {
     "A": [
         ["1", "Vue3 工程初始化", "Element Plus + Router + Axios", "npm run dev 可访问", "完成", "P0"],
-        ["2", "HomeMonitor.vue", "多路 MJPEG/WebRTC；活体状态标签", "可看实时画面", "完成", "P0"],
-        ["3", "PersonStats.vue", "按摄像头展示 total/family/stranger", "切换流后数字正确", "待联调", "P0"],
+        ["2", "HomeMonitor.vue", "WebRTC iframe + FaceOverlay；活体标签", "可看实时画面+AI框", "完成", "P0"],
+        ["3", "PersonStats.vue", "按摄像头展示 total/family/stranger", "切换流后数字正确", "完成", "P0"],
         ["4", "FamilyRegister.vue", "录入家人+角色+多帧活体", "注册成功", "完成", "P0"],
         ["5", "ZoneEditor.vue", "Canvas 画区域；forbidden_roles", "区域可保存", "完成", "P0"],
         ["6", "AlertCenter.vue", "告警列表；含音频/反欺骗类型筛选", "可处置告警", "完成", "P0"],
@@ -64,32 +64,32 @@ TASKS = {
         ["9", "HouseholdManage.vue", "家庭创建/切换/成员管理", "多家庭隔离", "完成", "P0"],
         ["10", "UserManage.vue", "用户管理页", "路由可达", "完成", "P1"],
         ["11", "DailyReport.vue", "AI 监控日报展示与生成", "模板/LLM 日报可用", "完成", "P1"],
-        ["12", "FaceOverlay.vue", "WebRTC Canvas 叠加；streamId 映射修复", "轮询 /api/video/status", "待联调", "P0"],
+        ["12", "FaceOverlay.vue", "WebRTC Canvas 叠加；轮询 presence", "/api/video/presence/ 200ms", "完成", "P0"],
         ["13", "危险区域联调修复", "stream 映射；presence 分路；坐标缩放", "禁区检测对齐", "完成", "P0"],
         ["14", "验收 bug 修复", "音频告警可见性；metadata；事件映射", "6640a0b 已合并 dev", "完成", "P0"],
         ["15", "deploy 脚本", "deploy-all.sh + start_backend", "B 组可一键部署", "完成", "P0"],
-        ["16", "CI/CD", "Jenkinsfile + GitHub Actions", "CI #20/#21 已通过", "完成", "P0"],
+        ["16", "CI/CD", "Jenkinsfile + GitHub Actions", "CI 已通过；CD 待结题截图", "完成", "P0"],
         ["17", "Git 管理", "PR 审查；dev→main；Contributors", "中期/结题 tag", "进行中", "P0"],
     ],
     "B": [
         ["1", "云服务器+RTMP", f"Ubuntu {PROD_SERVER}；9090/8554/80", "推流成功", "完成", "P0"],
         ["2", "MediaMTX 部署", "Docker；RTMP :9090 / RTSP :8554", "OBS 可推流", "完成", "P0"],
         ["3", "WebRTC 预览", "MediaMTX :8889", "浏览器低延迟预览", "完成", "P0"],
-        ["4", "video_stream 模块", "OpenCV 拉 RTSP；process_frame 链", "worker 可启动", "完成", "P0"],
-        ["5", "MJPEG 输出", "StreamingHttpResponse", "/video_feed/{id} 可看", "完成", "P0"],
+        ["4", "video_stream 模块", "CameraWorker 采集/AI 分线程；process_frame", "worker 稳定运行", "完成", "P0"],
+        ["5", "MJPEG 输出", "后端 /video_feed/ 含烧录标注", "调试/备用入口", "完成", "P0"],
         ["6", "多路流支持", "stream/1、stream/2 推流码", "前端可切换", "完成", "P0"],
         ["7", "生产 Nginx 反代", "80 → 8010；/api/ /video_feed/", "公网可访问", "完成", "P0"],
         ["8", "Jenkins 安装", "服务器 :8080 + Webhook", "Pipeline 可触发", "完成", "P0"],
         ["9", "Jenkins CD 配置", "Pipeline test/build/deploy；生产目录同步", "CD 流水线已配置", "完成", "P0"],
-        ["10", "云部署联调", f"pull {PROD_PATH} 并重启 backend", "端到端 AI 演示", "待联调", "P0"],
+        ["10", "云部署联调", f"pull {PROD_PATH} 并重启 backend", "端到端 AI 演示已通过", "完成", "P0"],
     ],
     "C": [
         ["1", "dlib 环境+模型", "dat/ 两个模型文件", "import 成功", "完成", "P0"],
         ["2", "apps/face/services", "检测+128维编码+比对", "单元测试通过", "完成", "P0"],
         ["3", "家人注册 API", "POST /api/face/register/ 含 role", "Swagger 可测", "完成", "P0"],
-        ["4", "实时识别", "MJPEG 绿框家人/红框陌生人", "标注正确", "待联调", "P0"],
-        ["5", "人数统计", "分摄像头 presence 快照", "presence API 可读", "待联调", "P0"],
-        ["6", "home/presence API", "GET /api/home/presence/?stream_id=", "前端可轮询", "待联调", "P0"],
+        ["4", "实时识别", "WebRTC+Canvas 绿/红框；MJPEG 备用", "告警中心可见", "完成", "P0"],
+        ["5", "人数统计", "分摄像头 presence 快照", "PersonStats 正确", "完成", "P0"],
+        ["6", "presence API", "GET /api/video/presence/?stream_id=", "前端 200ms 轮询", "完成", "P0"],
         ["7", "陌生人告警", "未注册脸→FACE_UNKNOWN", "告警中心可见", "完成", "P0"],
         ["8", "face_encoding 持久化", "DB + JSON 备份", "重启数据仍在", "完成", "P0"],
         ["9", "活体反欺骗", "SPOOF/REPLAY/DEEPFAKE 检测", "liveness.py 已实现", "完成", "P0"],
@@ -110,7 +110,7 @@ TASKS = {
         ["10", "异常声学检测", "PANNs CNN14；SCREAM/FIGHT 等", "audio_service.py", "完成", "P0"],
         ["11", "音视频联动", "音频+视频→EMERGENCY", "av_correlation.py", "完成", "P0"],
         ["12", "音频状态 API", "GET /api/detection/audio/status/", "Swagger 可测", "完成", "P1"],
-        ["13", "与 face 联动", "禁区需 role child/adult", "process_frame 链", "待联调", "P0"],
+        ["13", "与 face 联动", "禁区需 role child/adult", "process_frame 链 E2E", "完成", "P0"],
     ],
     "E": [
         ["1", "Django settings + models", "MySQL；User/Household/Zone/Alert", "migrate 成功", "完成", "P0"],
@@ -134,7 +134,7 @@ TASKS = {
         ["4", "v3.0 结题文档", "测试/部署/总结", "7/15 提交", "进行中", "P0"],
         ["5", "演示视频", "注册→识人→禁区→异常→告警回放", "5-10min MP4", "进行中", "P0"],
         ["6", "维护 docs/", f"总体架构说明 {ARCH_VERSION}、README 索引", "与代码同步", "完成", "P1"],
-        ["7", "任务分工表 PDF", "本 PDF（总表）", "7/11 更新", "完成", "P1"],
+        ["7", "任务分工表 PDF", "本 PDF（总表）", "7/12 更新", "完成", "P1"],
     ],
 }
 
@@ -142,7 +142,7 @@ MILESTONES = [
     ["7/6—7/8", "立项", "Vue 骨架、MediaMTX、人脸 demo、Django models、v1.0 文档"],
     ["7/9—7/10", "集成", "Login/API、MJPEG、process_frame、YOLO 禁区、CI/CD、云部署"],
     ["7/11", "中期", "事件回放、AI 日报、Jenkins CD、活体反欺骗、声音识别、钉钉通知"],
-    ["7/12—7/14", "联调", "OBS 推流 E2E、告警回放、UI 走查、演示视频拍摄"],
+    ["7/12—7/14", "联调", "WebRTC+overlay E2E、Camera 配置、Worker 线程安全、OpenSpec 归档"],
     ["7/15", "结题", "完整演示、v3.0 文档、main 发布"],
 ]
 
@@ -153,7 +153,7 @@ SCHEDULE = [
     ["7/9", "联调", "Login+api", "MJPEG", "face/register", "—", "login+zones", "日报"],
     ["7/10", "集成", "WebRTC叠加\nCI/CD", "云部署\nNginx", "process_frame", "YOLO+禁区", "reports", "v1.4+PDF"],
     ["7/11", "中期", "事件回放\nAI日报\nbug修复", "Jenkins CD\n配置完成", "活体反欺骗\noverlay修复", "声音识别\nAV联动", "钉钉通知\n升级链", "v2.0+PDF"],
-    ["7/12", "联调", "AlertCenter\nFaceOverlay", "云部署\n最新dev", "presence\n分路", "禁区+异常", "告警回放", "日报"],
+    ["7/12", "联调", "FaceOverlay\nE2E验收", "native-crash\n修复", "presence\n云上验收", "异常告警\n可见", "Camera\n绑定", "PDF\nv1.6"],
     ["7/13", "异常②", "EventLog\n部署", "生产8010", "—", "摔倒检测", "DB部署", "v3.0草稿"],
     ["7/14", "测试", "UI走查", "压测", "准确率", "告警测试", "Swagger", "视频"],
     ["7/15", "结题", "演示", "推流保障", "识人演示", "异常演示", "后端保障", "提交文档"],
@@ -168,14 +168,15 @@ PERSON_APIS = {
         ["/api/reports/daily/", "GET", "AI 监控日报"],
     ],
     "B": [
-        ["/video_feed/{stream_id}", "GET", "MJPEG 实时画面"],
-        ["/api/video/status", "GET", "worker 状态+AI 框数据"],
+        ["/video_feed/{stream_id}", "GET", "MJPEG 备用（含烧录标注）"],
+        ["/api/video/presence/", "GET", "overlay 框数据（主）"],
+        ["/api/video/status", "GET", "worker 状态"],
         ["/api/video/streams/{id}/source", "GET", "RTSP/RTMP/WebRTC 地址"],
     ],
     "C": [
         ["/api/face/register/", "POST", "注册家人（含活体）"],
         ["/api/face/liveness/", "POST", "多帧活体检测"],
-        ["/api/home/presence/", "GET", "人数统计"],
+        ["/api/video/presence/", "GET", "人数+人脸框"],
     ],
     "D": [
         ["/api/detection/analyze/", "POST", "单帧异常/区域检测"],
@@ -194,20 +195,21 @@ PERSON_APIS = {
 
 COLLAB_SCENES = {
     "A": [
-        "PersonStats 按摄像头展示人数（与王梓铭协作）",
-        "FaceOverlay WebRTC 叠加 + 活体标签（与苏哲勋协作）",
+        "FaceOverlay WebRTC Canvas 叠加 + 活体标签（与 B/C 协作）",
         "EventReplayDialog 事件回放 + DailyReport AI 日报",
+        "OpenSpec ai-video-integration 已归档（2026-07-12）",
         "Jenkins + GitHub Actions CI（结题材料）",
     ],
     "B": [
         f"云服务器部署最新 dev（路径 {PROD_PATH}）",
+        "CameraWorker 线程安全修复（fix/native-crash-thread-safety）",
         "Jenkins :8080 安装 + CD Pipeline 已配置",
     ],
     "C": [
         "process_frame 链集成；活体反欺骗与 presence 分路",
-        "云上 presence/overlay 端到端联调（7/12 待验收）",
+        "云上 WebRTC + overlay 端到端验收已完成（7/12）",
     ],
-    "D": ["禁区+音频检测需 face 提供 role；云上告警端到端联调"],
+    "D": ["禁区+音频检测与 face role 联动；云上异常告警 E2E 已通过"],
     "E": ["钉钉通知需配置 Webhook；与 A 告警中心联调"],
 }
 
@@ -424,20 +426,22 @@ def append_overview_sections(story, styles):
     ))
 
     story.append(Spacer(1, 6))
-    story.append(Paragraph("1.0 当前进度摘要（7/11）", styles["h2"]))
+    story.append(Paragraph("1.0 当前进度摘要（7/12）", styles["h2"]))
     story.append(tbl([
         ["维度", "说明"],
-        ["代码开发", "核心功能已全部完成（含活体反欺骗、声音识别、钉钉通知、事件回放、AI 日报）"],
-        ["剩余工作", "云上 OBS 推流端到端联调 + 演示视频 + 结题文档"],
-        ["CI 状态", "GitHub Actions CI #20/#21 已通过；Jenkins CD 已配置"],
+        ["代码开发", "核心功能已全部完成（含 WebRTC overlay、活体反欺骗、声音识别、钉钉通知、事件回放、AI 日报）"],
+        ["联调验收", "云上 OBS 推流 E2E 已通过：WebRTC 预览 + AI 标注 + 告警中心可见"],
+        ["剩余工作", "演示视频 + v3.0 结题文档 + dev→main 发布 + Jenkins CD 结题截图"],
+        ["CI 状态", "GitHub Actions CI 已通过；Jenkins CD 已配置"],
     ], [3.5 * cm, 12 * cm], styles))
 
     story.append(Spacer(1, 6))
     story.append(Paragraph(f"1.1 当前架构（{ARCH_VERSION}）", styles["h2"]))
     story.append(Paragraph(
-        "<b>展示层</b>：Vue3 前端 → REST API + MJPEG / WebRTC<br/>"
+        "<b>展示层</b>：Vue3 — WebRTC iframe 低延迟预览 + FaceOverlay Canvas（轮询 /api/video/presence/）<br/>"
         "<b>业务+AI 层</b>：Django 4.2 单体 — accounts / face / detection / video_stream / reports 等<br/>"
-        "<b>流媒体</b>：OBS → RTMP(9090) → MediaMTX → RTSP / WebRTC → Django OpenCV<br/>"
+        "<b>流媒体</b>：OBS → RTMP(9090) → MediaMTX → RTSP → CameraWorker → process_frame()<br/>"
+        "<b>MJPEG 备用</b>：/video_feed/{id} 后端烧录标注（调试入口）<br/>"
         f"<b>部署</b>：{PROD_SERVER}，Nginx :80 反代 :8010",
         styles["body"],
     ))
@@ -446,24 +450,24 @@ def append_overview_sections(story, styles):
     story.append(Paragraph("1.2 功能与验收对应", styles["h2"]))
     story.append(tbl([
         ["验收模块", "分值", "实现情况", "状态"],
-        ["人脸识别", "12+8", "注册+识别+陌生人+活体反欺骗", "代码完成"],
-        ["目标检测", "25", "危险区域+闯入/接近/逗留", "代码完成"],
-        ["实时视频检测", "20+8", "积水+着火+摔倒+异常声学", "代码完成"],
-        ["告警中心", "8+3+2", "展示+处置+回放+钉钉+AI日报", "代码完成"],
+        ["人脸识别", "12+8", "注册+识别+陌生人+活体反欺骗", "已验收"],
+        ["目标检测", "25", "危险区域+闯入/接近/逗留", "已验收"],
+        ["实时视频检测", "20+8", "积水+着火+摔倒+异常声学", "已验收"],
+        ["告警中心", "8+3+2", "展示+处置+回放+钉钉+AI日报", "已验收"],
         ["项目基础", "15", "GitHub/OpenSpec/Swagger/Jenkins", "基本完成"],
         ["文档", "10", "日报+设计文档+演示视频", "进行中"],
     ], [3.5 * cm, 1.5 * cm, 8.5 * cm, 2 * cm], styles))
 
     story.append(Spacer(1, 6))
-    story.append(Paragraph("1.3 7/11 各组成果", styles["h2"]))
+    story.append(Paragraph("1.3 7/12 各组成果", styles["h2"]))
     story.append(tbl([
-        ["组", "成员", "7/11 完成项"],
-        ["A", "牛雨昊", "事件回放、AI 日报、危险区域/overlay bug 修复"],
-        ["B", "苏哲勋", "服务器 Jenkins CD 配置完成"],
-        ["C", "王梓铭", "活体反欺骗实现 + presence/overlay bug 修复"],
-        ["D", "李东礼", "异常声学检测 + 音视频联动"],
-        ["E", "刘帅华", "钉钉告警通知 + 升级链"],
-        ["F", "刘澎潮", "v2.0 中期文档 + 任务分工表更新"],
+        ["组", "成员", "7/12 完成项"],
+        ["A", "牛雨昊", "FaceOverlay E2E、ZoneEditor 检测叠加、OpenSpec 归档、文档同步"],
+        ["B", "苏哲勋", "Worker 线程安全修复、Camera 配置、云部署联调"],
+        ["C", "王梓铭", "WebRTC overlay 云上验收、活体反欺骗全流程"],
+        ["D", "李东礼", "异常检测告警 E2E、禁区+face 联动验证"],
+        ["E", "刘帅华", "Camera 绑定家庭、告警中心数据隔离"],
+        ["F", "刘澎潮", "任务分工表 v1.6 更新、v3.0 文档筹备"],
     ], [1.2 * cm, 2.2 * cm, 12.1 * cm], styles))
 
 
@@ -494,8 +498,7 @@ def build_story(styles):
     s.append(PageBreak())
     s.append(Paragraph("三、成员详细任务清单", styles["h1"]))
     s.append(Paragraph(
-        "状态说明：<b>完成</b> = 代码已实现；"
-        "<b>待联调</b> = 需 OBS 推流端到端验证；"
+        "状态说明：<b>完成</b> = 已实现且云上 E2E 验收通过；"
         "<b>进行中</b> = 结题前待交付。",
         styles["small"],
     ))
@@ -510,8 +513,9 @@ def build_story(styles):
     s.append(Paragraph("4.1 核心 API（节选）", styles["h2"]))
     s.append(tbl([
         ["接口", "负责人", "说明"],
-        ["/video_feed/{id}", "苏哲勋", "MJPEG 实时画面（含 AI 画框）"],
-        ["/api/video/status", "苏哲勋", "worker 状态 + 人脸/活体数据"],
+        ["/video_feed/{id}", "苏哲勋", "MJPEG 备用（含烧录标注）"],
+        ["/api/video/presence/", "苏哲勋/王梓铭", "overlay 框+人数（前端主数据源）"],
+        ["/api/video/status", "苏哲勋", "worker 状态 + liveness"],
         ["/api/face/register/", "王梓铭", "家人注册（含多帧活体）"],
         ["/api/home/presence/", "王梓铭", "人数统计"],
         ["/api/detection/audio/status/", "李东礼", "音频检测状态"],
@@ -545,7 +549,7 @@ def build_story(styles):
     s.append(Paragraph("5.2 结题演示流程", styles["h2"]))
     steps = [
         "登录并切换演示家庭 → 注册家人（多帧活体）",
-        "OBS 推流 → 监控页 MJPEG/WebRTC 实时画面",
+        "OBS 推流 → 监控页 WebRTC 画面 + Canvas AI 标注",
         "显示人数统计 → 陌生人入镜 → FACE_UNKNOWN 告警",
         "小孩进厨房 → INTRUSION 告警",
         "模拟积水/着火/摔倒 → 对应告警",
@@ -605,7 +609,7 @@ def build_person_story(styles, code):
     s.append(Paragraph("结题演示中与你相关的环节", styles["h2"]))
     demo_map = {
         "A": "监控主页、WebRTC 叠加、活体标签、告警中心、事件回放、AI 日报、CI 演示",
-        "B": "MediaMTX 推流、MJPEG/WebRTC 预览、云部署、Jenkins CD",
+        "B": "MediaMTX 推流、WebRTC 预览、CameraWorker 稳定、云部署、Jenkins CD",
         "C": "家人注册（多帧活体）、实时识别、反欺骗告警、人数统计",
         "D": "厨房禁区、积水/着火/摔倒、异常声学+AV联动",
         "E": "登录鉴权、告警 CRUD、钉钉通知、Swagger、AI 日报 API",

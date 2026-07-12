@@ -44,3 +44,17 @@ The frontend SHALL define API functions in `frontend/src/api/index.js` rather th
 - **WHEN** ZoneEditor creates or updates a zone
 - **THEN** it calls functions from `zoneApi` in the centralized API module
 
+### Requirement: WebRTC preview with backend overlay
+
+The frontend monitor and zone editor pages SHALL use WebRTC iframe for low-latency video preview and poll `/api/video/presence/` for AI overlay data rendered by FaceOverlay Canvas.
+
+#### Scenario: Monitor page overlay polling
+
+- **WHEN** HomeMonitor is active for stream `1`
+- **THEN** it polls `videoApi.presence('1')` and passes the result to FaceOverlay
+
+#### Scenario: MJPEG remains available as fallback
+
+- **WHEN** code calls `videoFeedPath('living_room')`
+- **THEN** the result is `/video_feed/1` for backend MJPEG debug or fallback use
+

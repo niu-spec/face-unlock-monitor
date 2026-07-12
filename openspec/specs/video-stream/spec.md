@@ -1,8 +1,11 @@
 # video-stream Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-from-docs. Update Purpose after archive.
+
+视频推拉流与后端 AI 处理链规格：MediaMTX 接入、MJPEG 备用输出、overlay 快照 API。
+
 ## Requirements
+
 ### Requirement: RTMP ingest via MediaMTX
 
 The system SHALL accept RTMP push streams on port 9090 and expose them as RTSP on port 8554 through MediaMTX.
@@ -14,12 +17,17 @@ The system SHALL accept RTMP push streams on port 9090 and expose them as RTSP o
 
 ### Requirement: MJPEG video feed endpoint
 
-The system SHALL serve live video as MJPEG at `GET /video_feed/{stream_id}` where `stream_id` is the MediaMTX push code (`1` or `2`).
+The system SHALL serve live video as MJPEG at `GET /video_feed/{stream_id}` where `stream_id` is the MediaMTX push code (`1` or `2`). MJPEG is a backend output path for debugging and fallback; the frontend monitor page uses WebRTC for primary preview.
 
 #### Scenario: Browser preview with active stream
 
 - **WHEN** a client requests `GET /video_feed/1` and RTSP source is available
 - **THEN** the response is a multipart MJPEG stream showing the camera frame
+
+#### Scenario: MJPEG includes backend AI annotations
+
+- **WHEN** a client requests `GET /video_feed/1` while AI modules are active
+- **THEN** each MJPEG frame includes bounding boxes drawn by `process_frame()` before encoding
 
 #### Scenario: No RTSP source available
 
@@ -40,6 +48,15 @@ The video stream service SHALL expose a `process_frame()` extension point that s
 - **WHEN** an AI module hooks into `process_frame()` in `apps/video_stream/services.py`
 - **THEN** each captured frame passes through the processor before encoding to MJPEG
 
+### Requirement: Overlay snapshot API
+
+The system SHALL expose per-stream detection overlay data via `GET /api/video/presence/` and `GET /api/video/status/` for frontend Canvas rendering over WebRTC preview.
+
+#### Scenario: Presence includes overlay boxes
+
+- **WHEN** a client GETs `/api/video/presence/?stream_id=1` during active streaming
+- **THEN** the response includes `presence.persons`, `presence.face_boxes`, `presence.alert_boxes`, and `presence.frame_size`
+
 ### Requirement: Multi-camera stream mapping
 
 The system SHALL support at least two camera streams: `1` (living room) and `2` (kitchen).
@@ -47,5 +64,4 @@ The system SHALL support at least two camera streams: `1` (living room) and `2` 
 #### Scenario: Kitchen stream access
 
 - **WHEN** OBS pushes to stream code `2`
-- **THEN** `GET /video_feed/2` displays the kitchen camera feed
-
+- **THEN** `GET /video_feed/2` displays the kitchen camera feed with AI annotations

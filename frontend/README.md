@@ -15,6 +15,8 @@ Default: http://localhost:5173/
 
 Vite proxies `/api` and `/video_feed` to Django at `http://localhost:8000` (see `vite.config.js`).
 
+**监控页主预览**使用 WebRTC（MediaMTX :8889），AI 标注通过 `/api/video/presence/` 获取后在 `FaceOverlay.vue` Canvas 上叠加，不依赖 MJPEG `<img>`。
+
 ## Environment
 
 Copy `.env.development.example` to `.env.development`:
@@ -22,7 +24,8 @@ Copy `.env.development.example` to `.env.development`:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `VITE_API_TARGET` | `http://localhost:8000` | API proxy target |
-| `VITE_VIDEO_FEED_TARGET` | same as API | Video feed proxy (can point to cloud MediaMTX) |
+| `VITE_VIDEO_FEED_TARGET` | same as API | MJPEG fallback proxy (can point to cloud) |
+| `VITE_WEBRTC_HOST` | cloud IP | WebRTC iframe host (MediaMTX :8889) |
 
 ## Routes
 
@@ -30,28 +33,32 @@ Copy `.env.development.example` to `.env.development`:
 |------|------|
 | `/login` | Login |
 | `/register` | Register |
-| `/monitor` | Home monitor (live feed + person stats) |
-| `/family` | Family face registration |
-| `/zones` | Danger zone editor |
+| `/monitor` | Home monitor — WebRTC iframe + FaceOverlay + PersonStats |
+| `/family` | Family face registration (multi-frame liveness) |
+| `/zones` | Danger zone editor — WebRTC + FaceOverlay + canvas polygon |
 | `/alerts` | Alert center |
 | `/events` | Event log |
+| `/reports` | AI daily report |
 | `/users` | User hub |
 | `/households` | Household management |
 | `/profile` | Profile (phone binding) |
+| `/settings/notifications` | DingTalk notification settings |
 
 ## API client
 
 - Axios wrapper: `src/api/request.js`
 - Auto headers: `Authorization: Bearer <token>`, `X-Active-Household-Id`
 - Stream ID mapping: `src/constants/streams.js` (video `1`/`2` ↔ business `living_room`/`kitchen`)
+- Video overlay: `videoApi.presence()` / `videoApi.status()` — polled every 200ms on monitor/zone pages
+- WebRTC URL: `webrtcPreviewUrl()` in `src/constants/streams.js`
 
 ## Structure
 
 ```
 src/
 ├── api/           # Axios + API modules
-├── components/    # Shared components
-├── constants/     # Stream ID mapping
-├── views/         # Pages
+├── components/    # FaceOverlay, PersonStats, FaceCapture, EventReplayDialog
+├── constants/     # Stream ID mapping + WebRTC URL helpers
+├── views/         # Pages (HomeMonitor, ZoneEditor, AlertCenter, …)
 └── router/        # Vue Router
 ```

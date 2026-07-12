@@ -77,7 +77,7 @@ npm run dev
 | Swagger | http://localhost:8000/api/docs/ |
 | Admin | http://localhost:8000/admin/ |
 
-前端 `/api` 与 `/video_feed` 由 Vite 代理到后端 `:8000`（见 `frontend/vite.config.js`）。
+前端 `/api` 与 `/video_feed` 由 Vite 代理到后端 `:8000`（见 `frontend/vite.config.js`）。监控页主预览使用 WebRTC（MediaMTX :8889），AI 标注通过 `/api/video/presence/` 获取后在 Canvas 叠加。
 
 ## 5. 环境变量
 
@@ -113,8 +113,11 @@ X-Active-Household-Id: <家庭 ID>
 
 | 层 | 客厅 | 厨房 |
 |----|------|------|
-| 视频（MediaMTX） | `1` → `/video_feed/1` | `2` |
+| 视频（MediaMTX） | `1` | `2` |
 | 业务（zones/alerts） | `living_room` | `kitchen` |
+| WebRTC 预览 | `http://{IP}:8889/stream/1/` | `.../stream/2/` |
+| overlay API | `/api/video/presence/?stream_id=1` | `...stream_id=2` |
+| MJPEG 备用 | `/video_feed/1` | `/video_feed/2` |
 
 映射见 `frontend/src/constants/streams.js`。
 

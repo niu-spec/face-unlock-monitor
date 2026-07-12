@@ -1,8 +1,11 @@
 # zone-management Specification
 
 ## Purpose
-TBD - created by archiving change bootstrap-from-docs. Update Purpose after archive.
+
+危险区域 CRUD 与前端 Canvas 多边形编辑器规格。
+
 ## Requirements
+
 ### Requirement: Zone CRUD API
 
 The system SHALL provide REST endpoints at `/api/zones/` for creating, reading, updating, and deleting danger zones.
@@ -37,12 +40,12 @@ Each zone SHALL support `forbidden_roles` (e.g. `["child"]`) to define which fam
 
 ### Requirement: Canvas polygon editor with video overlay
 
-The ZoneEditor page SHALL render a 640×480 canvas over a live video background from `/video_feed/{id}` and allow click-to-add polygon vertices.
+The ZoneEditor page SHALL render a 640×480 drawing canvas over a WebRTC live preview with optional detection overlay from `/api/video/presence/`, and allow click-to-add polygon vertices.
 
 #### Scenario: Draw new zone on kitchen stream
 
 - **WHEN** user selects kitchen camera and clicks 4 points on the canvas
-- **THEN** a closed polygon is displayed and can be saved via zoneApi
+- **THEN** a closed polygon is displayed over the WebRTC preview and can be saved via zoneApi
 
 #### Scenario: Edit zone from table row
 
@@ -57,4 +60,3 @@ The ZoneEditor SHALL filter displayed zones by the currently selected camera str
 
 - **WHEN** user switches from living room to kitchen stream
 - **THEN** only zones with matching `stream_id` are shown in the table
-

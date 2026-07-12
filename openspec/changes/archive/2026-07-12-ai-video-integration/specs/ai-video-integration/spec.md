@@ -21,9 +21,24 @@ The system SHALL process each video frame through a chain of AI modules before M
 
 ### Requirement: Presence statistics update
 
-The face module SHALL update person counts accessible via `GET /api/home/presence/`.
+The face module SHALL update person counts accessible via `GET /api/home/presence/` and `GET /api/video/presence/`.
 
 #### Scenario: Poll presence after recognition
 
-- **WHEN** the frontend polls `/api/home/presence/`
+- **WHEN** the frontend polls `/api/video/presence/?stream_id={id}`
 - **THEN** the response reflects the latest total, family, and stranger counts from the video pipeline
+
+### Requirement: Frontend AI overlay display
+
+The frontend SHALL display AI annotations on the monitor and zone editor pages by overlaying Canvas boxes on WebRTC preview, using overlay data published by the backend video pipeline.
+
+#### Scenario: Monitor page shows AI boxes
+
+- **WHEN** OBS pushes to stream `1` and the user opens the monitor page
+- **THEN** person, face, and alert boxes are visible over the WebRTC preview
+- **AND** corresponding alerts appear in the alert center
+
+#### Scenario: MJPEG fallback includes burned-in annotations
+
+- **WHEN** a client requests `GET /video_feed/1` during active AI processing
+- **THEN** the MJPEG stream includes annotations drawn by the backend before encoding

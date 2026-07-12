@@ -70,7 +70,19 @@ Use the same `environment.yml` or install dlib via conda-forge, then:
 
 ```bash
 pip install -r requirements.txt
-gunicorn -w 2 -b 0.0.0.0:8000 config.wsgi:application
+# 生产环境使用 deploy/start_backend.sh（gunicorn workers=1 threads=16 bind 127.0.0.1:8010）
+bash deploy/start_backend.sh
 ```
 
-Deploy script: [deploy/deploy-django.sh](../deploy/deploy-django.sh)
+Deploy script: [deploy/deploy-all.sh](../deploy/deploy-all.sh)
+
+## Video & AI endpoints
+
+| Path | Description |
+|------|-------------|
+| `GET /video_feed/{id}` | MJPEG 备用流（`process_frame()` 烧录 AI 标注） |
+| `GET /api/video/status/` | Worker 状态 + overlay 快照 |
+| `GET /api/video/presence/?stream_id=` | 前端 FaceOverlay 轮询数据源 |
+| `GET /api/home/presence/` | 人数统计（legacy/fallback） |
+
+视频处理由 `apps/video_stream/services.py` 的 `CameraWorker` 完成（采集/AI 分线程，`frame.copy()` 防并发）。

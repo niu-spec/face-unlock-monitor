@@ -1,6 +1,6 @@
 ## Why
 
-C（人脸识别）和 D（危险区域/异常检测）模块需要接入 `apps/video_stream/services.py` 的 `process_frame()` 钩子，在 MJPEG 输出前完成检测、画框并写入告警/事件 API。
+C（人脸识别）和 D（危险区域/异常检测）模块需要接入 `apps/video_stream/services.py` 的 `process_frame()` 钩子，在 MJPEG 输出前完成检测、画框并写入告警/事件 API。前端通过 WebRTC 低延迟预览 + `/api/video/presence/` overlay API 展示 AI 标注。
 
 ## What Changes
 

@@ -25,7 +25,7 @@ Smart home camera monitoring system with RTMP streaming, Django business backend
 | 后端 | Django 4.2 + DRF + SimpleJWT + Swagger |
 | AI | OpenCV + dlib + face_recognition + YOLOv8n（HOG 降级） |
 | 数据库 | MySQL（`home_camera_monitor`） |
-| 流媒体 | OBS → RTMP(:9090) → MediaMTX → RTSP / WebRTC(:8889) → MJPEG |
+| 流媒体 | OBS → RTMP(:9090) → MediaMTX → RTSP → Django AI 链；浏览器主预览 WebRTC(:8889) + Canvas overlay；MJPEG(/video_feed) 为后端备用 |
 | CI/CD | GitHub Actions（CI）+ Jenkins（CD，云服务器） |
 | 部署 | gunicorn(:8010) + Nginx 反代 |
 
@@ -57,6 +57,7 @@ home-camera-monitor/
 | 地址 | URL |
 |------|-----|
 | 前端 | http://localhost:5173 |
+| 监控预览 | WebRTC iframe + `/api/video/presence/` overlay（见 DEV_SETUP） |
 | Swagger | http://localhost:8000/api/docs/ |
 
 推流：`rtmp://{IP}:9090/stream/1` — 详见 [nginx/README.md](nginx/README.md)

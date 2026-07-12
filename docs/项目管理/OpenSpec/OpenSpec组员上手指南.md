@@ -16,12 +16,12 @@ openspec/
 ├── config.yaml              # 项目约定（技术栈、分工、流 ID）
 ├── specs/                   # 当前系统规格（「真相来源」）
 └── changes/
-    ├── ai-video-integration/   # 进行中的任务
-    │   ├── tasks.md            # ← 最重要：任务清单
-    │   ├── proposal.md         # 为什么做、改什么
-    │   ├── design.md           # 技术方案
-    │   └── specs/              # 需求规格（含 Scenario）
-    └── archive/                # 已完成的 change 记录
+    ├── audio-abnormal-sound-detection/   # 进行中的任务（D 组音频检测）
+    │   ├── tasks.md
+    │   ├── proposal.md
+    │   ├── design.md
+    │   └── specs/
+    └── archive/                # 已完成的 change 记录（含 ai-video-integration）
 ```
 
 **组员只需 `git pull` 拿到这些文件，按 `tasks.md` 写代码，再 push 回 GitHub。**
@@ -44,16 +44,13 @@ git checkout -b feature/face    # 按自己的分支命名，如 feature/detecti
 
 | 负责人 | 先看这些文件 |
 |--------|-------------|
-| 王梓铭（C） | `openspec/changes/ai-video-integration/tasks.md` 第 2 节 |
-| 李东礼（D） | 同上，第 3 节 |
+| 王梓铭（C） | `openspec/specs/ai-video-integration/spec.md`、`openspec/specs/home-monitor/spec.md` |
+| 李东礼（D） | `openspec/changes/audio-abnormal-sound-detection/tasks.md` 第 1–6 节 |
 | 刘帅华（E） | `openspec/specs/` 下对应 capability |
 | 苏哲勋（B） | `openspec/specs/video-stream/spec.md` |
 | 刘澎潮（F） | `openspec/specs/` 各 capability，用于文档对齐 |
 
-接口细节还在：
-
-- `openspec/changes/ai-video-integration/design.md`
-- `openspec/changes/ai-video-integration/specs/`
+已归档的 AI 视频联调规格见：`openspec/changes/archive/2026-07-12-ai-video-integration/`
 
 项目全局约定见：`openspec/config.yaml`
 
@@ -66,11 +63,11 @@ git checkout -b feature/face    # 按自己的分支命名，如 feature/detecti
 请先阅读以下规格，再帮我写代码：
 
 1. openspec/config.yaml（项目约定）
-2. openspec/changes/ai-video-integration/tasks.md 第 2 节
-3. openspec/changes/ai-video-integration/design.md
-4. openspec/changes/ai-video-integration/specs/ai-video-integration/spec.md
+2. openspec/specs/ai-video-integration/spec.md
+3. openspec/specs/home-monitor/spec.md
+4. openspec/changes/archive/2026-07-12-ai-video-integration/design.md（历史设计参考）
 
-我的任务是完成 tasks 2.1：接入 dlib 人脸检测与 128 维编码比对。
+我的任务是：理解 face 模块如何接入 process_frame() 处理器链。
 相关代码在 backend/apps/face/。
 ```
 
@@ -80,21 +77,19 @@ Agent 不需要懂 OpenSpec 命令，**读 Markdown 即可开发**。
 
 对照 `tasks.md` 逐项实现。做完一项，把 `- [ ]` 改成 `- [x]`，与代码一起提交。
 
-示例（C 组当前任务）：
+示例（D 组当前任务 — 音频检测）：
 
 ```markdown
-## 2. C — 人脸识别（王梓铭）
-- [ ] 2.1 接入 dlib 人脸检测与 128 维编码比对
-- [ ] 2.2 实现 `/api/face/register/` 与家人库持久化
-- [ ] 2.3 更新 `/api/home/presence/` 人数统计
-- [ ] 2.4 陌生人触发 `FACE_UNKNOWN` 告警
+## 1. 音频采集（audio_capture.py）
+- [x] 1.1 实现 AudioCapture 类
+- [ ] 1.2 …（按实际进度勾选）
 ```
 
 ### 步骤 5：提交并提 PR
 
 ```bash
-git add backend/apps/face/ openspec/changes/ai-video-integration/tasks.md
-git commit -m "feat(face): 完成 tasks 2.1-2.2 人脸检测与注册 API"
+git add backend/apps/detection/ openspec/changes/audio-abnormal-sound-detection/tasks.md
+git commit -m "feat(detection): 完成 audio tasks 1.x"
 git push origin feature/face
 ```
 
@@ -102,9 +97,9 @@ PR 描述模板：
 
 ```markdown
 ## 关联 OpenSpec
-- Change: ai-video-integration
-- 完成任务: 2.1, 2.2
-- 规格参考: openspec/changes/ai-video-integration/specs/
+- Change: audio-abnormal-sound-detection
+- 完成任务: 1.x
+- 规格参考: openspec/changes/audio-abnormal-sound-detection/specs/
 
 ## 测试说明
 - [ ] 本地接口可访问
@@ -136,8 +131,8 @@ npm install -g @fission-ai/openspec@latest
 cd 项目根目录
 
 openspec list                                    # 查看进行中的 change
-openspec status --change ai-video-integration    # 查看任务进度
-openspec validate ai-video-integration           # 校验规格格式
+openspec status --change audio-abnormal-sound-detection
+openspec validate audio-abnormal-sound-detection
 ```
 
 CLI 仅作辅助查看，**不是必须的**。
@@ -155,16 +150,16 @@ CLI 仅作辅助查看，**不是必须的**。
 
 ### 王梓铭（C）— 人脸识别
 
-1. `git pull` → 读 `tasks.md` 2.x
-2. 告诉 Agent：按 `openspec/changes/ai-video-integration/` 规格，将 `backend/apps/face/services.py` 接入 `backend/apps/video_stream/services.py` 的 `process_frame()`
-3. 本地测试 `/api/face/register/`、`/api/home/presence/`
-4. 勾选 tasks 2.1–2.4 → push → PR 到 `dev`
+1. `git pull` → 读 `openspec/specs/ai-video-integration/spec.md` 与 `openspec/specs/home-monitor/spec.md`
+2. 告诉 Agent：face 模块已接入 `backend/apps/video_stream/services.py` 的 `process_frame()`；前端通过 WebRTC + `/api/video/presence/` 展示
+3. 本地测试 `/api/face/register/`、`/api/video/presence/`
+4. 新功能请新建 change → push → PR 到 `dev`
 
 ### 李东礼（D）— 异常检测
 
-1. 读 `tasks.md` 3.x + `backend/apps/detection/services.py` 现有代码
-2. 让 Agent 把 detection 模块挂到 `process_frame()` 处理器链
-3. 测试 `INTRUSION` / `WATER` / `FIRE` / `FALL` 告警
+1. 读 `openspec/changes/audio-abnormal-sound-detection/tasks.md` + `backend/apps/detection/services.py`
+2. 让 Agent 确认 audio 模块已挂到 `video_stream` worker 启动流程
+3. 测试 `SCREAM` / `FIGHT` / `EMERGENCY` 等告警
 4. 勾选 tasks → push → PR
 
 ### 刘帅华（E）— 业务 API
@@ -176,8 +171,8 @@ CLI 仅作辅助查看，**不是必须的**。
 ### 苏哲勋（B）— 视频流
 
 1. 读 `openspec/specs/video-stream/spec.md`
-2. 改 `process_frame()` 时对照 `ai-video-integration` 的 `design.md`
-3. 保留 face / detection 的接入扩展点
+2. 改 `CameraWorker` / `process_frame()` 时保留 face / detection / audio 接入扩展点
+3. 参考已归档 `openspec/changes/archive/2026-07-12-ai-video-integration/design.md`
 
 ### 刘澎潮（F）— 文档
 
@@ -216,9 +211,8 @@ feature/frontend  ← 牛雨昊
 
 请先阅读仓库中以下文件作为开发规范：
 - openspec/config.yaml
-- openspec/changes/ai-video-integration/tasks.md
-- openspec/changes/ai-video-integration/design.md
-- openspec/changes/ai-video-integration/specs/
+- openspec/changes/audio-abnormal-sound-detection/tasks.md（或 openspec/specs/ 下对应 capability）
+- openspec/changes/audio-abnormal-sound-detection/design.md
 
 我的角色：[C/D/E/B]
 我的任务：完成 tasks [X.X]
@@ -256,15 +250,15 @@ feature/frontend  ← 牛雨昊
 
 ## 8. 当前进行中的 change
 
-### `ai-video-integration`（C/D 负责）
+### `audio-abnormal-sound-detection`（D 组负责）
 
 | 节 | 负责人 | 内容 |
 |----|--------|------|
-| 2.x | 王梓铭 | 人脸识别、presence、陌生人告警 |
-| 3.x | 李东礼 | 区域闯入、积水/着火/跌倒 |
-| 4.x | 全员 | OBS 推流联调、告警中心验证 |
+| 1–6 | 李东礼 | 音频采集、PANNs 分类、音视频联动、集成接口 |
 
-规格路径：`openspec/changes/ai-video-integration/`
+规格路径：`openspec/changes/audio-abnormal-sound-detection/`
+
+已归档：`ai-video-integration`（2026-07-12）→ `openspec/changes/archive/2026-07-12-ai-video-integration/`
 
 ---
 
