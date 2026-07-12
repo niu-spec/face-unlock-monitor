@@ -1,10 +1,10 @@
 """检测服务模块 — 危险区域与异常检测（Django 版）。
 
 负责：
-  - 危险区域闯入 / 距边缘过近 / 异常停留检测（YOLO 行人检测 + 多边形碰撞）
-  - 积水检测（HSV 颜色 + 形态分析）
-  - 着火检测（HSV 火焰颜色 + 亮度分析）
-  - 摔倒检测（人体框高宽比分析）
+  - 危险区域闯入 / 距边缘过近 / 异常停留检测（YOLO 行人检测 + IoU 追踪 + 多边形碰撞）
+  - 积水检测（镜面反射 + 边缘纹理分析 + 颜色辅助，三信号融合）
+  - 着火检测（三区间 HSV + 亮度 + 连通域滤波）
+  - 摔倒检测（跨帧追踪 + 双路径判定：标准骤降 + 极端姿态快速触发）
   - 异常声学事件检测（PANNs CNN14 音频分类）★ v1.3 新增
   - 音视频联动告警（AVCorrelationBuffer）★ v1.3 新增
 
@@ -46,23 +46,52 @@ DETECTION_CONFIG = {
     "FRAME_HEIGHT": 480,
     "FRAME_SKIP": 3,
     # --- 积水（WATER）---
-    "FLOOD_ROI_BOTTOM_RATIO": 0.6,
-    "FLOOD_HSV_LOWER": (90, 50, 50),
-    "FLOOD_HSV_UPPER": (140, 255, 255),
-    "FLOOD_AREA_THRESHOLD": 0.15,
+    # 室内地板积水的多信号融合检测：
+    #   Signal A — 镜面反射：湿滑地板产生亮斑（低饱和 + 高亮度）
+    #   Signal B — 纹理抑制：水面平滑，边缘密度显著低于干燥地面
+    #   Signal C — 蓝/青色液体（洗涤剂、泳池水等有色溢水）
+    "FLOOD_ROI_BOTTOM_RATIO": 0.55,
+    # Signal A: 镜面反射检测
+    "FLOOD_REFLECT_V_LOWER": 160,       # 高亮度阈值
+    "FLOOD_REFLECT_S_UPPER": 80,        # 低饱和度上限（反光区域色彩淡）
+    "FLOOD_REFLECT_AREA_THRESHOLD": 0.06,
+    # Signal B: 边缘/纹理稀疏检测
+    "FLOOD_EDGE_CANNY_LOW": 40,
+    "FLOOD_EDGE_CANNY_HIGH": 120,
+    "FLOOD_EDGE_SPARSITY_THRESHOLD": 0.65,  # 边缘像素占比低于此值视为平滑
+    # Signal C: 蓝/青色液体（保留原有逻辑作为辅助）
+    "FLOOD_HSV_LOWER": (85, 40, 40),
+    "FLOOD_HSV_UPPER": (145, 255, 255),
+    "FLOOD_COLOR_AREA_THRESHOLD": 0.10,
+    # 综合判定：至少满足 (A + B) 或 C 才触发告警
     # --- 着火（FIRE）---
-    "FIRE_HSV_LOWER_1": (0, 100, 100),
-    "FIRE_HSV_UPPER_1": (25, 255, 255),
-    "FIRE_HSV_LOWER_2": (160, 100, 100),
+    # 火焰颜色范围：三个 HSV 区间覆盖明焰、暗焰与红热区域
+    # Range 1: 红/橙/黄明焰（低饱和也能捕获，避免过滤暗火）
+    "FIRE_HSV_LOWER_1": (0, 55, 80),
+    "FIRE_HSV_UPPER_1": (35, 255, 255),
+    # Range 2: 深红/品红区域
+    "FIRE_HSV_LOWER_2": (155, 55, 80),
     "FIRE_HSV_UPPER_2": (180, 255, 255),
-    "FIRE_AREA_THRESHOLD": 0.05,
-    "FIRE_BRIGHTNESS_THRESHOLD": 180,
+    # Range 3: 黄/白热焰（高亮高温核心）
+    "FIRE_HSV_LOWER_3": (18, 20, 200),
+    "FIRE_HSV_UPPER_3": (38, 120, 255),
+    # 亮度阈值（大幅降低，捕获焰体而非仅核心））
+    "FIRE_BRIGHTNESS_THRESHOLD": 130,
+    # 面积阈值（降低以检测初起小火）
+    "FIRE_AREA_THRESHOLD": 0.02,
+    # 火焰区域最小连通域（过滤噪声）
+    "FIRE_MIN_CONTOUR_AREA": 80,
     # --- 摔倒（FALL）---
-    "FALL_ASPECT_RATIO_THRESHOLD": 0.8,
-    "FALL_PERSIST_FRAMES": 5,
-    "FALL_MIN_STANDING_RATIO": 1.6,
-    "FALL_CENTER_DROP_RATIO": 0.30,
-    "FALL_AR_VELOCITY_THRESHOLD": 1.0,
+    # 判定策略：双路径
+    #   Path 1（标准）: 曾站立 → 姿态突变 → 横向姿态（多帧确认）
+    #   Path 2（快速）: 极端横向姿态（h/w < 0.55），无需曾站立直接告警
+    "FALL_ASPECT_RATIO_THRESHOLD": 0.90,       # 高宽比阈值（放松，1.0=正方形）
+    "FALL_EXTREME_AR_THRESHOLD": 0.55,         # 极端高宽比（直接触发，不要求曾站立）
+    "FALL_PERSIST_FRAMES": 4,                  # 持续帧数（从5降到4，更快响应）
+    "FALL_MIN_STANDING_RATIO": 1.45,           # 站立高宽比（1.6→1.45，坐姿也能识别）
+    "FALL_CENTER_DROP_RATIO": 0.20,            # 中心下移比（0.30→0.20，更敏感）
+    "FALL_AR_VELOCITY_THRESHOLD": 0.50,        # AR变化速率（1.0→0.50，慢摔倒也能检测）
+    "FALL_MAX_STANDING_FRAMES_TO_RESET": 2,    # 非站立帧数阈值（降低，避免短暂遮挡重置）
     # --- YOLO 行人检测（优先）---
     "YOLO_MODEL": "yolov8n.pt",
     "YOLO_IMGSZ": 480,
@@ -211,6 +240,131 @@ def _normalize_forbidden_roles(forbidden) -> list[str]:
 
 
 # ---------------------------------------------------------------------------
+# 简单人员追踪器（IoU-based）
+# ---------------------------------------------------------------------------
+
+
+class SimplePersonTracker:
+    """基于 IoU 的轻量级人员追踪器。
+
+    解决 YOLO/HOG 每帧独立检测导致的 track_id 不连续问题。
+    同一人在不同帧被分配相同 track_id，使摔倒/徘徊/闯入持续检测成为可能。
+
+    算法：
+      1. 计算已有轨迹与当前检测之间的 IoU 矩阵
+      2. 贪婪匹配（按 IoU 降序分配）
+      3. 未匹配的检测 → 创建新轨迹
+      4. 未匹配的轨迹 → lost_frames += 1，超阈值后删除
+      5. 匹配成功的轨迹 → 更新位置，lost_frames 归零
+    """
+
+    def __init__(self, max_lost_frames: int = 10, iou_threshold: float = 0.3):
+        # tid → {"bbox": (x, y, w, h), "lost": int}
+        self._tracks: dict[int, dict] = {}
+        self._next_id = 0
+        self._max_lost = max_lost_frames
+        self._iou_threshold = iou_threshold
+
+    def update(self, boxes: list[dict]) -> list[dict]:
+        """为当前帧检测框分配稳定的 track_id。
+
+        Args:
+            boxes: [{"x", "y", "w", "h"}, ...] 当前帧检测结果。
+
+        Returns:
+            同列表，但每个 box 的 track_id 被替换为跨帧稳定的 ID。
+        """
+        if not boxes:
+            # 无检测 → 所有轨迹丢失计数+1
+            for tid in list(self._tracks.keys()):
+                self._tracks[tid]["lost"] += 1
+                if self._tracks[tid]["lost"] > self._max_lost:
+                    del self._tracks[tid]
+            return []
+
+        # 提取已有轨迹的 bbox
+        active_tids = list(self._tracks.keys())
+        track_boxes = [self._tracks[tid]["bbox"] for tid in active_tids]
+
+        # 计算 IoU 矩阵
+        num_tracks = len(active_tids)
+        num_dets = len(boxes)
+        iou_matrix = np.zeros((num_tracks, num_dets), dtype=np.float32)
+        for t in range(num_tracks):
+            tx, ty, tw, th = track_boxes[t]
+            for d in range(num_dets):
+                dx, dy, dw, dh = boxes[d]["x"], boxes[d]["y"], boxes[d]["w"], boxes[d]["h"]
+                iou_matrix[t, d] = self._compute_iou(tx, ty, tw, th, dx, dy, dw, dh)
+
+        matched_track_ids: set[int] = set()
+        matched_det_ids: set[int] = set()
+
+        # 贪婪匹配（按 IoU 从高到低）
+        if num_tracks > 0 and num_dets > 0:
+            # 收集所有 (iou, t, d) 三元组并按 IoU 降序排列
+            candidates = []
+            for t in range(num_tracks):
+                for d in range(num_dets):
+                    iou = iou_matrix[t, d]
+                    if iou >= self._iou_threshold:
+                        candidates.append((iou, t, d))
+            candidates.sort(key=lambda x: x[0], reverse=True)
+
+            for iou, t, d in candidates:
+                tid = active_tids[t]
+                if tid in matched_track_ids or d in matched_det_ids:
+                    continue
+                # 匹配成功
+                boxes[d]["track_id"] = tid
+                self._tracks[tid]["bbox"] = (
+                    boxes[d]["x"], boxes[d]["y"], boxes[d]["w"], boxes[d]["h"]
+                )
+                self._tracks[tid]["lost"] = 0
+                matched_track_ids.add(tid)
+                matched_det_ids.add(d)
+
+        # 未匹配的检测 → 新轨迹
+        for d in range(num_dets):
+            if d not in matched_det_ids:
+                tid = self._next_id
+                self._next_id += 1
+                boxes[d]["track_id"] = tid
+                self._tracks[tid] = {
+                    "bbox": (boxes[d]["x"], boxes[d]["y"], boxes[d]["w"], boxes[d]["h"]),
+                    "lost": 0,
+                }
+
+        # 未匹配的轨迹 → lost++
+        for tid in active_tids:
+            if tid not in matched_track_ids:
+                self._tracks[tid]["lost"] += 1
+                if self._tracks[tid]["lost"] > self._max_lost:
+                    del self._tracks[tid]
+
+        return boxes
+
+    def remove_track(self, tid: int):
+        """手动移除指定轨迹（如人员已离开画面）。"""
+        self._tracks.pop(tid, None)
+
+    @staticmethod
+    def _compute_iou(
+        x1: int, y1: int, w1: int, h1: int,
+        x2: int, y2: int, w2: int, h2: int,
+    ) -> float:
+        """计算两个轴对齐矩形框的 IoU。"""
+        ix1 = max(x1, x2)
+        iy1 = max(y1, y2)
+        ix2 = min(x1 + w1, x2 + w2)
+        iy2 = min(y1 + h1, y2 + h2)
+        inter_area = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+        area1 = w1 * h1
+        area2 = w2 * h2
+        union_area = area1 + area2 - inter_area
+        return inter_area / union_area if union_area > 0 else 0.0
+
+
+# ---------------------------------------------------------------------------
 # 检测服务主类
 # ---------------------------------------------------------------------------
 
@@ -255,6 +409,10 @@ class DetectionService:
         self._person_history: dict[int, dict] = {}
         self._intrusion_counter: dict[str, dict[int, int]] = defaultdict(
             lambda: defaultdict(int)
+        )
+        # 跨帧人员追踪器（解决 YOLO/HOG 每帧独立检测导致的 track_id 不连续）
+        self._person_tracker = SimplePersonTracker(
+            max_lost_frames=15, iou_threshold=0.25
         )
 
         # ★ v1.3 音视频联动
@@ -352,10 +510,16 @@ class DetectionService:
             return []
         return self._detect_pedestrians(frame)
     def _detect_pedestrians(self, frame: np.ndarray) -> list[dict]:
-        """YOLO 行人检测，不可用时自动降级为 HOG。"""
+        """YOLO 行人检测，不可用时自动降级为 HOG。
+
+        检测后通过 SimplePersonTracker 分配跨帧稳定的 track_id。
+        """
         if self._detector_type == "YOLO" and self._yolo is not None:
-            return self._detect_pedestrians_yolo(frame)
-        return self._detect_pedestrians_hog(frame)
+            boxes = self._detect_pedestrians_yolo(frame)
+        else:
+            boxes = self._detect_pedestrians_hog(frame)
+        # 跨帧追踪：为每个检测框分配稳定的 track_id
+        return self._person_tracker.update(boxes)
 
     def _detect_pedestrians_yolo(self, frame: np.ndarray) -> list[dict]:
         """使用 YOLOv8n 检测行人（class_id=0 即 person）。"""
@@ -653,63 +817,141 @@ class DetectionService:
     # -----------------------------------------------------------------------
 
     def _detect_water(self, frame: np.ndarray, stream_id: str) -> list[dict]:
-        """检测画面下方积水。
+        """检测画面下方积水（多信号融合）。
 
-        dev 分支告警类型: WATER（对应 Flask 版的 FLOOD）。
+        室内地面积水通常表现为：
+          - 镜面反射（Signal A）：湿滑地面产生亮斑
+          - 纹理抑制（Signal B）：水面平滑，边缘密度低
+          - 有色液体（Signal C）：蓝/青色溢水（洗涤剂等）
+
+        判定规则：满足 (A + B) 或 C 任一组合即触发告警。
         """
         h, w = frame.shape[:2]
         roi_y_start = int(h * _cfg("FLOOD_ROI_BOTTOM_RATIO"))
         roi = frame[roi_y_start:h, 0:w]
+        roi_h, roi_w = roi.shape[:2]
+        roi_area = roi_h * roi_w
 
-        hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        mask = cv2.inRange(
-            hsv,
+        if roi_area <= 0:
+            return []
+
+        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+        gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+
+        # ---- Signal A: 镜面反射检测 ----
+        # 湿地板 = 高亮度 + 低饱和（反光区域色彩被冲刷）
+        s_channel = hsv_roi[:, :, 1]
+        v_channel = hsv_roi[:, :, 2]
+        refl_mask = np.zeros((roi_h, roi_w), dtype=np.uint8)
+        refl_mask[
+            (v_channel >= _cfg("FLOOD_REFLECT_V_LOWER"))
+            & (s_channel <= _cfg("FLOOD_REFLECT_S_UPPER"))
+        ] = 255
+
+        kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        refl_mask = cv2.morphologyEx(refl_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
+        refl_mask = cv2.morphologyEx(refl_mask, cv2.MORPH_CLOSE, kernel_small, iterations=2)
+
+        refl_area = cv2.countNonZero(refl_mask)
+        refl_ratio = refl_area / roi_area
+
+        # ---- Signal B: 边缘/纹理稀疏检测 ----
+        # 水面平滑，Canny 边缘密度显著低于正常地板纹理
+        blurred = cv2.GaussianBlur(gray_roi, (5, 5), 0)
+        edges = cv2.Canny(
+            blurred,
+            _cfg("FLOOD_EDGE_CANNY_LOW"),
+            _cfg("FLOOD_EDGE_CANNY_HIGH"),
+        )
+        edge_pixels = cv2.countNonZero(edges)
+        edge_ratio = edge_pixels / roi_area
+        is_texture_sparse = edge_ratio < (1.0 - _cfg("FLOOD_EDGE_SPARSITY_THRESHOLD"))
+        # 计算边缘密度（1 - 归一化边缘比），高值 = 纹理少 = 可能积水
+        edge_sparsity = 1.0 - min(1.0, edge_ratio * 3)  # 放大敏感度
+
+        # ---- Signal C: 蓝/青色液体检测（保留原逻辑）----
+        color_mask = cv2.inRange(
+            hsv_roi,
             np.array(_cfg("FLOOD_HSV_LOWER")),
             np.array(_cfg("FLOOD_HSV_UPPER")),
         )
+        kernel_med = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+        color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel_med, iterations=2)
+        color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, kernel_med, iterations=2)
+        color_area = cv2.countNonZero(color_mask)
+        color_ratio = color_area / roi_area
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=2)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        # ---- 组合判定 ----
+        signal_ab = (
+            refl_ratio >= _cfg("FLOOD_REFLECT_AREA_THRESHOLD")
+            and edge_sparsity >= _cfg("FLOOD_EDGE_SPARSITY_THRESHOLD")
+        )
+        signal_c = color_ratio >= _cfg("FLOOD_COLOR_AREA_THRESHOLD")
 
-        roi_area = roi.shape[0] * roi.shape[1]
-        water_area = cv2.countNonZero(mask)
-        ratio = water_area / roi_area if roi_area > 0 else 0
+        if not (signal_ab or signal_c):
+            return []
 
-        if ratio >= _cfg("FLOOD_AREA_THRESHOLD"):
-            if not self._check_cooldown("WATER", stream_id):
-                return []
+        if not self._check_cooldown("WATER", stream_id):
+            return []
 
-            msg = f"检测到疑似积水区域（占比 {ratio:.1%}）"
+        # 确定主要检测信号（用于日志）
+        if signal_ab and signal_c:
+            source = "reflection+texture+color"
+        elif signal_ab:
+            source = "reflection+texture"
+        else:
+            source = "color"
 
-            self._create_alert(
-                alert_type="WATER",
-                level="HIGH",
-                stream_id=stream_id,
-                description=msg,
-            )
+        msg = (
+            f"检测到疑似积水区域"
+            f"（信号源: {source}, "
+            f"反光 {refl_ratio:.1%}, "
+            f"纹理稀疏度 {edge_sparsity:.1%}, "
+            f"颜色 {color_ratio:.1%}）"
+        )
 
-            logger.info("Water detected: %s", msg)
-            return [
-                {
-                    "alert_type": "WATER",
-                    "message": msg,
-                    "bbox": (0, roi_y_start, w, h - roi_y_start),
-                    "severity": "high",
-                    "detail": {"area_ratio": round(ratio, 3)},
-                }
-            ]
+        self._create_alert(
+            alert_type="WATER",
+            level="HIGH",
+            stream_id=stream_id,
+            description=msg,
+        )
 
-        return []
+        logger.info("Water detected (%s): %s", source, msg)
+        return [
+            {
+                "alert_type": "WATER",
+                "message": msg,
+                "bbox": (0, roi_y_start, w, h - roi_y_start),
+                "severity": "high",
+                "detail": {
+                    "source": source,
+                    "reflection_ratio": round(refl_ratio, 3),
+                    "edge_sparsity": round(edge_sparsity, 3),
+                    "color_ratio": round(color_ratio, 3),
+                },
+            }
+        ]
 
     # -----------------------------------------------------------------------
     # 3. 着火检测（FIRE）
     # -----------------------------------------------------------------------
 
     def _detect_fire(self, frame: np.ndarray, stream_id: str) -> list[dict]:
-        """检测画面中火焰区域。"""
-        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        """检测画面中火焰区域（三区间 HSV + 亮度 + 形态滤波）。
 
+        改进要点：
+          1. 三区间 HSV 覆盖明焰、暗焰、高温白热核心
+          2. 降低饱和度下限（100→55）捕获暗火
+          3. 降低亮度阈值（180→130）捕获焰体而非仅核心
+          4. 面积阈值从 5% → 2%，可检测初起小火
+          5. 形态滤波过滤零星噪点
+        """
+        hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+        h, w = frame.shape[:2]
+        frame_area = h * w
+
+        # 三区间火焰颜色掩码
         mask1 = cv2.inRange(
             hsv,
             np.array(_cfg("FIRE_HSV_LOWER_1")),
@@ -720,19 +962,39 @@ class DetectionService:
             np.array(_cfg("FIRE_HSV_LOWER_2")),
             np.array(_cfg("FIRE_HSV_UPPER_2")),
         )
-        mask = cv2.bitwise_or(mask1, mask2)
+        mask3 = cv2.inRange(
+            hsv,
+            np.array(_cfg("FIRE_HSV_LOWER_3")),
+            np.array(_cfg("FIRE_HSV_UPPER_3")),
+        )
+        color_mask = cv2.bitwise_or(mask1, mask2)
+        color_mask = cv2.bitwise_or(color_mask, mask3)
 
+        # 亮度掩码（明度通道独立阈值）
         v_channel = hsv[:, :, 2]
         _, bright_mask = cv2.threshold(
             v_channel, _cfg("FIRE_BRIGHTNESS_THRESHOLD"), 255, cv2.THRESH_BINARY
         )
-        mask = cv2.bitwise_and(mask, bright_mask)
+        mask = cv2.bitwise_and(color_mask, bright_mask)
 
-        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+        # 形态滤波：先去噪再连接断裂区域
+        kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+        kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_large, iterations=2)
 
-        frame_area = frame.shape[0] * frame.shape[1]
+        # 过滤小面积噪点
+        min_contour_area = _cfg("FIRE_MIN_CONTOUR_AREA")
+        num_labels, labels, stats, _centroids = cv2.connectedComponentsWithStats(
+            mask, connectivity=8
+        )
+        clean_mask = np.zeros_like(mask)
+        for label_id in range(1, num_labels):
+            area = stats[label_id, cv2.CC_STAT_AREA]
+            if area >= min_contour_area:
+                clean_mask[labels == label_id] = 255
+        mask = clean_mask
+
         fire_area = cv2.countNonZero(mask)
         ratio = fire_area / frame_area if frame_area > 0 else 0
 
@@ -740,19 +1002,18 @@ class DetectionService:
             if not self._check_cooldown("FIRE", stream_id):
                 return []
 
-            # OpenCV 3.x 返回 (img, contours, hierarchy)，4.x 返回 (contours, hierarchy)
+            # 提取最大火焰连通域的包围框
             find_result = cv2.findContours(
                 mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
             )
             contours = find_result[0] if len(find_result) == 2 else find_result[1]
             if contours:
-                x, y, fw, fh = cv2.boundingRect(
-                    max(contours, key=cv2.contourArea)
-                )
+                largest = max(contours, key=cv2.contourArea)
+                x, y, fw, fh = cv2.boundingRect(largest)
             else:
-                x, y, fw, fh = 0, 0, frame.shape[1], frame.shape[0]
+                x, y, fw, fh = 0, 0, w, h
 
-            msg = f"检测到疑似火焰区域（占比 {ratio:.1%}）"
+            msg = f"检测到疑似火焰区域（占比 {ratio:.1%}，面积 {fire_area}px）"
 
             self._create_alert(
                 alert_type="FIRE",
@@ -768,7 +1029,10 @@ class DetectionService:
                     "message": msg,
                     "bbox": (x, y, fw, fh),
                     "severity": "high",
-                    "detail": {"area_ratio": round(ratio, 3)},
+                    "detail": {
+                        "area_ratio": round(ratio, 3),
+                        "area_px": fire_area,
+                    },
                 }
             ]
 
@@ -790,22 +1054,30 @@ class DetectionService:
             for tid in list(self._intrusion_counter[zone_key].keys()):
                 if tid not in active_ids:
                     del self._intrusion_counter[zone_key][tid]
+        # 同步清理追踪器中的失联轨迹
+        if hasattr(self, "_person_tracker") and self._person_tracker is not None:
+            for tid in list(self._person_tracker._tracks.keys()):
+                if tid not in active_ids:
+                    self._person_tracker.remove_track(tid)
 
     def _detect_fall(
         self, person_boxes: list[dict], stream_id: str
     ) -> list[dict]:
-        """检测人员摔倒（多信号融合：高宽比 + 变化速率 + 中心点位移）。
+        """检测人员摔倒（双路径多信号融合）。
 
-        蹲下 vs 摔倒区分策略：
-          - 蹲下：高宽比缓降（h/w 在 0.8~1.2）、中心点小幅下移 → 不告警
-          - 摔倒：高宽比骤降（h/w < 0.8）、中心点大幅下移 → 告警
+        Path 1 — 标准摔倒（曾站立 → 姿态骤变 → 横向姿态）:
+          条件 a: 高宽比 < FALL_ASPECT_RATIO_THRESHOLD（人横向）
+          条件 b: 曾站立（h/w > FALL_MIN_STANDING_RATIO 持续 ≥ 3 帧）
+          条件 c: 骤变确认（AR 变化速率 或 中心点大幅下移）
+          持续 FALL_PERSIST_FRAMES 帧后告警。
 
-        三个判定条件（AND）：
-          a. 高宽比 < FALL_ASPECT_RATIO_THRESHOLD（人横向，宽大于高）
-          b. 曾明确站立过（h/w > FALL_MIN_STANDING_RATIO 持续 ≥ 3 帧）
-          c. 骤变确认（二选一）：
-             - 高宽比变化速率 > FALL_AR_VELOCITY_THRESHOLD（骤降 = 摔倒）
-             - 中心点 Y 下移 > FALL_CENTER_DROP_RATIO × 人物高度（大幅坠落 = 摔倒）
+        Path 2 — 极端姿态（无需曾站立，直接触发）:
+          条件: 高宽比 < FALL_EXTREME_AR_THRESHOLD（人几乎平躺）
+          持续 FALL_PERSIST_FRAMES 帧后立即告警。
+
+        蹲下 vs 摔倒区分:
+          - 蹲下: h/w ≈ 0.8~1.2, 变化缓慢, 中心点小幅下移 → 不告警
+          - 摔倒: h/w < 0.9, 变化快, 或极端姿态 h/w < 0.55 → 告警
         """
         results = []
         now = time.time()
@@ -815,65 +1087,76 @@ class DetectionService:
 
         # 缓存配置（避免循环内频繁 Django settings 查询）
         fall_ar_threshold = _cfg("FALL_ASPECT_RATIO_THRESHOLD")
+        fall_extreme_ar = _cfg("FALL_EXTREME_AR_THRESHOLD")
         fall_min_standing = _cfg("FALL_MIN_STANDING_RATIO")
         fall_persist = _cfg("FALL_PERSIST_FRAMES")
         fall_ar_velocity = _cfg("FALL_AR_VELOCITY_THRESHOLD")
         fall_center_drop = _cfg("FALL_CENTER_DROP_RATIO")
+        max_standing_reset = _cfg("FALL_MAX_STANDING_FRAMES_TO_RESET")
 
         for box in person_boxes:
-            w, h = box["w"], box["h"]
-            if w <= 0 or h <= 0:
+            bw, bh = box["w"], box["h"]
+            if bw <= 0 or bh <= 0:
                 continue
 
-            aspect_ratio = h / w
+            aspect_ratio = bh / bw
             tid = box.get("track_id", -1)
-            center_y = box["y"] + h // 2
+            center_y = box["y"] + bh // 2
 
             # ---- 初始化 / 获取该人物历史状态 ----
             if tid not in self._person_history:
                 self._person_history[tid] = {
                     "prev_ar": aspect_ratio,
                     "prev_cy": center_y,
-                    "prev_h": h,
+                    "prev_h": bh,
                     "prev_time": now,
                     "was_standing": False,
                     "standing_frames": 0,
                 }
 
             hist = self._person_history[tid]
-            dt = now - hist["prev_time"]
+            dt = max(0.001, now - hist["prev_time"])  # 避免除零
 
-            # ---- 追踪"站立历史" ----
+            # ---- 追踪站立历史 ----
             if aspect_ratio >= fall_min_standing:
                 hist["standing_frames"] += 1
                 if hist["standing_frames"] >= 3:
                     hist["was_standing"] = True
             else:
-                # 缓慢衰减（避免短暂遮挡导致站立历史丢失）
+                # 衰减（但不过快，避免短暂遮挡导致站立历史丢失）
                 hist["standing_frames"] = max(0, hist["standing_frames"] - 1)
+                if hist["standing_frames"] <= 0:
+                    hist["was_standing"] = False
 
-            # ---- 摔倒判定 ----
-            is_low_ar = aspect_ratio < fall_ar_threshold
-            is_fallen_pose = w > h  # 宽大于高 = 横向姿态
-
-            # 骤变信号（仅在 dt > 0 时有效）
+            # ---- 计算骤变信号 ----
+            ar_velocity = 0.0
+            center_drop_ratio = 0.0
             is_rapid_drop = False
             is_center_dropped = False
-            if dt > 0 and hist["prev_ar"] > 0:
+
+            if hist["prev_ar"] > 0:
                 ar_velocity = (hist["prev_ar"] - aspect_ratio) / dt
                 is_rapid_drop = ar_velocity > fall_ar_velocity
 
-                # 中心点下移量（正值 = 向下移动）
-                cy_drop = center_y - hist["prev_cy"]
-                # 相对于人物高度归一化
-                ref_h = max(h, hist.get("prev_h", h))
-                center_drop_ratio = cy_drop / ref_h if ref_h > 0 else 0
-                is_center_dropped = center_drop_ratio > fall_center_drop
+            cy_drop = center_y - hist["prev_cy"]
+            ref_h = max(bh, hist.get("prev_h", bh))
+            center_drop_ratio = cy_drop / ref_h if ref_h > 0 else 0
+            is_center_dropped = center_drop_ratio > fall_center_drop
 
             is_sudden = is_rapid_drop or is_center_dropped
+            is_low_ar = aspect_ratio < fall_ar_threshold
+            is_extreme = aspect_ratio < fall_extreme_ar
+            is_fallen_pose = bw > bh  # 宽大于高 = 横向姿态
 
-            if is_low_ar and is_fallen_pose and hist["was_standing"] and is_sudden:
-                # 满足全部条件 → 可能是摔倒
+            # ---- 判定 ----
+            path1 = (
+                is_low_ar and is_fallen_pose
+                and hist["was_standing"] and is_sudden
+            )
+            path2 = is_extreme and is_fallen_pose
+
+            if path1 or path2:
+                trigger_path = "extreme_pose" if (path2 and not path1) else "standard"
                 self._fall_counter[tid] += 1
 
                 if self._fall_counter[tid] >= fall_persist:
@@ -881,7 +1164,9 @@ class DetectionService:
                         continue
 
                     msg = (
-                        f"检测到人员疑似摔倒（高宽比 {aspect_ratio:.2f}，"
+                        f"检测到人员疑似摔倒"
+                        f"（高宽比 {aspect_ratio:.2f}, "
+                        f"路径 {trigger_path}, "
                         f"变化速率 {ar_velocity:.1f}/s）"
                     )
 
@@ -892,27 +1177,26 @@ class DetectionService:
                         description=msg,
                     )
 
-                    logger.info("Fall detected: %s", msg)
+                    logger.info("Fall detected [%s]: %s", trigger_path, msg)
                     results.append(
                         {
                             "alert_type": "FALL",
                             "message": msg,
-                            "bbox": (box["x"], box["y"], w, h),
+                            "bbox": (box["x"], box["y"], bw, bh),
                             "severity": "high",
                             "detail": {
                                 "aspect_ratio": round(aspect_ratio, 2),
                                 "track_id": tid,
                                 "ar_velocity": round(ar_velocity, 2),
                                 "center_drop_ratio": round(center_drop_ratio, 2),
+                                "trigger_path": trigger_path,
                             },
                         }
                     )
-                    # 告警后重置状态
+                    # 告警后重置计数器（保留站立历史不用重置）
                     self._fall_counter[tid] = 0
-                    hist["was_standing"] = False
-                    hist["standing_frames"] = 0
             elif is_low_ar and is_fallen_pose and not is_sudden:
-                # 低高宽比但变化缓慢 + 中心点未大幅下移 → 蹲下/坐下，递减计数器
+                # 低高宽比但变化缓慢 → 蹲下/坐下，递减计数器
                 self._fall_counter[tid] = max(0, self._fall_counter[tid] - 1)
             else:
                 # 站起来了 → 重置计数器
@@ -921,7 +1205,7 @@ class DetectionService:
             # ---- 更新历史 ----
             hist["prev_ar"] = aspect_ratio
             hist["prev_cy"] = center_y
-            hist["prev_h"] = h
+            hist["prev_h"] = bh
             hist["prev_time"] = now
 
         return results
