@@ -11,6 +11,9 @@ EnvironmentFile=-/service/home-camera-monitor/backend/.env.production
 Environment=RTSP_BASE_URL=rtsp://127.0.0.1:8554/stream
 Environment=RTMP_PUBLIC_BASE_URL=rtmp://152.136.29.158:9090/stream
 Environment=VIDEO_FRAME_SKIP=5
+Environment=VIDEO_CAPTURE_BUFFER_SIZE=1
+Environment=VIDEO_JPEG_QUALITY=80
+Environment=VIDEO_METADATA_CACHE_SECONDS=5
 Environment=BACKEND_BIND=127.0.0.1:8010
 Environment=WORKERS=1
 Environment=THREADS=16

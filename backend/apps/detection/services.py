@@ -65,6 +65,7 @@ DETECTION_CONFIG = {
     "FALL_AR_VELOCITY_THRESHOLD": 1.0,
     # --- YOLO 行人检测（优先）---
     "YOLO_MODEL": "yolov8n.pt",
+    "YOLO_IMGSZ": 480,
     "YOLO_CONFIDENCE_THRESHOLD": 0.5,
     "YOLO_IOU_THRESHOLD": 0.45,
     "YOLO_PERSON_CLASS_ID": 0,
@@ -360,6 +361,7 @@ class DetectionService:
         """使用 YOLOv8n 检测行人（class_id=0 即 person）。"""
         results = self._yolo(
             frame,
+            imgsz=_cfg("YOLO_IMGSZ"),
             conf=_cfg("YOLO_CONFIDENCE_THRESHOLD"),
             iou=_cfg("YOLO_IOU_THRESHOLD"),
             classes=[_cfg("YOLO_PERSON_CLASS_ID")],

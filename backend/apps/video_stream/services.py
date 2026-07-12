@@ -15,6 +15,11 @@ RTMP_PUBLIC_BASE_URL = os.getenv(
     "RTMP_PUBLIC_BASE_URL", "rtmp://152.136.29.158:9090/stream"
 )
 FRAME_SKIP = int(os.getenv("VIDEO_FRAME_SKIP", "5"))
+JPEG_QUALITY = max(40, min(95, int(os.getenv("VIDEO_JPEG_QUALITY", "80"))))
+CAPTURE_BUFFER_SIZE = max(1, int(os.getenv("VIDEO_CAPTURE_BUFFER_SIZE", "1")))
+METADATA_CACHE_SECONDS = max(
+    0.0, float(os.getenv("VIDEO_METADATA_CACHE_SECONDS", "5"))
+)
 SHOW_VIDEO_HUD = os.getenv("VIDEO_SHOW_HUD", "").lower() in ("1", "true", "yes")
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -22,6 +27,9 @@ workers = {}
 workers_lock = threading.Lock()
 liveness_snapshots = {}
 liveness_lock = threading.Lock()
+metadata_cache_lock = threading.Lock()
+household_id_cache = {}
+zones_cache = {}
 
 
 def build_rtsp_url(stream_id):
@@ -59,17 +67,60 @@ def resolve_household_id_for_stream(stream_id: str) -> int | None:
 
 def _resolve_household_id_for_stream(stream_id: str) -> int | None:
     """尽力根据业务流 ID 找到对应家庭 ID。"""
+    now = time.monotonic()
+    with metadata_cache_lock:
+        cached = household_id_cache.get(stream_id)
+        if cached is not None and cached[0] > now:
+            return cached[1]
+
     try:
         from apps.households.models import Camera
 
-        return Camera.objects.filter(
+        household_id = Camera.objects.filter(
             stream_id=stream_id,
             is_active=True,
             household_id__isnull=False,
         ).values_list("household_id", flat=True).first()
+        with metadata_cache_lock:
+            household_id_cache[stream_id] = (
+                now + METADATA_CACHE_SECONDS,
+                household_id,
+            )
+        return household_id
     except Exception as exc:
         logger.warning("根据视频流 %s 查询家庭失败: %s", stream_id, exc)
         return None
+
+
+def _get_active_zones(stream_id: str, household_id: int | None) -> list[dict]:
+    """Return active zone metadata with a short TTL to avoid per-frame SQL."""
+    cache_key = (stream_id, household_id)
+    now = time.monotonic()
+    with metadata_cache_lock:
+        cached = zones_cache.get(cache_key)
+        if cached is not None and cached[0] > now:
+            return [dict(zone) for zone in cached[1]]
+
+    from apps.zones.models import Zone
+
+    zones_qs = Zone.objects.filter(stream_id=stream_id, is_active=True)
+    if household_id is not None:
+        zones_qs = zones_qs.filter(household_id=household_id)
+    zones = [
+        {
+            "id": zone.id,
+            "name": zone.name,
+            "points_json": zone.points_json,
+            "forbidden_roles": zone.forbidden_roles,
+            "safe_distance": zone.safe_distance,
+            "dwell_time": zone.dwell_time,
+            "is_active": zone.is_active,
+        }
+        for zone in zones_qs
+    ]
+    with metadata_cache_lock:
+        zones_cache[cache_key] = (now + METADATA_CACHE_SECONDS, zones)
+    return [dict(zone) for zone in zones]
 
 
 def _map_face_roles_to_people(presence: dict, person_boxes: list[dict]) -> dict[int, str]:
@@ -141,7 +192,6 @@ def process_frame(frame, stream_id):
         from apps.detection.services import get_detection_service
         from apps.face.liveness import get_liveness_service
         from apps.face.services import get_face_service
-        from apps.zones.models import Zone
 
         detection_service = get_detection_service()
         person_boxes = detection_service.detect_people(original)
@@ -166,21 +216,7 @@ def process_frame(frame, stream_id):
         get_face_service().set_presence(presence)
         _update_liveness_snapshot(biz_stream_id, liveness)
 
-        zones_qs = Zone.objects.filter(stream_id=biz_stream_id, is_active=True)
-        if household_id is not None:
-            zones_qs = zones_qs.filter(household_id=household_id)
-        zones = [
-            {
-                "id": z.id,
-                "name": z.name,
-                "points_json": z.points_json,
-                "forbidden_roles": z.forbidden_roles,
-                "safe_distance": z.safe_distance,
-                "dwell_time": z.dwell_time,
-                "is_active": z.is_active,
-            }
-            for z in zones_qs
-        ]
+        zones = _get_active_zones(biz_stream_id, household_id)
 
         results = detection_service.process_frame(
             frame=original,
@@ -244,7 +280,11 @@ def process_frame(frame, stream_id):
         )
     return output
 def encode_frame(frame):
-    ok, buffer = cv2.imencode(".jpg", frame)
+    ok, buffer = cv2.imencode(
+        ".jpg",
+        frame,
+        [int(cv2.IMWRITE_JPEG_QUALITY), JPEG_QUALITY],
+    )
     if not ok:
         return None
     return buffer.tobytes()
@@ -278,62 +318,178 @@ class CameraWorker:
         self.stream_url = build_rtsp_url(stream_id)
         self.frame_skip = max(1, frame_skip)
         self.latest_frame = None
+        self.latest_jpeg = None
         self.last_error = None
+        self.last_process_error = None
+        self.last_capture_at = None
         self.last_frame_at = None
+        self.last_process_duration = None
         self.running = False
-        self._lock = threading.Lock()
-        self._thread = None
+        self._condition = threading.Condition()
+        self._capture_thread = None
+        self._process_thread = None
+        self._raw_frame = None
+        self._capture_sequence = 0
+        self._processed_version = 0
+        self._processed_input_sequence = 0
+        self._dropped_stale_frames = 0
+        self._recent_process_times = []
 
     def start(self):
         if self.running:
             return
         self.running = True
-        self._thread = threading.Thread(target=self._read_loop, daemon=True)
-        self._thread.start()
+        self._capture_thread = threading.Thread(
+            target=self._capture_loop,
+            daemon=True,
+            name=f"camera-capture-{self.stream_id}",
+        )
+        self._process_thread = threading.Thread(
+            target=self._process_loop,
+            daemon=True,
+            name=f"camera-ai-{self.stream_id}",
+        )
+        self._capture_thread.start()
+        self._process_thread.start()
 
-    def _read_loop(self):
-        frame_index = 0
+    def _capture_loop(self):
+        """Continuously drain RTSP and retain only the newest raw frame.
+
+        AI inference deliberately runs in another thread.  If inference is
+        slower than the camera, replacing ``_raw_frame`` drops stale frames
+        instead of allowing OpenCV/FFmpeg's RTSP buffer to grow indefinitely.
+        """
         while self.running:
             capture = cv2.VideoCapture(self.stream_url)
+            capture.set(cv2.CAP_PROP_BUFFERSIZE, CAPTURE_BUFFER_SIZE)
             if not capture.isOpened():
-                self.last_error = "RTSP stream not available"
+                with self._condition:
+                    self.last_error = "RTSP stream not available"
                 time.sleep(1)
                 continue
 
-            self.last_error = None
+            with self._condition:
+                self.last_error = None
             try:
                 while self.running:
                     ok, frame = capture.read()
                     if not ok:
-                        self.last_error = "failed to read frame"
+                        with self._condition:
+                            self.last_error = "failed to read frame"
                         time.sleep(0.2)
                         break
 
-                    frame_index += 1
-                    if frame_index % self.frame_skip != 0:
-                        continue
-
-                    processed_frame = process_frame(frame, self.stream_id)
-                    with self._lock:
-                        self.latest_frame = processed_frame
-                        self.last_frame_at = time.time()
+                    now = time.time()
+                    with self._condition:
+                        self._raw_frame = frame
+                        self._capture_sequence += 1
+                        self.last_capture_at = now
+                        self._condition.notify_all()
             finally:
                 capture.release()
 
+    def _process_loop(self):
+        """Run AI against the newest frame without blocking RTSP capture."""
+        last_input_sequence = 0
+        while self.running:
+            with self._condition:
+                self._condition.wait_for(
+                    lambda: (
+                        not self.running
+                        or self._capture_sequence - last_input_sequence
+                        >= self.frame_skip
+                    ),
+                    timeout=1.0,
+                )
+                if not self.running:
+                    return
+                if self._raw_frame is None:
+                    continue
+                frame = self._raw_frame.copy()
+                input_sequence = self._capture_sequence
+
+            started_at = time.perf_counter()
+            try:
+                processed_frame = process_frame(frame, self.stream_id)
+                jpeg_bytes = encode_frame(processed_frame)
+                if jpeg_bytes is None:
+                    raise RuntimeError("failed to encode processed frame")
+            except Exception as exc:
+                logger.warning(
+                    "视频流 %s 的异步 AI 处理失败: %s",
+                    self.stream_id,
+                    exc,
+                    exc_info=True,
+                )
+                with self._condition:
+                    self.last_process_error = str(exc)
+                last_input_sequence = input_sequence
+                continue
+
+            finished_at = time.time()
+            process_duration = time.perf_counter() - started_at
+            stale_frames = max(0, input_sequence - last_input_sequence - 1)
+            with self._condition:
+                self.latest_frame = processed_frame
+                self.latest_jpeg = jpeg_bytes
+                self.last_frame_at = finished_at
+                self.last_process_duration = process_duration
+                self.last_process_error = None
+                self._processed_version += 1
+                self._processed_input_sequence = input_sequence
+                self._dropped_stale_frames += stale_frames
+                self._recent_process_times.append(finished_at)
+                if len(self._recent_process_times) > 20:
+                    self._recent_process_times.pop(0)
+                self._condition.notify_all()
+            last_input_sequence = input_sequence
+
     def get_latest_frame(self):
-        with self._lock:
+        with self._condition:
             if self.latest_frame is None:
                 return None
             return self.latest_frame.copy()
 
+    def wait_for_jpeg(self, after_version=-1, timeout=1.0):
+        """Wait for a newly processed JPEG and return ``(bytes, version)``."""
+        with self._condition:
+            self._condition.wait_for(
+                lambda: (
+                    not self.running
+                    or (
+                        self.latest_jpeg is not None
+                        and self._processed_version != after_version
+                    )
+                ),
+                timeout=timeout,
+            )
+            return self.latest_jpeg, self._processed_version
+
     def to_status(self):
-        return {
-            "stream_url": self.stream_url,
-            "status": "running" if self.running else "stopped",
-            "has_frame": self.latest_frame is not None,
-            "last_frame_at": self.last_frame_at,
-            "last_error": self.last_error,
-        }
+        with self._condition:
+            process_fps = 0.0
+            if len(self._recent_process_times) >= 2:
+                elapsed = self._recent_process_times[-1] - self._recent_process_times[0]
+                if elapsed > 0:
+                    process_fps = (len(self._recent_process_times) - 1) / elapsed
+            return {
+                "stream_url": self.stream_url,
+                "status": "running" if self.running else "stopped",
+                "has_frame": self.latest_frame is not None,
+                "last_capture_at": self.last_capture_at,
+                "last_frame_at": self.last_frame_at,
+                "last_process_duration_ms": (
+                    round(self.last_process_duration * 1000, 1)
+                    if self.last_process_duration is not None
+                    else None
+                ),
+                "process_fps": round(process_fps, 2),
+                "captured_sequence": self._capture_sequence,
+                "processed_sequence": self._processed_input_sequence,
+                "dropped_stale_frames": self._dropped_stale_frames,
+                "last_error": self.last_error,
+                "last_process_error": self.last_process_error,
+            }
 
 
 def get_worker(stream_id):
@@ -388,10 +544,19 @@ def gen_frames(stream_id):
     worker = get_worker(stream_id)
     empty_frame = placeholder_frame("waiting for RTSP frame")
     empty_jpeg = encode_frame(empty_frame)
+    last_version = -1
+    last_placeholder_at = 0.0
 
     while True:
-        frame = worker.get_latest_frame()
-        jpeg_bytes = encode_frame(frame) if frame is not None else empty_jpeg
-        if jpeg_bytes:
+        jpeg_bytes, version = worker.wait_for_jpeg(last_version, timeout=1.0)
+        if jpeg_bytes is not None and version != last_version:
             yield multipart_frame(jpeg_bytes)
-        time.sleep(0.05)
+            last_version = version
+            continue
+
+        # Keep the HTTP stream alive while RTSP has not produced its first
+        # processed frame.  Once frames are flowing, do not resend duplicates.
+        now = time.time()
+        if last_version < 0 and empty_jpeg and now - last_placeholder_at >= 1.0:
+            yield multipart_frame(empty_jpeg)
+            last_placeholder_at = now

@@ -32,6 +32,10 @@
 | `DEPLOY_USE_SUDO` | `auto` | `auto`/`1` 时非 root 用户通过 `sudo -n` 执行 systemctl/nginx |
 | `DEPLOY_MEDIAMTX` | `0` | `1` 时才重启 `home-mediamtx`；Jenkins CD 默认 `0` |
 | `NGINX_BIN` | _(auto)_ | 显式指定 nginx 路径（宝塔：`/www/server/nginx/sbin/nginx`） |
+| `VIDEO_FRAME_SKIP` | `5` | AI 至少间隔多少个采集帧运行一次；推理始终取最新帧 |
+| `VIDEO_CAPTURE_BUFFER_SIZE` | `1` | OpenCV RTSP 采集缓冲区大小，生产环境保持低延迟 |
+| `VIDEO_JPEG_QUALITY` | `80` | MJPEG 输出质量（40～95） |
+| `VIDEO_METADATA_CACHE_SECONDS` | `5` | 摄像头家庭和危险区域元数据缓存时间 |
 
 ---
 
