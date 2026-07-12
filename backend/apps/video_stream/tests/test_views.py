@@ -1,6 +1,5 @@
 from unittest.mock import patch
 import json
-import time
 
 from django.test import SimpleTestCase
 
@@ -67,17 +66,14 @@ class VideoStatusViewTests(SimpleTestCase):
         mock_ensure_worker.assert_called_once_with("2")
 
 
-def _workers_status_with_fresh_frame(*_args, **_kwargs):
-    return {"2": {"last_frame_at": time.time()}}
-
-
 class VideoPresenceViewTests(SimpleTestCase):
     @patch("apps.video_stream.views.ensure_worker_for_query")
     @patch("apps.face.services.get_face_service")
     @patch("apps.video_stream.views.get_liveness_status", return_value={"kitchen": {"status": "passed"}})
+    @patch("apps.video_stream.services.worker_presence_is_stale", return_value=False)
     @patch(
         "apps.video_stream.views.get_workers_status",
-        side_effect=_workers_status_with_fresh_frame,
+        return_value={"2": {"last_frame_at": 1.0}},
     )
     def test_presence_returns_lightweight_payload(
         self,
