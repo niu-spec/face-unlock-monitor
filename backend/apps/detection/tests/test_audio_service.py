@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from apps.detection.audio_service import AudioDetectionService
+from apps.detection.audio_service import AudioDetectionService, _prepare_panns_input
 
 
 class FakeTensor:
@@ -21,9 +21,6 @@ class FakeTensor:
 
     def float(self):
         return self
-
-    def unsqueeze(self, axis):
-        return FakeTensor(np.expand_dims(self.values, axis))
 
     def squeeze(self, axis):
         return FakeTensor(np.squeeze(self.values, axis=axis))
@@ -56,7 +53,16 @@ class AudioDetectionServiceTests(TestCase):
         hub_load.assert_not_called()
         service._load_panns_fallback.assert_called_once_with()
 
-    def test_classify_transposes_log_mel_to_time_first(self):
+    def test_prepare_panns_input_transposes_log_mel_to_time_first(self):
+        log_mel = np.zeros((64, 301), dtype=np.float32)
+
+        model_input = _prepare_panns_input(log_mel)
+
+        self.assertEqual(model_input.shape, (1, 1, 301, 64))
+        self.assertEqual(model_input.dtype, log_mel.dtype)
+        self.assertTrue(model_input.flags.c_contiguous)
+
+    def test_classify_converts_numpy_input_to_torch_tensor_at_inference(self):
         service = AudioDetectionService()
         service._model = Mock(return_value=FakeTensor(np.zeros((1, 527))))
         service._compute_log_mel = Mock(

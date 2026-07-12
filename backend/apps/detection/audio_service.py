@@ -79,6 +79,13 @@ def _ascfg(key: str):
         return AUDIO_SERVICE_CONFIG[key]
 
 
+def _prepare_panns_input(log_mel: np.ndarray) -> np.ndarray:
+    """Convert (mel_bins, time_frames) into PANNs NCHW input."""
+    if log_mel.ndim != 2:
+        raise ValueError("log_mel must be a 2D array")
+    return np.ascontiguousarray(log_mel.T[np.newaxis, np.newaxis, :, :])
+
+
 # ---------------------------------------------------------------------------
 # AudioSet → 业务告警类型映射
 # ---------------------------------------------------------------------------
@@ -534,8 +541,8 @@ class AudioDetectionService:
 
         # 3. 转换为模型输入 tensor
         # PANNs 期望形状: (batch=1, channel=1, time_frames, mel_bins)
-        model_input = np.ascontiguousarray(log_mel.T)
-        tensor = torch.from_numpy(model_input).float().unsqueeze(0).unsqueeze(0)
+        model_input = _prepare_panns_input(log_mel)
+        tensor = torch.from_numpy(model_input).float()
 
         # 4. 推理
         with torch.no_grad():
