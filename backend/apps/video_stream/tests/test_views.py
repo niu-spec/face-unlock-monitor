@@ -1,5 +1,6 @@
 from unittest.mock import patch
 import json
+import time
 
 from django.test import SimpleTestCase
 
@@ -72,7 +73,7 @@ class VideoPresenceViewTests(SimpleTestCase):
     @patch("apps.video_stream.views.get_liveness_status", return_value={"kitchen": {"status": "passed"}})
     @patch(
         "apps.video_stream.views.get_workers_status",
-        return_value={"2": {"last_frame_at": 123.0}},
+        return_value={"2": {"last_frame_at": time.time()}},
     )
     def test_presence_returns_lightweight_payload(
         self,
@@ -96,6 +97,7 @@ class VideoPresenceViewTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["presence"]["total"], 1)
+        self.assertTrue(payload["stream_live"])
         self.assertEqual(payload["liveness"]["status"], "passed")
-        self.assertEqual(payload["last_frame_at"], 123.0)
+        self.assertIsNotNone(payload["last_frame_at"])
         mock_ensure_worker.assert_called_once_with("2")
