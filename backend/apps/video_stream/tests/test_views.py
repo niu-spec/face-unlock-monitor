@@ -1,4 +1,5 @@
 from unittest.mock import patch
+import json
 
 from django.test import SimpleTestCase
 
@@ -91,7 +92,7 @@ class VideoPresenceViewTests(SimpleTestCase):
 
         request = RequestFactory().get("/api/video/presence", {"stream_id": "2"})
         response = video_presence(request)
-        payload = response.json()
+        payload = json.loads(response.content.decode())
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["presence"]["total"], 1)
