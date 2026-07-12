@@ -1055,9 +1055,10 @@ class DetectionService:
                 if tid not in active_ids:
                     del self._intrusion_counter[zone_key][tid]
         # 同步清理追踪器中的失联轨迹
-        for tid in list(self._person_tracker._tracks.keys()):
-            if tid not in active_ids:
-                self._person_tracker.remove_track(tid)
+        if hasattr(self, "_person_tracker") and self._person_tracker is not None:
+            for tid in list(self._person_tracker._tracks.keys()):
+                if tid not in active_ids:
+                    self._person_tracker.remove_track(tid)
 
     def _detect_fall(
         self, person_boxes: list[dict], stream_id: str

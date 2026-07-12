@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 from django.test import SimpleTestCase
@@ -24,6 +24,9 @@ class ZoneViolationTests(SimpleTestCase):
         self.service._intrusion_counter = defaultdict(lambda: defaultdict(int))
         self.service._fall_counter = defaultdict(int)
         self.service._person_history = {}
+        # 新增的 IoU 追踪器（Mock，测试中 zone 检测不依赖真实追踪）
+        self.service._person_tracker = MagicMock()
+        self.service._person_tracker._tracks = {}
 
     def _square_zone(self, zone_id=1, safe_distance=50, dwell_time=2):
         return {
