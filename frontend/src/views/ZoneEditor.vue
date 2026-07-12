@@ -21,7 +21,7 @@ const canvasRef = ref(null)
 
 const form = reactive({
   name: '',
-  forbidden_roles: ['child'],
+  forbidden_roles: ['child', 'stranger'],
   safe_distance: 50,
   dwell_time: 5,
 })
@@ -31,6 +31,7 @@ const roleOptions = [
   { label: '成人', value: 'adult' },
   { label: '老人', value: 'elder' },
   { label: '访客', value: 'guest' },
+  { label: '陌生人', value: 'stranger' },
 ]
 
 const activeZoneStreamId = computed(() => toZoneStreamId(activeStream.value))
@@ -58,7 +59,7 @@ async function loadZones() {
 function resetForm() {
   editingId.value = null
   form.name = activeStream.value === '2' ? '厨房禁区' : '客厅禁区'
-  form.forbidden_roles = ['child']
+  form.forbidden_roles = ['child', 'stranger']
   form.safe_distance = 50
   form.dwell_time = 5
   draftPoints.value = []
@@ -251,7 +252,7 @@ onMounted(async () => {
         type="info"
         :closable="false"
         show-icon
-        title="保存后蓝色绘制框会消失，红色区域为已生效禁区。闯入告警仅对「禁止角色」生效（默认仅小孩）；用成人测试时请勾选「成人」。"
+        title="保存后蓝色绘制框会消失，红色区域为已生效禁区。陌生人进入任何禁区都会告警；已识别家庭成员仅在勾选对应「禁止角色」时告警。"
       />
       <el-card shadow="never">
         <template #header>

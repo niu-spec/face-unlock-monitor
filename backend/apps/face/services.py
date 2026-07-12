@@ -414,9 +414,14 @@ class FaceRecognitionService:
                 "detected_at": updated_at,
             }
             events.append(event)
-            self._last_unknown_alert[str(stream_id)] = now
             if persist_alert:
-                self._persist_unknown_alert(event, household_id, frame=output)
+                persisted = self._persist_unknown_alert(
+                    event, household_id, frame=output
+                )
+                if persisted:
+                    self._last_unknown_alert[str(stream_id)] = now
+            else:
+                self._last_unknown_alert[str(stream_id)] = now
 
         with self._lock:
             self._presence_by_stream[str(stream_id)] = deepcopy(presence)
@@ -427,7 +432,13 @@ class FaceRecognitionService:
         event: dict[str, Any],
         household_id: int | None,
         frame: np.ndarray | None = None,
-    ) -> None:
+    ) -> bool:
+        if household_id is None:
+            logger.warning(
+                "Skipping unscoped FACE_UNKNOWN alert for stream %s; will retry",
+                event.get("stream_id"),
+            )
+            return False
         try:
             from apps.alerts.services import create_alert
 
@@ -439,11 +450,11 @@ class FaceRecognitionService:
                 household_id=household_id,
                 frame=frame,
             )
+            return True
         except Exception:
             # 数据库临时不可用时，视频帧处理链仍要继续运行。
-            import logging
-
-            logging.getLogger(__name__).exception("持久化 FACE_UNKNOWN 告警失败")
+            logger.exception("持久化 FACE_UNKNOWN 告警失败")
+            return False
 
     def get_presence(self, stream_id: str | None = None) -> dict[str, Any]:
         with self._lock:

@@ -675,8 +675,6 @@ class DetectionService:
                 continue
 
             forbidden = _normalize_forbidden_roles(zone.get("forbidden_roles", []))
-            if not forbidden:
-                continue
 
             zone_id = zone.get("id", 0)
             zone_name = zone.get("name", "危险区域")
@@ -692,7 +690,10 @@ class DetectionService:
             for box in person_boxes:
                 tid = box.get("track_id", -1)
                 role = face_roles.get(tid, "stranger")
-                if role not in forbidden:
+                # An unrecognized person is always security-sensitive.  Keep
+                # configured role filtering for known household members, but
+                # never let a missing face-role mapping suppress an intrusion.
+                if role != "stranger" and role not in forbidden:
                     self._intrusion_counter[zone_key][tid] = 0
                     continue
 
@@ -714,7 +715,7 @@ class DetectionService:
                     if self._intrusion_counter[zone_key][tid] >= persist:
                         if self._check_cooldown("INTRUSION", stream_id):
                             msg = f"[{zone_name}] 检测到 {role} 闯入禁区"
-                            self._create_alert(
+                            persisted = self._create_alert(
                                 alert_type="INTRUSION",
                                 level="HIGH",
                                 stream_id=stream_id,
@@ -731,7 +732,10 @@ class DetectionService:
                                 }
                             )
                             logger.info("Zone intrusion: %s", msg)
-                            self._intrusion_counter[zone_key][tid] = 0
+                            if persisted:
+                                self._intrusion_counter[zone_key][tid] = 0
+                            else:
+                                self._release_cooldown("INTRUSION", stream_id)
                 else:
                     self._intrusion_counter[zone_key][tid] = 0
 
@@ -1178,6 +1182,10 @@ class DetectionService:
         self._cooldown[alert_type][stream_id] = now
         return True
 
+    def _release_cooldown(self, alert_type: str, stream_id: str) -> None:
+        """Allow the next frame to retry when alert persistence failed."""
+        self._cooldown.get(alert_type, {}).pop(stream_id, None)
+
     # -----------------------------------------------------------------------
     # 告警写入（对接 dev 分支 alerts 模块）
     # -----------------------------------------------------------------------
@@ -1189,7 +1197,7 @@ class DetectionService:
         stream_id: str,
         description: str,
         snapshot_path: str = "",
-    ):
+    ) -> bool:
         """通过 apps.alerts.services.create_alert() 写入告警（同进程直调）。
 
         告警端点 AlertViewSet 要求 IsAuthenticated + active_household_id，
@@ -1204,6 +1212,13 @@ class DetectionService:
           - FIRE（火情）
           - FALL（人员摔倒）
         """
+        if self._current_household_id is None:
+            logger.warning(
+                "Skipping unscoped %s alert for stream %s; will retry",
+                alert_type,
+                stream_id,
+            )
+            return False
         try:
             from apps.alerts.services import create_alert
 
@@ -1216,8 +1231,10 @@ class DetectionService:
                 frame=self._current_snapshot_frame,
                 household_id=self._current_household_id,
             )
+            return True
         except Exception as e:
             logger.error("通过告警服务写入告警失败: %s", e)
+            return False
 
     # -----------------------------------------------------------------------
     # 标注绘制

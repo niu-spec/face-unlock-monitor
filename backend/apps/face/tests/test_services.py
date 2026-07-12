@@ -64,6 +64,49 @@ class FaceRecognitionServiceTests(TestCase):
         self.assertEqual(events[0]["type"], "FACE_UNKNOWN")
         self.assertEqual(repeated, [])
 
+    @patch("apps.alerts.services.create_alert")
+    @patch("apps.face.services._load_face_recognition")
+    def test_failed_unknown_alert_persistence_is_retried(
+        self, load_library, create_alert
+    ):
+        library = Mock()
+        library.face_locations.return_value = [(10, 40, 40, 10)]
+        library.face_encodings.return_value = [np.zeros(128)]
+        load_library.return_value = library
+        create_alert.side_effect = [RuntimeError("database unavailable"), Mock()]
+
+        _, _, first_events = self.service.process_frame(
+            self.frame, "cam-1", household_id=2, persist_alert=True
+        )
+        _, _, retried_events = self.service.process_frame(
+            self.frame, "cam-1", household_id=2, persist_alert=True
+        )
+
+        self.assertEqual(first_events[0]["type"], "FACE_UNKNOWN")
+        self.assertEqual(retried_events[0]["type"], "FACE_UNKNOWN")
+        self.assertEqual(create_alert.call_count, 2)
+
+    @patch("apps.alerts.services.create_alert")
+    @patch("apps.face.services._load_face_recognition")
+    def test_unscoped_unknown_alert_is_not_cooled_down(
+        self, load_library, create_alert
+    ):
+        library = Mock()
+        library.face_locations.return_value = [(10, 40, 40, 10)]
+        library.face_encodings.return_value = [np.zeros(128)]
+        load_library.return_value = library
+
+        _, _, first_events = self.service.process_frame(
+            self.frame, "cam-1", household_id=None, persist_alert=True
+        )
+        _, _, retried_events = self.service.process_frame(
+            self.frame, "cam-1", household_id=None, persist_alert=True
+        )
+
+        self.assertEqual(first_events[0]["type"], "FACE_UNKNOWN")
+        self.assertEqual(retried_events[0]["type"], "FACE_UNKNOWN")
+        create_alert.assert_not_called()
+
     @patch("apps.face.services._load_face_recognition")
     def test_no_face_returns_zero_presence(self, load_library):
         library = Mock()

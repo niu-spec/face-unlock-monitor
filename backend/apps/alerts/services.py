@@ -43,9 +43,16 @@ def create_alert(
         创建的 Alert 实例
     """
     if not snapshot_path and frame is not None:
-        from apps.video_stream.snapshots import save_event_snapshot
+        try:
+            from apps.video_stream.snapshots import save_event_snapshot
 
-        snapshot_path = save_event_snapshot(frame, stream_id, type)
+            snapshot_path = save_event_snapshot(frame, stream_id, type)
+        except Exception:
+            import logging
+
+            logging.getLogger(__name__).exception(
+                "保存告警截图失败，继续创建告警: %s", type
+            )
 
     alert = Alert.objects.create(
         type=type,

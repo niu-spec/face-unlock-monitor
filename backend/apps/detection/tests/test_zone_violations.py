@@ -104,6 +104,36 @@ class ZoneViolationTests(SimpleTestCase):
         self.assertEqual(results, [])
         create_alert.assert_not_called()
 
+    @patch("apps.detection.services.DetectionService._create_alert", return_value=True)
+    def test_stranger_is_forbidden_even_when_zone_only_lists_child(self, create_alert):
+        zones = [self._square_zone()]
+        person_boxes = [{"x": 180, "y": 180, "w": 40, "h": 80, "track_id": 4}]
+
+        results = []
+        for _ in range(3):
+            results = self.service._detect_zone_violations(
+                "kitchen", zones, person_boxes, {}, 640, 480
+            )
+
+        self.assertEqual(results[0]["alert_type"], "INTRUSION")
+        create_alert.assert_called_once()
+
+    @patch(
+        "apps.detection.services.DetectionService._create_alert",
+        side_effect=[False, True],
+    )
+    def test_failed_intrusion_persistence_is_retried_next_frame(self, create_alert):
+        zones = [self._square_zone()]
+        person_boxes = [{"x": 180, "y": 180, "w": 40, "h": 80, "track_id": 5}]
+        face_roles = {5: "child"}
+
+        for _ in range(4):
+            self.service._detect_zone_violations(
+                "kitchen", zones, person_boxes, face_roles, 640, 480
+            )
+
+        self.assertEqual(create_alert.call_count, 2)
+
     def test_distance_helper(self):
         polygon = _parse_polygon([[0, 0], [100, 0], [100, 100], [0, 100]])
         inside = _distance_point_to_polygon((50, 50), polygon)
