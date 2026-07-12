@@ -24,6 +24,8 @@ import logging
 import os
 import threading
 import time
+import urllib.error
+import urllib.request
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -212,6 +214,20 @@ class AudioDetectionService:
                 logger.error("PANNs 模型加载失败，音频检测不可用: %s", e, exc_info=True)
                 return False
 
+    @staticmethod
+    def _github_available(timeout: float = 5.0) -> bool:
+        """Return whether the PANNs GitHub repository is reachable promptly."""
+        request = urllib.request.Request(
+            "https://github.com/qiuqiangkong/panns_audioset",
+            method="HEAD",
+            headers={"User-Agent": "home-camera-monitor/1.0"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return response.status < 400
+        except (OSError, TimeoutError, urllib.error.URLError):
+            return False
+
     def _load_panns_model(self):
         """加载 PANNs CNN14 模型。
 
@@ -219,6 +235,11 @@ class AudioDetectionService:
           1. torch.hub.load（推荐，自动下载权重 ~80MB）
           2. 直接下载权重文件（torch.hub 不可用时的兜底）
         """
+        if not self._github_available():
+            logger.warning("PANNs GitHub 不可达，直接使用 Zenodo checkpoint")
+            self._load_panns_fallback()
+            return
+
         import torch
 
         try:
