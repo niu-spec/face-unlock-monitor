@@ -1,7 +1,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { zoneApi, videoFeedUrl } from '@/api'
+import { zoneApi, webrtcPreviewUrl } from '@/api'
 import {
   CAMERA_STREAMS,
   DEFAULT_STREAM_ID,
@@ -18,7 +18,6 @@ const activeStream = ref(DEFAULT_STREAM_ID)
 const editingId = ref(null)
 const draftPoints = ref([])
 const canvasRef = ref(null)
-const videoError = ref(false)
 
 const form = reactive({
   name: '',
@@ -40,7 +39,7 @@ const streamZones = computed(() =>
   zones.value.filter((z) => z.stream_id === activeZoneStreamId.value),
 )
 
-const feedUrl = computed(() => videoFeedUrl(activeStream.value))
+const webrtcUrl = computed(() => webrtcPreviewUrl(activeStream.value))
 
 async function loadZones() {
   loading.value = true
@@ -115,6 +114,7 @@ function drawPolygon(ctx, points, options = {}) {
     fill = 'rgba(64, 158, 255, 0.2)',
     lineWidth = 2,
     dashed = false,
+    showVertices = false,
   } = options
 
   ctx.beginPath()
@@ -132,6 +132,8 @@ function drawPolygon(ctx, points, options = {}) {
   ctx.setLineDash(dashed ? [6, 4] : [])
   ctx.stroke()
   ctx.setLineDash([])
+
+  if (!showVertices) return
 
   points.forEach(([x, y], index) => {
     ctx.beginPath()
@@ -151,18 +153,24 @@ function redrawCanvas() {
   ctx.clearRect(0, 0, CANVAS_W, CANVAS_H)
 
   streamZones.value.forEach((zone) => {
-    if (zone.id === editingId.value) return
-    drawPolygon(ctx, zone.points_json, {
-      stroke: '#909399',
-      fill: 'rgba(144, 147, 153, 0.15)',
+    const isEditing = zone.id === editingId.value
+    const points = isEditing && draftPoints.value.length >= 3
+      ? draftPoints.value
+      : zone.points_json
+
+    drawPolygon(ctx, points, {
+      stroke: '#f56c6c',
+      fill: 'rgba(245, 108, 108, 0.22)',
+      lineWidth: isEditing ? 2.5 : 2,
     })
   })
 
-  if (draftPoints.value.length > 0) {
+  if (!editingId.value && draftPoints.value.length > 0) {
     drawPolygon(ctx, draftPoints.value, {
       stroke: '#409eff',
-      fill: 'rgba(64, 158, 255, 0.25)',
+      fill: 'rgba(64, 158, 255, 0.18)',
       dashed: draftPoints.value.length < 3,
+      showVertices: true,
     })
   }
 }
@@ -202,6 +210,8 @@ async function onSave() {
     }
     await loadZones()
     startNewZone()
+    await nextTick()
+    redrawCanvas()
   } catch {
     /* handled by interceptor */
   } finally {
@@ -224,7 +234,6 @@ async function onDelete(zone) {
 }
 
 watch(activeStream, () => {
-  videoError.value = false
   startNewZone()
 })
 
@@ -237,6 +246,13 @@ onMounted(async () => {
 <template>
   <el-row :gutter="16">
     <el-col :span="16">
+      <el-alert
+        class="zone-hint"
+        type="info"
+        :closable="false"
+        show-icon
+        title="保存后蓝色绘制框会消失，红色区域为已生效禁区。闯入告警仅对「禁止角色」生效（默认仅小孩）；用成人测试时请勾选「成人」。"
+      />
       <el-card shadow="never">
         <template #header>
           <div class="header">
@@ -250,16 +266,13 @@ onMounted(async () => {
         </template>
 
         <div class="canvas-wrap">
-          <img
-            :src="feedUrl"
+          <iframe
+            :key="`webrtc-${activeStream}`"
+            :src="webrtcUrl"
             class="video-bg"
-            alt="摄像头画面"
-            @error="videoError = true"
-            @load="videoError = false"
+            title="摄像头画面"
+            allow="autoplay; fullscreen"
           />
-          <div v-if="videoError" class="video-fallback">
-            视频流未就绪，可直接在画布上绘制区域坐标
-          </div>
           <canvas
             ref="canvasRef"
             class="draw-canvas"
@@ -298,7 +311,7 @@ onMounted(async () => {
           </el-form-item>
           <el-form-item label="禁止角色">
             <el-checkbox-group v-model="form.forbidden_roles">
-              <el-checkbox v-for="item in roleOptions" :key="item.value" :label="item.value">
+              <el-checkbox v-for="item in roleOptions" :key="item.value" :value="item.value">
                 {{ item.label }}
               </el-checkbox>
             </el-checkbox-group>
@@ -352,6 +365,10 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.zone-hint {
+  margin-bottom: 12px;
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -375,21 +392,7 @@ onMounted(async () => {
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
-}
-
-.video-fallback {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  text-align: center;
-  color: #909399;
-  font-size: 13px;
-  background: rgba(0, 0, 0, 0.6);
-  z-index: 1;
+  border: 0;
   pointer-events: none;
 }
 

@@ -126,7 +126,6 @@ onUnmounted(() => {
 
 const menuItems = [
   { path: '/monitor', title: '居家监控', icon: 'Monitor' },
-  { path: '/camera-dashboard-webrtc', title: '低延迟监控', icon: 'VideoCamera' },
   { path: '/family', title: '家人注册', icon: 'UserFilled' },
   { path: '/zones', title: '危险区域', icon: 'Crop' },
   { path: '/alerts', title: '告警中心', icon: 'Bell' },

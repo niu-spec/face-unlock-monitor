@@ -21,12 +21,6 @@ const routes = [
     meta: { title: '居家监控' },
   },
   {
-    path: '/camera-dashboard-webrtc',
-    name: 'CameraDashboardWebRTC',
-    component: () => import('@/views/CameraDashboardWebRTC.vue'),
-    meta: { title: '低延迟监控' },
-  },
-  {
     path: '/family',
     name: 'FamilyRegister',
     component: () => import('@/views/FamilyRegister.vue'),

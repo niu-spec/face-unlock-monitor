@@ -142,6 +142,38 @@ def _get_active_zones(stream_id: str, household_id: int | None) -> list[dict]:
     return [dict(zone) for zone in zones]
 
 
+def clear_zone_metadata_cache() -> None:
+    """区域增删改后立即使视频管线重新加载配置。"""
+    with metadata_cache_lock:
+        zones_cache.clear()
+
+
+def _person_boxes_from_faces(presence: dict, person_boxes: list[dict]) -> list[dict]:
+    """HOG/YOLO 未检出人体时，用人脸框作为区域检测的降级输入。"""
+    if person_boxes:
+        return person_boxes
+
+    boxes: list[dict] = []
+    for index, face in enumerate(presence.get("faces") or []):
+        box = face.get("box") or {}
+        left = int(box.get("left", 0))
+        top = int(box.get("top", 0))
+        right = int(box.get("right", 0))
+        bottom = int(box.get("bottom", 0))
+        if right <= left or bottom <= top:
+            continue
+        boxes.append(
+            {
+                "x": left,
+                "y": top,
+                "w": right - left,
+                "h": bottom - top,
+                "track_id": int(face.get("track_id", index)),
+            }
+        )
+    return boxes
+
+
 def _map_face_roles_to_people(presence: dict, person_boxes: list[dict]) -> dict[int, str]:
     """通过人脸中心点是否落入人体框，将人脸角色关联到人体框。"""
     roles: dict[int, str] = {}
@@ -151,11 +183,16 @@ def _map_face_roles_to_people(presence: dict, person_boxes: list[dict]) -> dict[
             continue
         cx = (int(box.get("left", 0)) + int(box.get("right", 0))) // 2
         cy = (int(box.get("top", 0)) + int(box.get("bottom", 0))) // 2
+        matched = False
         for person in person_boxes:
             x, y, w, h = person["x"], person["y"], person["w"], person["h"]
             if x <= cx <= x + w and y <= cy <= y + h:
                 roles[int(person.get("track_id", -1))] = face.get("role", "stranger")
+                matched = True
                 break
+        if not matched:
+            track_id = int(face.get("track_id", len(roles)))
+            roles[track_id] = face.get("role", "stranger")
     return roles
 
 
@@ -223,6 +260,7 @@ def process_frame(frame, stream_id):
             annotate=True,
             persist_alert=True,
         )
+        person_boxes = _person_boxes_from_faces(presence, person_boxes)
         face_roles = _map_face_roles_to_people(presence, person_boxes)
         liveness, _liveness_events = get_liveness_service().observe(
             original,
