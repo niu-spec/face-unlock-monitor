@@ -243,7 +243,7 @@ def _map_face_roles_to_people(presence: dict, person_boxes: list[dict]) -> dict[
 
 
 ALERT_OVERLAY_TTL_SEC = 3.0
-CANVAS_ALERT_TYPES = frozenset({"FIRE", "FALL"})
+CANVAS_ALERT_TYPES = frozenset({"FIRE", "FALL", "INTRUSION", "PROXIMITY", "LOITER"})
 
 
 def _face_overlay_snapshot(presence: dict) -> list[dict]:
@@ -525,6 +525,18 @@ def process_frame(
             include_fast=False,
         )
         results = fast_results + slow_results
+        zone_overlay_results = [
+            result
+            for result in slow_results
+            if str(result.get("alert_type", "")) in CANVAS_ALERT_TYPES
+        ]
+        if zone_overlay_results:
+            _apply_alert_overlay_presence(
+                presence,
+                previous_presence,
+                fast_results + zone_overlay_results,
+            )
+            face_service.set_presence(presence)
         face_count = len(presence.get("faces", []))
         output = detection_service.draw_overlays(
             output,

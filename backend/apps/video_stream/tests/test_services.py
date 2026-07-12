@@ -202,6 +202,25 @@ class OverlayPublicationTests(SimpleTestCase):
         self.assertEqual(result[1]["alert_type"], "FALL")
         self.assertEqual(result[1]["h"], 20)
 
+    def test_alert_snapshot_extracts_zone_violation_boxes(self):
+        results = [
+            {
+                "alert_type": "INTRUSION",
+                "bbox": (5, 6, 40, 30),
+                "severity": "high",
+            },
+            {
+                "alert_type": "PROXIMITY",
+                "bbox": (1, 2, 3, 4),
+            },
+        ]
+
+        result = _alert_overlay_snapshot(results)
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["alert_type"], "INTRUSION")
+        self.assertEqual(result[0]["w"], 40)
+
     def test_alert_overlay_keeps_recent_boxes_visible(self):
         previous = {
             "alert_boxes": [{"x": 1, "y": 2, "w": 3, "h": 4, "alert_type": "FIRE"}],

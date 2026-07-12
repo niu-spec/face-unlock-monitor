@@ -1,12 +1,15 @@
 <script setup>
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { zoneApi, webrtcPreviewUrl } from '@/api'
+import FaceOverlay from '@/components/FaceOverlay.vue'
+import { zoneApi, videoApi, webrtcPreviewUrl } from '@/api'
 import {
   CAMERA_STREAMS,
   DEFAULT_STREAM_ID,
   toZoneStreamId,
 } from '@/constants/streams'
+
+const POLL_MS = 200
 
 const CANVAS_W = 640
 const CANVAS_H = 480
@@ -18,6 +21,10 @@ const activeStream = ref(DEFAULT_STREAM_ID)
 const editingId = ref(null)
 const draftPoints = ref([])
 const canvasRef = ref(null)
+const streamPresence = ref(null)
+
+let pollTimer = null
+let fetchingPresence = false
 
 const form = reactive({
   name: '',
@@ -41,6 +48,32 @@ const streamZones = computed(() =>
 )
 
 const webrtcUrl = computed(() => webrtcPreviewUrl(activeStream.value))
+
+async function refreshPresence() {
+  if (fetchingPresence) return
+  fetchingPresence = true
+  try {
+    const data = await videoApi.presence(activeStream.value)
+    streamPresence.value = data.presence || null
+  } catch {
+    /* keep last snapshot */
+  } finally {
+    fetchingPresence = false
+  }
+}
+
+function startPresencePolling() {
+  stopPresencePolling()
+  refreshPresence()
+  pollTimer = window.setInterval(refreshPresence, POLL_MS)
+}
+
+function stopPresencePolling() {
+  if (pollTimer) {
+    window.clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
 
 async function loadZones() {
   loading.value = true
@@ -236,11 +269,18 @@ async function onDelete(zone) {
 
 watch(activeStream, () => {
   startNewZone()
+  streamPresence.value = null
+  startPresencePolling()
 })
 
 onMounted(async () => {
   startNewZone()
   await loadZones()
+  startPresencePolling()
+})
+
+onBeforeUnmount(() => {
+  stopPresencePolling()
 })
 </script>
 
@@ -252,7 +292,7 @@ onMounted(async () => {
         type="info"
         :closable="false"
         show-icon
-        title="保存后蓝色绘制框会消失，红色区域为已生效禁区。陌生人进入任何禁区都会告警；已识别家庭成员仅在勾选对应「禁止角色」时告警。"
+        title="保存后蓝色绘制框会消失，红色区域为已生效禁区。Canvas 会叠加人物/人脸/闯入等检测框，便于对照区域是否生效。"
       />
       <el-card shadow="never">
         <template #header>
@@ -273,6 +313,13 @@ onMounted(async () => {
             class="video-bg"
             title="摄像头画面"
             allow="autoplay; fullscreen"
+          />
+          <FaceOverlay
+            :key="`overlay-${activeStream}`"
+            :stream-id="activeStream"
+            :presence="streamPresence"
+            managed-externally
+            active
           />
           <canvas
             ref="canvasRef"
@@ -403,7 +450,7 @@ onMounted(async () => {
   width: 100%;
   height: 100%;
   cursor: crosshair;
-  z-index: 2;
+  z-index: 3;
 }
 
 .canvas-tools {

@@ -28,11 +28,17 @@ const DEFAULT_FRAME = { width: 1280, height: 720 }
 const ALERT_LABELS = {
   FIRE: '火情',
   FALL: '摔倒',
+  INTRUSION: '闯入',
+  PROXIMITY: '过近',
+  LOITER: '停留',
 }
 
 const ALERT_COLORS = {
   FIRE: '#ffa500',
   FALL: '#00ffff',
+  INTRUSION: '#ff0000',
+  PROXIMITY: '#ff8800',
+  LOITER: '#e040fb',
 }
 
 const canvasRef = ref(null)
