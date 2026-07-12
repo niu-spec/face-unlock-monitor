@@ -1,4 +1,5 @@
 import sys
+from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest import TestCase, main
 from unittest.mock import Mock, patch
@@ -6,6 +7,29 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from apps.detection.audio_service import AudioDetectionService
+
+
+class FakeTensor:
+    """Minimal tensor surface used by AudioDetectionService._classify_chunk."""
+
+    def __init__(self, values):
+        self.values = np.asarray(values)
+
+    @property
+    def shape(self):
+        return self.values.shape
+
+    def float(self):
+        return self
+
+    def unsqueeze(self, axis):
+        return FakeTensor(np.expand_dims(self.values, axis))
+
+    def squeeze(self, axis):
+        return FakeTensor(np.squeeze(self.values, axis=axis))
+
+    def numpy(self):
+        return self.values
 
 
 class AudioDetectionServiceTests(TestCase):
@@ -23,17 +47,20 @@ class AudioDetectionServiceTests(TestCase):
         service._load_panns_fallback.assert_called_once_with()
 
     def test_classify_transposes_log_mel_to_time_first(self):
-        import torch
-
         service = AudioDetectionService()
-        service._model = Mock(return_value=torch.zeros((1, 527)))
+        service._model = Mock(return_value=FakeTensor(np.zeros((1, 527))))
         service._compute_log_mel = Mock(
             return_value=np.zeros((64, 301), dtype=np.float32)
         )
         service._alert_type_indices = {}
         service._detect_fight_multilabel = Mock(return_value=0.0)
+        fake_torch = SimpleNamespace(
+            from_numpy=FakeTensor,
+            no_grad=nullcontext,
+        )
 
-        service._classify_chunk(np.zeros(96000, dtype=np.float32))
+        with patch.dict(sys.modules, {"torch": fake_torch}):
+            service._classify_chunk(np.zeros(96000, dtype=np.float32))
 
         model_input = service._model.call_args.args[0]
         self.assertEqual(tuple(model_input.shape), (1, 1, 301, 64))
