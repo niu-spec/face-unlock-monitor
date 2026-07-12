@@ -945,6 +945,12 @@ class DetectionService:
         h, w = frame.shape[:2]
         frame_area = h * w
 
+        # 每 30 帧输出一次诊断
+        if not hasattr(self, "_fire_debug_frame"):
+            self._fire_debug_frame = 0
+        self._fire_debug_frame += 1
+        fire_log = self._fire_debug_frame % 30 == 0
+
         # ---- HSV 三区间火焰颜色掩码 ----
         mask1 = cv2.inRange(
             hsv,
@@ -961,8 +967,9 @@ class DetectionService:
             np.array(_cfg("FIRE_HSV_LOWER_3")),
             np.array(_cfg("FIRE_HSV_UPPER_3")),
         )
-        color_mask = cv2.bitwise_or(mask1, mask2)
-        color_mask = cv2.bitwise_or(color_mask, mask3)
+        hsv_mask = cv2.bitwise_or(mask1, mask2)
+        hsv_mask = cv2.bitwise_or(hsv_mask, mask3)
+        hsv_area = cv2.countNonZero(hsv_mask)
 
         # ---- RGB 暖色兜底：R 通道显著大于 G 和 B ----
         r = frame[:, :, 2].astype(np.float32)
@@ -972,13 +979,16 @@ class DetectionService:
             (r > g * 1.15) & (r > b * 1.3) & (r > 60)
         )
         rgb_mask = (rgb_warm * 255).astype(np.uint8)
-        color_mask = cv2.bitwise_or(color_mask, rgb_mask)
+        rgb_area = cv2.countNonZero(rgb_mask)
+        color_mask = cv2.bitwise_or(hsv_mask, rgb_mask)
+        combined_area = cv2.countNonZero(color_mask)
 
         # ---- 形态滤波：先去噪再连接断裂区域 ----
         kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
         mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_large, iterations=2)
+        morph_area = cv2.countNonZero(mask)
 
         # 过滤小面积噪点
         min_contour_area = _cfg("FIRE_MIN_CONTOUR_AREA")
@@ -986,14 +996,30 @@ class DetectionService:
             mask, connectivity=8
         )
         clean_mask = np.zeros_like(mask)
+        kept = 0
         for label_id in range(1, num_labels):
             area = stats[label_id, cv2.CC_STAT_AREA]
             if area >= min_contour_area:
                 clean_mask[labels == label_id] = 255
+                kept += 1
         mask = clean_mask
 
         fire_area = cv2.countNonZero(mask)
         ratio = fire_area / frame_area if frame_area > 0 else 0
+
+        if fire_log:
+            logger.info(
+                "[FIRE DEBUG] 帧#%d stream=%s frame=%dx%d "
+                "hsv=%.2f%% rgb=%.2f%% combined=%.2f%% "
+                "morph=%.2f%% final=%.2f%%(%dcc,%dpx) threshold=%.1f%%",
+                self._fire_debug_frame, stream_id, w, h,
+                hsv_area / frame_area * 100,
+                rgb_area / frame_area * 100,
+                combined_area / frame_area * 100,
+                morph_area / frame_area * 100,
+                ratio * 100, kept, fire_area,
+                _cfg("FIRE_AREA_THRESHOLD") * 100,
+            )
 
         if ratio >= _cfg("FIRE_AREA_THRESHOLD"):
             if not self._check_cooldown("FIRE", stream_id):
