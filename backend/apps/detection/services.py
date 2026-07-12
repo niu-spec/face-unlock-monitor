@@ -98,7 +98,7 @@ DETECTION_CONFIG = {
     "HOG_CONFIDENCE_THRESHOLD": 0.5,
     "HOG_NMS_THRESHOLD": 0.3,
     # --- 闯入检测（INTRUSION）---
-    "INTRUSION_PERSIST_FRAMES": 3,
+    "INTRUSION_PERSIST_FRAMES": 1,
     # --- 告警冷却（秒）---
     "ALERT_COOLDOWN_SECONDS": {
         "WATER": 30,
@@ -221,6 +221,65 @@ def _distance_point_to_polygon(point: tuple[int, int], polygon: np.ndarray) -> f
     当前 OpenCV 版本约定：内部为正，外部为负，绝对值为到边界的像素距离。
     """
     return float(cv2.pointPolygonTest(polygon, point, True))
+
+
+def _segments_intersect(
+    a: tuple[int, int],
+    b: tuple[int, int],
+    c: tuple[int, int],
+    d: tuple[int, int],
+) -> bool:
+    """Return whether two closed 2D segments intersect or touch."""
+
+    def cross(origin, first, second) -> int:
+        return (
+            (first[0] - origin[0]) * (second[1] - origin[1])
+            - (first[1] - origin[1]) * (second[0] - origin[0])
+        )
+
+    def on_segment(start, point, end) -> bool:
+        return (
+            min(start[0], end[0]) <= point[0] <= max(start[0], end[0])
+            and min(start[1], end[1]) <= point[1] <= max(start[1], end[1])
+        )
+
+    ab_c = cross(a, b, c)
+    ab_d = cross(a, b, d)
+    cd_a = cross(c, d, a)
+    cd_b = cross(c, d, b)
+    if (ab_c > 0) != (ab_d > 0) and (cd_a > 0) != (cd_b > 0):
+        return True
+    return (
+        (ab_c == 0 and on_segment(a, c, b))
+        or (ab_d == 0 and on_segment(a, d, b))
+        or (cd_a == 0 and on_segment(c, a, d))
+        or (cd_b == 0 and on_segment(c, b, d))
+    )
+
+
+def _polygon_intersects_rect(
+    polygon: np.ndarray, x: int, y: int, width: int, height: int
+) -> bool:
+    """Return whether a polygon and a person bounding box overlap or touch."""
+    if width <= 0 or height <= 0:
+        return False
+
+    right, bottom = x + width, y + height
+    rect_points = [(x, y), (right, y), (right, bottom), (x, bottom)]
+    if any(cv2.pointPolygonTest(polygon, point, False) >= 0 for point in rect_points):
+        return True
+
+    points = [tuple(map(int, point[0])) for point in polygon]
+    if any(x <= px <= right and y <= py <= bottom for px, py in points):
+        return True
+
+    rect_edges = list(zip(rect_points, rect_points[1:] + rect_points[:1]))
+    polygon_edges = list(zip(points, points[1:] + points[:1]))
+    return any(
+        _segments_intersect(rect_start, rect_end, poly_start, poly_end)
+        for rect_start, rect_end in rect_edges
+        for poly_start, poly_end in polygon_edges
+    )
 
 
 def _normalize_forbidden_roles(forbidden) -> list[str]:
@@ -656,7 +715,7 @@ class DetectionService:
         frame_width: int,
         frame_height: int,
     ) -> list[dict]:
-        """检测危险区域闯入、距边缘过近与异常停留（闯入需持续 N 帧防误报）。"""
+        """检测危险区域闯入、距边缘过近与异常停留。"""
         results: list[dict] = []
         active_loiter_keys: set[tuple[int, int]] = set()
         now = time.time()
@@ -697,19 +756,15 @@ class DetectionService:
                     self._intrusion_counter[zone_key][tid] = 0
                     continue
 
-                # 脚部（底部中心）用于判断人是否站在区域内
-                foot_x = box["x"] + box["w"] // 2
-                foot_y = box["y"] + box["h"]
-                foot_dist = _distance_point_to_polygon((foot_x, foot_y), polygon)
-                foot_inside = foot_dist > 0
-
                 cx, cy = _rect_center(box["x"], box["y"], box["w"], box["h"])
                 signed_dist = _distance_point_to_polygon((cx, cy), polygon)
-                inside = foot_inside or signed_dist > 0
+                inside = _polygon_intersects_rect(
+                    polygon, box["x"], box["y"], box["w"], box["h"]
+                )
                 bbox = (box["x"], box["y"], box["w"], box["h"])
 
                 if inside:
-                    # 闯入：需持续 N 帧才触发告警（防误报）
+                    # 默认一帧即触发；可通过 INTRUSION_PERSIST_FRAMES 覆盖。
                     self._intrusion_counter[zone_key][tid] += 1
 
                     if self._intrusion_counter[zone_key][tid] >= persist:

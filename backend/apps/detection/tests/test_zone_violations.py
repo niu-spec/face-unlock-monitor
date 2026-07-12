@@ -61,11 +61,9 @@ class ZoneViolationTests(SimpleTestCase):
         face_roles = {1: "child"}
 
         results = []
-        # INTRUSION_PERSIST_FRAMES=3：需连续多帧在禁区内才触发闯入告警
-        for _ in range(3):
-            results = self.service._detect_zone_violations(
-                "kitchen", zones, person_boxes, face_roles, 640, 480
-            )
+        results = self.service._detect_zone_violations(
+            "kitchen", zones, person_boxes, face_roles, 640, 480
+        )
 
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0]["alert_type"], "INTRUSION")
@@ -109,11 +107,23 @@ class ZoneViolationTests(SimpleTestCase):
         zones = [self._square_zone()]
         person_boxes = [{"x": 180, "y": 180, "w": 40, "h": 80, "track_id": 4}]
 
-        results = []
-        for _ in range(3):
-            results = self.service._detect_zone_violations(
-                "kitchen", zones, person_boxes, {}, 640, 480
-            )
+        results = self.service._detect_zone_violations(
+            "kitchen", zones, person_boxes, {}, 640, 480
+        )
+
+        self.assertEqual(results[0]["alert_type"], "INTRUSION")
+        create_alert.assert_called_once()
+
+    @patch("apps.detection.services.DetectionService._create_alert", return_value=True)
+    def test_intrusion_triggers_when_person_box_touches_zone(self, create_alert):
+        zones = [self._square_zone()]
+        # The box overlaps the zone by 10px, while its center and foot are outside.
+        person_boxes = [{"x": 290, "y": 290, "w": 25, "h": 25, "track_id": 6}]
+        face_roles = {6: "child"}
+
+        results = self.service._detect_zone_violations(
+            "kitchen", zones, person_boxes, face_roles, 640, 480
+        )
 
         self.assertEqual(results[0]["alert_type"], "INTRUSION")
         create_alert.assert_called_once()
@@ -127,7 +137,7 @@ class ZoneViolationTests(SimpleTestCase):
         person_boxes = [{"x": 180, "y": 180, "w": 40, "h": 80, "track_id": 5}]
         face_roles = {5: "child"}
 
-        for _ in range(4):
+        for _ in range(2):
             self.service._detect_zone_violations(
                 "kitchen", zones, person_boxes, face_roles, 640, 480
             )
