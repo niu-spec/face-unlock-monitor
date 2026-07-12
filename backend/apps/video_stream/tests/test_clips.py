@@ -12,20 +12,19 @@ class ClipPathTests(TestCase):
     def setUp(self):
         self._tmpdir = tempfile.TemporaryDirectory()
         self._settings = override_settings(CLIP_ROOT=self._tmpdir.name)
+        self._settings.enable()
 
     def tearDown(self):
         self._settings.disable()
         self._tmpdir.cleanup()
 
     def test_resolve_clip_path_blocks_traversal(self):
-        with self._settings:
-            self.assertIsNone(resolve_clip_path("../secret.mp4"))
+        self.assertIsNone(resolve_clip_path("../secret.mp4"))
 
     def test_resolve_clip_path_returns_existing_file(self):
-        with self._settings:
-            clip = Path(self._tmpdir.name) / "demo.mp4"
-            clip.write_bytes(b"fake")
-            self.assertEqual(resolve_clip_path("demo.mp4"), clip)
+        clip = Path(self._tmpdir.name) / "demo.mp4"
+        clip.write_bytes(b"fake")
+        self.assertEqual(resolve_clip_path("demo.mp4"), clip)
 
     def test_build_rtsp_url_maps_business_stream_id(self):
         with patch(
