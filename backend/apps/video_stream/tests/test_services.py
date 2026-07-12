@@ -7,7 +7,10 @@ from django.test import SimpleTestCase
 
 from apps.video_stream.services import (
     CameraWorker,
+    _alert_overlay_snapshot,
+    _face_overlay_snapshot,
     _person_overlay_snapshot,
+    _resolve_alert_overlay_boxes,
     process_frame,
 )
 
@@ -150,6 +153,77 @@ class OverlayPublicationTests(SimpleTestCase):
         self.assertTrue(result[0]["known"])
         self.assertFalse(result[0]["trusted"])
 
+    def test_face_snapshot_uses_xywh_coordinates(self):
+        presence = {
+            "faces": [
+                {
+                    "track_id": 2,
+                    "box": {"left": 20, "top": 10, "right": 60, "bottom": 50},
+                    "known": False,
+                    "name": "Stranger",
+                    "role": "stranger",
+                    "trusted": True,
+                }
+            ]
+        }
+
+        result = _face_overlay_snapshot(presence)
+
+        self.assertEqual(result[0]["x"], 20)
+        self.assertEqual(result[0]["y"], 10)
+        self.assertEqual(result[0]["w"], 40)
+        self.assertEqual(result[0]["h"], 40)
+        self.assertEqual(result[0]["track_id"], 2)
+
+    def test_alert_snapshot_extracts_fire_and_fall_boxes(self):
+        results = [
+            {
+                "alert_type": "FIRE",
+                "bbox": (10, 20, 80, 60),
+                "message": "fire",
+                "severity": "high",
+            },
+            {
+                "alert_type": "INTRUSION",
+                "bbox": (1, 2, 3, 4),
+            },
+            {
+                "alert_type": "FALL",
+                "bbox": (30, 40, 50, 20),
+                "severity": "high",
+            },
+        ]
+
+        result = _alert_overlay_snapshot(results)
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["alert_type"], "FIRE")
+        self.assertEqual(result[0]["w"], 80)
+        self.assertEqual(result[1]["alert_type"], "FALL")
+        self.assertEqual(result[1]["h"], 20)
+
+    def test_alert_overlay_keeps_recent_boxes_visible(self):
+        previous = {
+            "alert_boxes": [{"x": 1, "y": 2, "w": 3, "h": 4, "alert_type": "FIRE"}],
+            "alert_boxes_updated_at": 100.0,
+        }
+
+        boxes, updated_at = _resolve_alert_overlay_boxes(previous, [], now=101.5)
+
+        self.assertEqual(len(boxes), 1)
+        self.assertEqual(updated_at, 100.0)
+
+    def test_alert_overlay_expires_stale_boxes(self):
+        previous = {
+            "alert_boxes": [{"x": 1, "y": 2, "w": 3, "h": 4, "alert_type": "FALL"}],
+            "alert_boxes_updated_at": 100.0,
+        }
+
+        boxes, updated_at = _resolve_alert_overlay_boxes(previous, [], now=104.0)
+
+        self.assertEqual(boxes, [])
+        self.assertIsNone(updated_at)
+
     @patch("apps.video_stream.services._get_active_zones", return_value=[])
     @patch("apps.video_stream.services._resolve_household_id_for_stream", return_value=1)
     @patch("apps.face.liveness.get_liveness_service")
@@ -204,8 +278,76 @@ class OverlayPublicationTests(SimpleTestCase):
         first_published = face_service.set_presence.call_args_list[0].args[0]
         self.assertEqual(first_published["frame_captured_at"], 123.5)
         self.assertEqual(first_published["frame_sequence"], 42)
+        self.assertEqual(first_published["face_boxes"], [])
         person_published = face_service.set_presence.call_args_list[1].args[0]
         self.assertEqual(
             person_published["persons"],
             [{"x": 0, "y": 0, "w": 6, "h": 4, "track_id": 7, "confidence": 0.9}],
         )
+        self.assertEqual(person_published["face_boxes"], [])
+
+    @patch("apps.video_stream.services._get_active_zones", return_value=[])
+    @patch("apps.video_stream.services._resolve_household_id_for_stream", return_value=1)
+    @patch("apps.face.liveness.get_liveness_service")
+    @patch("apps.detection.services.get_detection_service")
+    @patch("apps.face.services.get_face_service")
+    def test_alert_boxes_are_published_after_detection(
+        self,
+        mock_get_face_service,
+        mock_get_detection_service,
+        mock_get_liveness_service,
+        _mock_household,
+        _mock_zones,
+    ):
+        frame = np.zeros((4, 6, 3), dtype=np.uint8)
+        presence = {
+            "stream_id": "living_room",
+            "faces": [
+                {
+                    "track_id": 0,
+                    "box": {"left": 1, "top": 1, "right": 3, "bottom": 3},
+                    "known": True,
+                    "name": "Bob",
+                    "role": "adult",
+                    "trusted": True,
+                }
+            ],
+            "frame_size": {"width": 6, "height": 4},
+        }
+
+        face_service = Mock()
+        face_service.get_presence.return_value = {"persons": [], "alert_boxes": []}
+        face_service.process_frame.return_value = (frame, presence, [])
+        face_service.draw_face_boxes.side_effect = lambda output, _presence: output
+        mock_get_face_service.return_value = face_service
+
+        detection_service = Mock()
+        detection_service.detect_people.return_value = []
+        detection_service.process_frame.return_value = [
+            {
+                "alert_type": "FIRE",
+                "bbox": (1, 1, 2, 2),
+                "severity": "high",
+            }
+        ]
+        detection_service.draw_overlays.side_effect = (
+            lambda output, _results, **_kwargs: output
+        )
+        mock_get_detection_service.return_value = detection_service
+
+        liveness_service = Mock()
+        liveness_service.observe.return_value = ({"status": "passed"}, [])
+        mock_get_liveness_service.return_value = liveness_service
+
+        process_frame(frame, "1")
+
+        final_published = face_service.set_presence.call_args_list[-1].args[0]
+        self.assertEqual(
+            final_published["face_boxes"],
+            [{"x": 1, "y": 1, "w": 2, "h": 2, "track_id": 0, "known": True, "name": "Bob", "role": "adult", "trusted": True}],
+        )
+        self.assertEqual(
+            final_published["alert_boxes"],
+            [{"x": 1, "y": 1, "w": 2, "h": 2, "alert_type": "FIRE", "severity": "high"}],
+        )
+        self.assertIn("alert_boxes_updated_at", final_published)

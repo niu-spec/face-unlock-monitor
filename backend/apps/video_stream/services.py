@@ -242,6 +242,91 @@ def _map_face_roles_to_people(presence: dict, person_boxes: list[dict]) -> dict[
     return roles
 
 
+ALERT_OVERLAY_TTL_SEC = 3.0
+CANVAS_ALERT_TYPES = frozenset({"FIRE", "FALL"})
+
+
+def _face_overlay_snapshot(presence: dict) -> list[dict]:
+    """Build a JSON-safe face-box snapshot for the browser canvas overlay."""
+    overlays: list[dict] = []
+    for index, face in enumerate(presence.get("faces") or []):
+        box = face.get("box") or {}
+        left = int(box.get("left", 0))
+        top = int(box.get("top", 0))
+        right = int(box.get("right", 0))
+        bottom = int(box.get("bottom", 0))
+        width = right - left
+        height = bottom - top
+        if width <= 0 or height <= 0:
+            continue
+        overlays.append(
+            {
+                "x": left,
+                "y": top,
+                "w": width,
+                "h": height,
+                "track_id": int(face.get("track_id", index)),
+                "known": bool(face.get("known")),
+                "name": face.get("name"),
+                "role": face.get("role"),
+                "trusted": face.get("trusted", True),
+            }
+        )
+    return overlays
+
+
+def _alert_overlay_snapshot(results: list[dict]) -> list[dict]:
+    """Extract fire/fall bounding boxes from detection results for canvas overlay."""
+    overlays: list[dict] = []
+    for result in results:
+        alert_type = str(result.get("alert_type", ""))
+        if alert_type not in CANVAS_ALERT_TYPES:
+            continue
+        bbox = result.get("bbox")
+        if not bbox or len(bbox) != 4:
+            continue
+        x, y, width, height = (int(value) for value in bbox)
+        if width <= 0 or height <= 0:
+            continue
+        item = {
+            "x": x,
+            "y": y,
+            "w": width,
+            "h": height,
+            "alert_type": alert_type,
+            "severity": result.get("severity", "high"),
+        }
+        message = result.get("message")
+        if message:
+            item["message"] = str(message)
+        overlays.append(item)
+    return overlays
+
+
+def _resolve_alert_overlay_boxes(
+    previous_presence: dict,
+    results: list[dict],
+    *,
+    now: float | None = None,
+) -> tuple[list[dict], float | None]:
+    """Keep alert boxes visible briefly so fast frontend polling can still catch them."""
+    current = _alert_overlay_snapshot(results)
+    if current:
+        timestamp = now if now is not None else time.time()
+        return current, timestamp
+
+    previous_boxes = previous_presence.get("alert_boxes") or []
+    previous_at = previous_presence.get("alert_boxes_updated_at")
+    if (
+        previous_boxes
+        and previous_at is not None
+        and (now if now is not None else time.time()) - float(previous_at)
+        < ALERT_OVERLAY_TTL_SEC
+    ):
+        return previous_boxes, float(previous_at)
+    return [], None
+
+
 def _person_overlay_snapshot(presence: dict, person_boxes: list[dict]) -> list[dict]:
     """Build a JSON-safe person-box snapshot for the browser canvas overlay."""
     overlays: list[dict] = []
@@ -344,7 +429,8 @@ def process_frame(
 
         household_id = _resolve_household_id_for_stream(biz_stream_id)
         face_service = get_face_service()
-        previous_persons = face_service.get_presence(biz_stream_id).get("persons", [])
+        previous_presence = face_service.get_presence(biz_stream_id)
+        previous_persons = previous_presence.get("persons", [])
         output, presence, _events = face_service.process_frame(
             original,
             stream_id=biz_stream_id,
@@ -363,6 +449,16 @@ def process_frame(
         # detector is running; otherwise every face-first publication would
         # briefly clear the canvas and make the overlay flicker.
         presence["persons"] = previous_persons
+        presence["face_boxes"] = _face_overlay_snapshot(presence)
+        alert_boxes, alert_boxes_updated_at = _resolve_alert_overlay_boxes(
+            previous_presence,
+            [],
+        )
+        presence["alert_boxes"] = alert_boxes
+        if alert_boxes_updated_at is not None:
+            presence["alert_boxes_updated_at"] = alert_boxes_updated_at
+        else:
+            presence.pop("alert_boxes_updated_at", None)
         face_service.set_presence(presence)
 
         detection_service = get_detection_service()
@@ -372,6 +468,7 @@ def process_frame(
         # Publish person boxes immediately for the canvas over the WebRTC
         # preview, without waiting for liveness, zones, alerts, or JPEG encode.
         presence["persons"] = _person_overlay_snapshot(presence, person_boxes)
+        presence["face_boxes"] = _face_overlay_snapshot(presence)
         face_service.set_presence(presence)
         liveness, _liveness_events = get_liveness_service().observe(
             original,
@@ -382,6 +479,7 @@ def process_frame(
         )
         _mark_faces_untrusted(presence, liveness)
         presence["persons"] = _person_overlay_snapshot(presence, person_boxes)
+        presence["face_boxes"] = _face_overlay_snapshot(presence)
         # Publish again because liveness may change the trust label/color.
         face_service.set_presence(presence)
         _update_liveness_snapshot(biz_stream_id, liveness)
@@ -397,6 +495,16 @@ def process_frame(
             snapshot_frame=output,
             household_id=household_id,
         )
+        alert_boxes, alert_boxes_updated_at = _resolve_alert_overlay_boxes(
+            previous_presence,
+            results,
+        )
+        presence["alert_boxes"] = alert_boxes
+        if alert_boxes_updated_at is not None:
+            presence["alert_boxes_updated_at"] = alert_boxes_updated_at
+        else:
+            presence.pop("alert_boxes_updated_at", None)
+        face_service.set_presence(presence)
         face_count = len(presence.get("faces", []))
         output = detection_service.draw_overlays(
             output,

@@ -25,12 +25,23 @@ const props = defineProps({
 const POLL_MS = 600
 const DEFAULT_FRAME = { width: 1280, height: 720 }
 
+const ALERT_LABELS = {
+  FIRE: '火情',
+  FALL: '摔倒',
+}
+
+const ALERT_COLORS = {
+  FIRE: '#ffa500',
+  FALL: '#00ffff',
+}
+
 const canvasRef = ref(null)
 let pollTimer = null
 let resizeObserver = null
 let drawFrameId = null
-let faces = []
 let persons = []
+let faceBoxes = []
+let alertBoxes = []
 let frameSize = { ...DEFAULT_FRAME }
 
 function getContainer() {
@@ -53,6 +64,53 @@ function personLabel(person) {
   return Number.isFinite(confidence)
     ? `人物 ${Math.round(confidence * 100)}%`
     : '人物'
+}
+
+function alertLabel(alert) {
+  return ALERT_LABELS[alert.alert_type] || alert.alert_type || '异常'
+}
+
+function alertColor(alert) {
+  return ALERT_COLORS[alert.alert_type] || '#ff5722'
+}
+
+function faceColor(face) {
+  if (face.trusted === false) return '#ff9800'
+  return face.known ? '#00b400' : '#ff0000'
+}
+
+function normalizeFaceBoxes(presence) {
+  if (Array.isArray(presence.face_boxes) && presence.face_boxes.length) {
+    return presence.face_boxes
+  }
+
+  const legacyFaces = Array.isArray(presence.faces) ? presence.faces : []
+  return legacyFaces.flatMap((face, index) => {
+    const box = face.box || {}
+    const left = Number(box.left ?? 0)
+    const top = Number(box.top ?? 0)
+    const right = Number(box.right ?? left)
+    const bottom = Number(box.bottom ?? top)
+    const width = right - left
+    const height = bottom - top
+    if (width <= 0 || height <= 0) return []
+
+    return [{
+      x: left,
+      y: top,
+      w: width,
+      h: height,
+      track_id: Number(face.track_id ?? index),
+      known: Boolean(face.known),
+      name: face.name,
+      role: face.role,
+      trusted: face.trusted !== false,
+    }]
+  })
+}
+
+function normalizeAlertBoxes(presence) {
+  return Array.isArray(presence.alert_boxes) ? presence.alert_boxes : []
 }
 
 function computeVideoRect(containerW, containerH, videoW, videoH) {
@@ -86,6 +144,32 @@ function computeVideoRect(containerW, containerH, videoW, videoH) {
     scaleX: width / videoW,
     scaleY: height / videoH,
   }
+}
+
+function mapBoxToCanvas(videoRect, box) {
+  const left = Number(box.x ?? 0)
+  const top = Number(box.y ?? 0)
+  const boxWidth = Number(box.w ?? 0)
+  const boxHeight = Number(box.h ?? 0)
+  if (boxWidth <= 0 || boxHeight <= 0) return null
+
+  return {
+    x: videoRect.x + left * videoRect.scaleX,
+    y: videoRect.y + top * videoRect.scaleY,
+    w: boxWidth * videoRect.scaleX,
+    h: boxHeight * videoRect.scaleY,
+  }
+}
+
+function drawRectBox(ctx, mapped, color, label, lineWidth = 2) {
+  if (!mapped) return
+
+  ctx.strokeStyle = color
+  ctx.lineWidth = lineWidth
+  ctx.strokeRect(mapped.x, mapped.y, mapped.w, mapped.h)
+  ctx.font = '600 14px system-ui, sans-serif'
+  ctx.fillStyle = color
+  ctx.fillText(label, mapped.x, Math.max(18, mapped.y - 6))
 }
 
 function clearCanvas() {
@@ -122,7 +206,7 @@ function drawOverlay() {
   if (!ctx) return
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  if (!faces.length && !persons.length) return
+  if (!persons.length && !faceBoxes.length && !alertBoxes.length) return
 
   const videoRect = computeVideoRect(
     canvas.width,
@@ -132,53 +216,28 @@ function drawOverlay() {
   )
 
   for (const person of persons) {
-    const left = Number(person.x ?? 0)
-    const top = Number(person.y ?? 0)
-    const boxWidth = Number(person.w ?? 0)
-    const boxHeight = Number(person.h ?? 0)
-    if (boxWidth <= 0 || boxHeight <= 0) continue
-
-    const x = videoRect.x + left * videoRect.scaleX
-    const y = videoRect.y + top * videoRect.scaleY
-    const w = boxWidth * videoRect.scaleX
-    const h = boxHeight * videoRect.scaleY
     const color = person.trusted === false ? '#ff9800' : '#00e5ff'
-
-    ctx.strokeStyle = color
-    ctx.lineWidth = 3
-    ctx.strokeRect(x, y, w, h)
-    ctx.font = '600 14px system-ui, sans-serif'
-    ctx.fillStyle = color
-    ctx.fillText(personLabel(person), x, Math.max(18, y - 6))
+    drawRectBox(ctx, mapBoxToCanvas(videoRect, person), color, personLabel(person), 3)
   }
 
-  for (const face of faces) {
-    const box = face.box
-    if (!box) continue
+  for (const alert of alertBoxes) {
+    drawRectBox(
+      ctx,
+      mapBoxToCanvas(videoRect, alert),
+      alertColor(alert),
+      alertLabel(alert),
+      3,
+    )
+  }
 
-    const left = box.left ?? 0
-    const top = box.top ?? 0
-    const right = box.right ?? left
-    const bottom = box.bottom ?? top
-    if (right <= left || bottom <= top) continue
-
-    const x = videoRect.x + left * videoRect.scaleX
-    const y = videoRect.y + top * videoRect.scaleY
-    const w = (right - left) * videoRect.scaleX
-    const h = (bottom - top) * videoRect.scaleY
-
-    const known = Boolean(face.known)
-    const trusted = face.trusted !== false
-    const color = !trusted ? '#ff9800' : (known ? '#00b400' : '#ff0000')
-    const label = faceLabel(face)
-
-    ctx.strokeStyle = color
-    ctx.lineWidth = 2
-    ctx.strokeRect(x, y, w, h)
-
-    ctx.font = '600 14px system-ui, sans-serif'
-    ctx.fillStyle = color
-    ctx.fillText(label, x, Math.max(18, y - 6))
+  for (const face of faceBoxes) {
+    drawRectBox(
+      ctx,
+      mapBoxToCanvas(videoRect, face),
+      faceColor(face),
+      faceLabel(face),
+      2,
+    )
   }
 }
 
@@ -198,14 +257,16 @@ function presenceMatchesStream(presence) {
 
 function applyPresence(presence) {
   if (!presenceMatchesStream(presence)) {
-    faces = []
     persons = []
+    faceBoxes = []
+    alertBoxes = []
     clearCanvas()
     return
   }
 
-  faces = Array.isArray(presence.faces) ? presence.faces : []
   persons = Array.isArray(presence.persons) ? presence.persons : []
+  faceBoxes = normalizeFaceBoxes(presence)
+  alertBoxes = normalizeAlertBoxes(presence)
 
   const size = presence.frame_size
   if (size?.width && size?.height) {
@@ -222,7 +283,9 @@ async function fetchPresence() {
     const data = await videoApi.presence(props.streamId)
     applyPresence(data.presence)
   } catch {
-    faces = []
+    persons = []
+    faceBoxes = []
+    alertBoxes = []
     clearCanvas()
   }
 }
@@ -259,8 +322,9 @@ watch(
 watch(
   () => [props.streamId, props.active],
   () => {
-    faces = []
     persons = []
+    faceBoxes = []
+    alertBoxes = []
     frameSize = { ...DEFAULT_FRAME }
     clearCanvas()
     if (props.active && !props.managedExternally) startPolling()
