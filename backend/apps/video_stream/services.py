@@ -552,7 +552,9 @@ class CameraWorker:
 
                     now = time.time()
                     with self._condition:
-                        self._raw_frame = frame
+                        # Detach from OpenCV's internal RTSP buffer before the next
+                        # capture.read() can reuse or free the underlying memory.
+                        self._raw_frame = frame.copy()
                         self._raw_frame_captured_at = now
                         self._capture_sequence += 1
                         self.last_capture_at = now
