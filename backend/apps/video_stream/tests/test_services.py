@@ -106,6 +106,26 @@ class CameraWorkerTests(SimpleTestCase):
         self.assertEqual(status["processed_sequence"], 15)
         self.assertEqual(status["dropped_stale_frames"], 10)
 
+    def test_capture_loop_detaches_frame_buffer(self):
+        worker = CameraWorker("1", frame_skip=1)
+        source = np.full((4, 4, 3), 7, dtype=np.uint8)
+
+        with worker._condition:
+            worker._raw_frame = source.copy()
+            worker._raw_frame_captured_at = 12.0
+            worker._capture_sequence = 1
+
+        source.fill(0)
+
+        with worker._condition:
+            copied = worker._raw_frame.copy()
+            captured_at = worker._raw_frame_captured_at
+            sequence = worker._capture_sequence
+
+        self.assertEqual(int(copied[0, 0, 0]), 7)
+        self.assertEqual(captured_at, 12.0)
+        self.assertEqual(sequence, 1)
+
 
 class OverlayPublicationTests(SimpleTestCase):
     def test_person_snapshot_carries_matched_face_identity(self):

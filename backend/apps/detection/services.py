@@ -18,8 +18,9 @@
 """
 
 import json
-import time
 import logging
+import threading
+import time
 from collections import defaultdict
 from typing import Optional
 
@@ -406,6 +407,8 @@ class DetectionService:
         self._person_tracker = SimplePersonTracker(
             max_lost_frames=15, iou_threshold=0.20
         )
+        # YOLO/HOG 推理与追踪状态在进程内单例上共享，多路流并发时串行化。
+        self._inference_lock = threading.Lock()
 
         # ★ v1.3 音视频联动
         self._av_correlation = None
@@ -507,15 +510,16 @@ class DetectionService:
         检测后通过 SimplePersonTracker 分配跨帧稳定的 track_id。
         YOLO 第一轮 0 人时自动降置信度重扫，应对横向/非直立人体。
         """
-        if self._detector_type == "YOLO" and self._yolo is not None:
-            boxes = self._detect_pedestrians_yolo(frame)
-            if not boxes:
-                # 低置信度重扫：摔倒/横向人体 YOLO 检测不稳定
-                boxes = self._detect_pedestrians_yolo(frame, conf=0.20)
-        else:
-            boxes = self._detect_pedestrians_hog(frame)
-        # 跨帧追踪：为每个检测框分配稳定的 track_id
-        return self._person_tracker.update(boxes)
+        with self._inference_lock:
+            if self._detector_type == "YOLO" and self._yolo is not None:
+                boxes = self._detect_pedestrians_yolo(frame)
+                if not boxes:
+                    # 低置信度重扫：摔倒/横向人体 YOLO 检测不稳定
+                    boxes = self._detect_pedestrians_yolo(frame, conf=0.20)
+            else:
+                boxes = self._detect_pedestrians_hog(frame)
+            # 跨帧追踪：为每个检测框分配稳定的 track_id
+            return self._person_tracker.update(boxes)
 
     def _detect_pedestrians_yolo(
         self, frame: np.ndarray, conf: float | None = None
