@@ -257,6 +257,8 @@ class OverlayPublicationTests(SimpleTestCase):
             calls.append("detect_people")
             or [{"x": 0, "y": 0, "w": 6, "h": 4, "track_id": 7, "confidence": 0.9}]
         )
+        detection_service.detect_fire_alerts.return_value = []
+        detection_service.detect_fall_alerts.return_value = []
         detection_service.process_frame.return_value = []
         detection_service.draw_overlays.side_effect = (
             lambda output, _results, **_kwargs: output
@@ -291,7 +293,7 @@ class OverlayPublicationTests(SimpleTestCase):
     @patch("apps.face.liveness.get_liveness_service")
     @patch("apps.detection.services.get_detection_service")
     @patch("apps.face.services.get_face_service")
-    def test_alert_boxes_are_published_after_detection(
+    def test_alert_boxes_are_published_before_liveness(
         self,
         mock_get_face_service,
         mock_get_detection_service,
@@ -299,6 +301,7 @@ class OverlayPublicationTests(SimpleTestCase):
         _mock_household,
         _mock_zones,
     ):
+        calls = []
         frame = np.zeros((4, 6, 3), dtype=np.uint8)
         presence = {
             "stream_id": "living_room",
@@ -318,28 +321,58 @@ class OverlayPublicationTests(SimpleTestCase):
         face_service = Mock()
         face_service.get_presence.return_value = {"persons": [], "alert_boxes": []}
         face_service.process_frame.return_value = (frame, presence, [])
+        face_service.set_presence.side_effect = lambda _value: calls.append("publish")
         face_service.draw_face_boxes.side_effect = lambda output, _presence: output
         mock_get_face_service.return_value = face_service
 
         detection_service = Mock()
-        detection_service.detect_people.return_value = []
-        detection_service.process_frame.return_value = [
-            {
-                "alert_type": "FIRE",
-                "bbox": (1, 1, 2, 2),
-                "severity": "high",
-            }
-        ]
+        detection_service.detect_fire_alerts.side_effect = lambda *_args, **_kwargs: (
+            calls.append("detect_fire")
+            or [
+                {
+                    "alert_type": "FIRE",
+                    "bbox": (1, 1, 2, 2),
+                    "severity": "high",
+                }
+            ]
+        )
+        detection_service.detect_people.side_effect = lambda *_args, **_kwargs: (
+            calls.append("detect_people") or []
+        )
+        detection_service.detect_fall_alerts.side_effect = lambda *_args, **_kwargs: (
+            calls.append("detect_fall") or []
+        )
+        detection_service.process_frame.return_value = []
         detection_service.draw_overlays.side_effect = (
             lambda output, _results, **_kwargs: output
         )
         mock_get_detection_service.return_value = detection_service
 
         liveness_service = Mock()
-        liveness_service.observe.return_value = ({"status": "passed"}, [])
+        liveness_service.observe.side_effect = lambda *_args, **_kwargs: (
+            calls.append("liveness") or ({"status": "passed"}, [])
+        )
         mock_get_liveness_service.return_value = liveness_service
 
         process_frame(frame, "1")
+
+        self.assertLess(calls.index("detect_fire"), calls.index("detect_people"))
+        self.assertLess(calls.index("detect_fall"), calls.index("liveness"))
+        self.assertIn("publish", calls[calls.index("detect_fire") + 1 : calls.index("liveness")])
+
+        alert_published = next(
+            call.args[0]
+            for call in face_service.set_presence.call_args_list
+            if call.args[0].get("alert_boxes")
+        )
+        self.assertEqual(
+            alert_published["alert_boxes"],
+            [{"x": 1, "y": 1, "w": 2, "h": 2, "alert_type": "FIRE", "severity": "high"}],
+        )
+        detection_service.process_frame.assert_called_once()
+        self.assertFalse(
+            detection_service.process_frame.call_args.kwargs.get("include_fast", True)
+        )
 
         final_published = face_service.set_presence.call_args_list[-1].args[0]
         self.assertEqual(
@@ -350,4 +383,4 @@ class OverlayPublicationTests(SimpleTestCase):
             final_published["alert_boxes"],
             [{"x": 1, "y": 1, "w": 2, "h": 2, "alert_type": "FIRE", "severity": "high"}],
         )
-        self.assertIn("alert_boxes_updated_at", final_published)
+        self.assertIn("alert_boxes_updated_at", alert_published)

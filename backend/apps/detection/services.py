@@ -491,6 +491,8 @@ class DetectionService:
         zones: Optional[list[dict]] = None,
         snapshot_frame: Optional[np.ndarray] = None,
         household_id: int | None = None,
+        *,
+        include_fast: bool = True,
     ) -> list[dict]:
         """处理单帧画面，执行全部检测逻辑。
 
@@ -505,6 +507,8 @@ class DetectionService:
             zones: 危险区域配置列表，每项含
                 {'id', 'name', 'points_json', 'forbidden_roles',
                  'safe_distance', 'dwell_time'}。
+            include_fast: 是否执行着火/摔倒等快速 overlay 检测。
+                WebRTC 快速路径可在外部先跑 fast alerts，此处传 False。
 
         Returns:
             detection_results: 检测结果列表。
@@ -538,11 +542,15 @@ class DetectionService:
         # 2. 积水检测
         results.extend(self._detect_water(frame, stream_id))
 
-        # 3. 着火检测
-        results.extend(self._detect_fire(frame, stream_id))
-
-        # 4. 摔倒检测
-        results.extend(self._detect_fall(person_boxes, stream_id))
+        if include_fast:
+            results.extend(self.detect_fast_alerts(
+                frame,
+                stream_id,
+                person_boxes,
+                household_id=household_id,
+                snapshot_frame=snapshot_frame,
+                enqueue=False,
+            ))
 
         # ★ v1.3 视频检测事件入队音视频联动缓冲器
         if results:
@@ -553,6 +561,90 @@ class DetectionService:
         self._current_snapshot_frame = None
         self._current_household_id = None
         return results
+
+    def detect_fire_alerts(
+        self,
+        frame: np.ndarray,
+        stream_id: str,
+        *,
+        household_id: int | None = None,
+        snapshot_frame: Optional[np.ndarray] = None,
+    ) -> list[dict]:
+        """Fast-path fire detection for WebRTC canvas overlays."""
+        if frame is None or frame.size == 0:
+            return []
+
+        previous_snapshot = self._current_snapshot_frame
+        previous_household = self._current_household_id
+        self._current_snapshot_frame = snapshot_frame
+        self._current_household_id = household_id
+        try:
+            return self._detect_fire(frame, stream_id)
+        finally:
+            self._current_snapshot_frame = previous_snapshot
+            self._current_household_id = previous_household
+
+    def detect_fall_alerts(
+        self,
+        person_boxes: list[dict],
+        stream_id: str,
+        *,
+        household_id: int | None = None,
+        snapshot_frame: Optional[np.ndarray] = None,
+    ) -> list[dict]:
+        """Fast-path fall detection for WebRTC canvas overlays."""
+        previous_snapshot = self._current_snapshot_frame
+        previous_household = self._current_household_id
+        self._current_snapshot_frame = snapshot_frame
+        self._current_household_id = household_id
+        try:
+            return self._detect_fall(person_boxes, stream_id)
+        finally:
+            self._current_snapshot_frame = previous_snapshot
+            self._current_household_id = previous_household
+
+    def detect_fast_alerts(
+        self,
+        frame: np.ndarray,
+        stream_id: str,
+        person_boxes: Optional[list[dict]] = None,
+        *,
+        household_id: int | None = None,
+        snapshot_frame: Optional[np.ndarray] = None,
+        enqueue: bool = True,
+    ) -> list[dict]:
+        """Run fire/fall detection for low-latency WebRTC overlays."""
+        if frame is None or frame.size == 0:
+            return []
+
+        boxes = person_boxes or []
+        results: list[dict] = []
+        results.extend(
+            self.detect_fire_alerts(
+                frame,
+                stream_id,
+                household_id=household_id,
+                snapshot_frame=snapshot_frame,
+            )
+        )
+        results.extend(
+            self.detect_fall_alerts(
+                boxes,
+                stream_id,
+                household_id=household_id,
+                snapshot_frame=snapshot_frame,
+            )
+        )
+        if enqueue and results:
+            self.enqueue_detection_results(stream_id, results)
+        return results
+
+    def enqueue_detection_results(
+        self, stream_id: str, results: list[dict]
+    ) -> None:
+        """Publish fast-path detection results to the AV correlation buffer."""
+        if results:
+            self._enqueue_video_results(stream_id=stream_id, results=results)
 
     # -----------------------------------------------------------------------
     # 行人检测（YOLO 优先，HOG 降级）

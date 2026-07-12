@@ -327,6 +327,22 @@ def _resolve_alert_overlay_boxes(
     return [], None
 
 
+def _apply_alert_overlay_presence(
+    presence: dict,
+    previous_presence: dict,
+    results: list[dict],
+) -> None:
+    alert_boxes, alert_boxes_updated_at = _resolve_alert_overlay_boxes(
+        previous_presence,
+        results,
+    )
+    presence["alert_boxes"] = alert_boxes
+    if alert_boxes_updated_at is not None:
+        presence["alert_boxes_updated_at"] = alert_boxes_updated_at
+    else:
+        presence.pop("alert_boxes_updated_at", None)
+
+
 def _person_overlay_snapshot(presence: dict, person_boxes: list[dict]) -> list[dict]:
     """Build a JSON-safe person-box snapshot for the browser canvas overlay."""
     overlays: list[dict] = []
@@ -429,8 +445,11 @@ def process_frame(
 
         household_id = _resolve_household_id_for_stream(biz_stream_id)
         face_service = get_face_service()
+        detection_service = get_detection_service()
         previous_presence = face_service.get_presence(biz_stream_id)
         previous_persons = previous_presence.get("persons", [])
+        previous_face_boxes = previous_presence.get("face_boxes", [])
+        fast_results: list[dict] = []
         output, presence, _events = face_service.process_frame(
             original,
             stream_id=biz_stream_id,
@@ -438,38 +457,48 @@ def process_frame(
             annotate=True,
             persist_alert=True,
         )
-        # Canvas overlays only need face metadata. Publish it before the slower
-        # liveness/YOLO/zone stages so the browser does not wait for the whole
-        # alert pipeline before it can move a face box.
+        # Fast path 1/3: publish face boxes before YOLO/liveness/zone stages.
         if frame_captured_at is not None:
             presence["frame_captured_at"] = frame_captured_at
         if frame_sequence is not None:
             presence["frame_sequence"] = frame_sequence
-        # Keep the last whole-person boxes visible while the current person
-        # detector is running; otherwise every face-first publication would
-        # briefly clear the canvas and make the overlay flicker.
         presence["persons"] = previous_persons
-        presence["face_boxes"] = _face_overlay_snapshot(presence)
-        alert_boxes, alert_boxes_updated_at = _resolve_alert_overlay_boxes(
-            previous_presence,
-            [],
-        )
-        presence["alert_boxes"] = alert_boxes
-        if alert_boxes_updated_at is not None:
-            presence["alert_boxes_updated_at"] = alert_boxes_updated_at
-        else:
-            presence.pop("alert_boxes_updated_at", None)
+        presence["face_boxes"] = _face_overlay_snapshot(presence) or previous_face_boxes
+        _apply_alert_overlay_presence(presence, previous_presence, [])
         face_service.set_presence(presence)
 
-        detection_service = get_detection_service()
+        # Fast path 2/3: fire detection only needs the frame, run before YOLO.
+        fire_results = detection_service.detect_fire_alerts(
+            original,
+            biz_stream_id,
+            household_id=household_id,
+            snapshot_frame=output,
+        )
+        fast_results.extend(fire_results)
+        presence["face_boxes"] = _face_overlay_snapshot(presence) or previous_face_boxes
+        _apply_alert_overlay_presence(presence, previous_presence, fast_results)
+        face_service.set_presence(presence)
+
         person_boxes = detection_service.detect_people(original)
         person_boxes = _person_boxes_from_faces(presence, person_boxes)
         face_roles = _map_face_roles_to_people(presence, person_boxes)
-        # Publish person boxes immediately for the canvas over the WebRTC
-        # preview, without waiting for liveness, zones, alerts, or JPEG encode.
+
+        fall_results = detection_service.detect_fall_alerts(
+            person_boxes,
+            biz_stream_id,
+            household_id=household_id,
+            snapshot_frame=output,
+        )
+        fast_results.extend(fall_results)
+        if fast_results:
+            detection_service.enqueue_detection_results(biz_stream_id, fast_results)
+
+        # Fast path 3/3: publish person + face + fire/fall overlays before liveness.
         presence["persons"] = _person_overlay_snapshot(presence, person_boxes)
         presence["face_boxes"] = _face_overlay_snapshot(presence)
+        _apply_alert_overlay_presence(presence, previous_presence, fast_results)
         face_service.set_presence(presence)
+
         liveness, _liveness_events = get_liveness_service().observe(
             original,
             presence,
@@ -478,15 +507,14 @@ def process_frame(
             persist_alert=True,
         )
         _mark_faces_untrusted(presence, liveness)
-        presence["persons"] = _person_overlay_snapshot(presence, person_boxes)
         presence["face_boxes"] = _face_overlay_snapshot(presence)
-        # Publish again because liveness may change the trust label/color.
+        # Liveness only updates face trust labels; keep fast-path person/alert boxes.
         face_service.set_presence(presence)
         _update_liveness_snapshot(biz_stream_id, liveness)
 
         zones = _get_active_zones(biz_stream_id, household_id)
 
-        results = detection_service.process_frame(
+        slow_results = detection_service.process_frame(
             frame=original,
             stream_id=biz_stream_id,
             person_boxes=person_boxes,
@@ -494,17 +522,9 @@ def process_frame(
             zones=zones if zones else None,
             snapshot_frame=output,
             household_id=household_id,
+            include_fast=False,
         )
-        alert_boxes, alert_boxes_updated_at = _resolve_alert_overlay_boxes(
-            previous_presence,
-            results,
-        )
-        presence["alert_boxes"] = alert_boxes
-        if alert_boxes_updated_at is not None:
-            presence["alert_boxes_updated_at"] = alert_boxes_updated_at
-        else:
-            presence.pop("alert_boxes_updated_at", None)
-        face_service.set_presence(presence)
+        results = fast_results + slow_results
         face_count = len(presence.get("faces", []))
         output = detection_service.draw_overlays(
             output,
