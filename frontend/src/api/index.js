@@ -69,6 +69,14 @@ export function fetchSnapshotBlob(filename) {
   })
 }
 
+export function fetchClipBlob(filename) {
+  if (!filename) return Promise.resolve(null)
+  return request.get(`/api/clips/${encodeURIComponent(filename)}/`, {
+    responseType: 'blob',
+    silent: true,
+  })
+}
+
 // ── 监控日报 ──────────────────────────────────────────
 export const reportApi = {
   list: () => request.get('/api/reports/daily/'),

@@ -38,6 +38,13 @@ class Event(models.Model):
         default="",
         help_text="事件时刻截图文件名",
     )
+    clip_path = models.CharField(
+        "短视频路径",
+        max_length=256,
+        blank=True,
+        default="",
+        help_text="事件时刻 MP4 短视频文件名",
+    )
     metadata = models.JSONField("附加数据", default=dict, blank=True, help_text="如识别到的成员ID、姓名等")
     created_at = models.DateTimeField("发生时间", auto_now_add=True)
 

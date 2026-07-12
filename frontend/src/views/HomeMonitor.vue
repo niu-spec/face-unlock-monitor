@@ -9,6 +9,7 @@ const POLL_MS = 200
 
 const activeStream = ref(DEFAULT_STREAM_ID)
 const streamPresence = ref(null)
+const streamLive = ref(true)
 const livenessByStream = ref({})
 
 const webrtcUrl = computed(() => webrtcPreviewUrl(activeStream.value))
@@ -39,6 +40,7 @@ async function refreshStreamData() {
       data = await videoApi.status(activeStream.value)
     }
     streamPresence.value = data.presence || null
+    streamLive.value = data.stream_live !== false
     const legacyId = toZoneStreamId(activeStream.value)
     const liveness = data.liveness
     if (legacyId && liveness) {
@@ -74,6 +76,7 @@ function stopPolling() {
 
 watch(activeStream, () => {
   streamPresence.value = null
+  streamLive.value = true
   startPolling()
 })
 
@@ -95,6 +98,9 @@ onBeforeUnmount(() => {
             <div class="card-header">
               <span>实时画面</span>
               <div class="header-actions">
+                <el-tag v-if="!streamLive" type="info" effect="plain" size="small">
+                  无推流信号
+                </el-tag>
                 <el-tag :type="livenessTag.type" effect="plain" size="small">
                   {{ livenessTag.text }}
                 </el-tag>

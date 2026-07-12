@@ -10,6 +10,7 @@ class AlertSerializer(serializers.ModelSerializer):
     level_display = serializers.CharField(source="get_level_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
     snapshot_url = serializers.CharField(read_only=True)
+    clip_url = serializers.CharField(read_only=True)
     assigned_to_name = serializers.CharField(read_only=True)
 
     class Meta:
@@ -29,5 +30,12 @@ class AlertSerializer(serializers.ModelSerializer):
             data["snapshot_url"] = request.build_absolute_uri(path) if request else path
         else:
             data["snapshot_url"] = None
+        clip_name = data.get("clip_path") or ""
+        if clip_name:
+            request = self.context.get("request")
+            path = f"/api/clips/{clip_name}/"
+            data["clip_url"] = request.build_absolute_uri(path) if request else path
+        else:
+            data["clip_url"] = None
         data["assigned_to_name"] = instance.assigned_to.phone if instance.assigned_to_id else ""
         return data

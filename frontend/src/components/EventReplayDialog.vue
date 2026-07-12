@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { fetchSnapshotBlob } from '@/api'
+import { fetchClipBlob, fetchSnapshotBlob } from '@/api'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -9,64 +9,122 @@ const props = defineProps({
   timestamp: { type: String, default: '' },
   streamId: { type: String, default: '' },
   snapshotPath: { type: String, default: '' },
+  clipPath: { type: String, default: '' },
 })
 
 const emit = defineEmits(['update:modelValue'])
 
 const loading = ref(false)
 const imageUrl = ref('')
+const videoUrl = ref('')
 const errorText = ref('')
+const activeTab = ref('video')
 
 const visible = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value),
 })
 
-function revokeImageUrl() {
+const hasClip = computed(() => Boolean(props.clipPath))
+const hasSnapshot = computed(() => Boolean(props.snapshotPath))
+
+function revokeUrls() {
   if (imageUrl.value) {
     URL.revokeObjectURL(imageUrl.value)
     imageUrl.value = ''
   }
+  if (videoUrl.value) {
+    URL.revokeObjectURL(videoUrl.value)
+    videoUrl.value = ''
+  }
+}
+
+async function loadClip() {
+  if (!props.clipPath) return false
+  try {
+    const blob = await fetchClipBlob(props.clipPath)
+    if (!blob || blob.size === 0) return false
+    if (videoUrl.value) URL.revokeObjectURL(videoUrl.value)
+    videoUrl.value = URL.createObjectURL(blob)
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function loadSnapshot() {
-  revokeImageUrl()
-  errorText.value = ''
-  if (!props.snapshotPath) {
-    errorText.value = '该记录暂无截图回放'
-    return
-  }
-
-  loading.value = true
+  if (!props.snapshotPath) return false
   try {
     const blob = await fetchSnapshotBlob(props.snapshotPath)
-    if (!blob || blob.size === 0) {
-      errorText.value = '截图加载失败'
-      return
-    }
+    if (!blob || blob.size === 0) return false
+    if (imageUrl.value) URL.revokeObjectURL(imageUrl.value)
     imageUrl.value = URL.createObjectURL(blob)
+    return true
   } catch {
-    errorText.value = '截图加载失败或已过期'
+    return false
+  }
+}
+
+async function loadReplay() {
+  revokeUrls()
+  errorText.value = ''
+  loading.value = true
+  try {
+    const clipOk = await loadClip()
+    const snapshotOk = await loadSnapshot()
+    if (clipOk) {
+      activeTab.value = 'video'
+    } else if (snapshotOk) {
+      activeTab.value = 'snapshot'
+    }
+    if (!clipOk && !snapshotOk) {
+      errorText.value = props.clipPath
+        ? '短视频正在生成或加载失败，请稍后刷新列表再试'
+        : '该记录暂无回放素材'
+    }
   } finally {
     loading.value = false
   }
 }
 
 watch(
-  () => [props.modelValue, props.snapshotPath],
+  () => [props.modelValue, props.snapshotPath, props.clipPath],
   ([open]) => {
-    if (open) loadSnapshot()
-    else revokeImageUrl()
+    if (open) loadReplay()
+    else revokeUrls()
   },
 )
 </script>
 
 <template>
-  <el-dialog v-model="visible" :title="title" width="720px" destroy-on-close @closed="revokeImageUrl">
+  <el-dialog v-model="visible" :title="title" width="760px" destroy-on-close @closed="revokeUrls">
+    <el-tabs v-if="hasClip && hasSnapshot" v-model="activeTab" class="replay-tabs">
+      <el-tab-pane label="视频回放" name="video" />
+      <el-tab-pane label="截图" name="snapshot" />
+    </el-tabs>
+
     <div v-loading="loading" class="replay-body">
-      <img v-if="imageUrl" :src="imageUrl" alt="事件回放截图" class="replay-image" />
+      <video
+        v-if="videoUrl && (activeTab === 'video' || (!hasSnapshot && hasClip))"
+        :src="videoUrl"
+        class="replay-video"
+        controls
+        playsinline
+        autoplay
+      />
+      <img
+        v-else-if="imageUrl && (activeTab === 'snapshot' || !hasClip)"
+        :src="imageUrl"
+        alt="事件回放截图"
+        class="replay-image"
+      />
       <el-empty v-else-if="errorText" :description="errorText" />
     </div>
+
+    <p v-if="hasClip && !videoUrl && !loading" class="replay-hint">
+      告警短视频约 10 秒后生成，请关闭后重新打开回放，或等待列表自动刷新。
+    </p>
+
     <div class="replay-meta">
       <p v-if="timestamp"><strong>时间：</strong>{{ timestamp }}</p>
       <p v-if="streamId"><strong>摄像头：</strong>{{ streamId }}</p>
@@ -76,6 +134,10 @@ watch(
 </template>
 
 <style scoped>
+.replay-tabs {
+  margin-bottom: 8px;
+}
+
 .replay-body {
   min-height: 280px;
   display: flex;
@@ -86,10 +148,17 @@ watch(
   overflow: hidden;
 }
 
+.replay-video,
 .replay-image {
   width: 100%;
   max-height: 420px;
   object-fit: contain;
+}
+
+.replay-hint {
+  margin: 8px 0 0;
+  color: #909399;
+  font-size: 12px;
 }
 
 .replay-meta {

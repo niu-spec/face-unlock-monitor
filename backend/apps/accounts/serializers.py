@@ -9,7 +9,7 @@ class FamilyMemberSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FamilyMember
-        fields = ["id", "household", "name", "role", "role_display", "student_id",
+        fields = ["id", "household", "name", "identity", "role", "role_display", "student_id",
                   "face_encoding", "is_active", "created_at", "updated_at"]
         read_only_fields = ["id", "household", "created_at", "updated_at"]
 

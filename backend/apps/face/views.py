@@ -95,6 +95,7 @@ class FaceRegisterView(APIView):
         if not household_id:
             return Response({"error": "请先选择当前家庭"}, status=status.HTTP_400_BAD_REQUEST)
         name = str(request.data.get("name", "")).strip()
+        identity = str(request.data.get("identity", "")).strip()
         role = str(request.data.get("role", "")).strip()
         if not name or role not in dict(FamilyMember.ROLE_CHOICES):
             return Response({"error": "name 或 role 无效"}, status=status.HTTP_400_BAD_REQUEST)
@@ -126,15 +127,17 @@ class FaceRegisterView(APIView):
                         id=member_id, household_id=household_id
                     )
                     member.name = name
+                    member.identity = identity
                     member.role = role
                 else:
                     member = FamilyMember(
-                        household_id=household_id, name=name, role=role
+                        household_id=household_id, name=name, identity=identity, role=role
                     )
                 member.face_encoding = encoding
                 member.save()
                 registered = get_face_service().register_encoding(
-                    member.id, member.name, member.role, encoding, household_id
+                    member.id, member.name, member.role, encoding, household_id,
+                    identity=member.identity,
                 )
         except FamilyMember.DoesNotExist:
             return Response({"error": "家庭成员不存在"}, status=status.HTTP_404_NOT_FOUND)

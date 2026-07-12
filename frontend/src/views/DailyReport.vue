@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import EventReplayDialog from '@/components/EventReplayDialog.vue'
 import { reportApi } from '@/api'
 
 const loading = ref(false)
@@ -8,10 +9,14 @@ const generating = ref(false)
 const reports = ref([])
 const selectedId = ref(null)
 const reportDate = ref('')
+const replayVisible = ref(false)
+const replayItem = ref(null)
 
 const selectedReport = computed(() =>
   reports.value.find((item) => item.id === selectedId.value) ?? null,
 )
+
+const highlights = computed(() => selectedReport.value?.stats?.highlights || [])
 
 const statsCards = computed(() => {
   const stats = selectedReport.value?.stats
@@ -83,6 +88,15 @@ async function copyMarkdown() {
   } catch {
     ElMessage.error('复制失败')
   }
+}
+
+function openHighlightReplay(item) {
+  replayItem.value = item
+  replayVisible.value = true
+}
+
+function canReplayHighlight(item) {
+  return Boolean(item?.snapshot_path || item?.clip_path)
 }
 
 onMounted(() => {
@@ -159,11 +173,43 @@ onMounted(() => {
           </el-col>
         </el-row>
 
+        <el-card v-if="highlights.length" shadow="never" class="highlights-card">
+          <template #header>重点事件回放</template>
+          <el-table :data="highlights" stripe size="small">
+            <el-table-column prop="created_at" label="时间" width="100" />
+            <el-table-column prop="stream_label" label="摄像头" width="90" />
+            <el-table-column prop="type_label" label="类型" width="110" />
+            <el-table-column prop="description" label="描述" min-width="180" show-overflow-tooltip />
+            <el-table-column label="回放" width="80">
+              <template #default="{ row }">
+                <el-button
+                  link
+                  type="primary"
+                  :disabled="!canReplayHighlight(row)"
+                  @click="openHighlightReplay(row)"
+                >
+                  回放
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+
         <pre v-if="selectedReport" class="report-body">{{ selectedReport.summary }}</pre>
         <el-empty v-else description="请选择日期生成日报，或点击左侧历史记录" />
       </el-card>
     </el-col>
   </el-row>
+
+  <EventReplayDialog
+    v-model="replayVisible"
+    :title="replayItem?.type_label || '事件回放'"
+    :description="replayItem?.description || ''"
+    :timestamp="replayItem?.created_at || ''"
+    :stream-id="replayItem?.stream_label || replayItem?.stream_id || ''"
+    :snapshot-path="replayItem?.snapshot_path || ''"
+    :clip-path="replayItem?.clip_path || ''"
+  />
 </template>
 
 <style scoped>
@@ -193,6 +239,10 @@ onMounted(() => {
 }
 
 .stats-row {
+  margin-bottom: 16px;
+}
+
+.highlights-card {
   margin-bottom: 16px;
 }
 

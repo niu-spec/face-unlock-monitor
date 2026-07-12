@@ -1,22 +1,15 @@
 <script setup>
-import { reactive, ref, onMounted, watch, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { reactive, ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import FaceCapture from '@/components/FaceCapture.vue'
-import MobileRegisterQr from '@/components/MobileRegisterQr.vue'
 import { memberApi, householdApi } from '@/api'
 import request from '@/api/request'
-import { isMobileDevice } from '@/utils/device'
-
-const route = useRoute()
-const isMobile = ref(false)
-const fromMobileScan = computed(() => route.query.from === 'mobile')
 
 const activeHouseholdName = ref('')
 const activeHouseholdId = ref(localStorage.getItem('activeHouseholdId') || '')
 
-const form = reactive({ name: '', role: 'adult' })
+const form = reactive({ name: '', identity: '', role: 'adult' })
 const inputMode = ref('camera')
 const previewUrl = ref('')
 const photoFile = ref(null)
@@ -110,6 +103,7 @@ async function onSubmit() {
   submitHint.value = inputMode.value === 'camera' && photoFiles.value.length >= 3 ? '活体检测中...' : ''
   const data = new FormData()
   data.append('name', form.name.trim())
+  data.append('identity', form.identity.trim())
   data.append('role', form.role)
   data.append('household_id', activeHouseholdId.value)
   if (inputMode.value === 'camera' && photoFiles.value.length >= 3) {
@@ -122,6 +116,7 @@ async function onSubmit() {
     await request.post('/api/face/register/', data, { silent: true })
     ElMessage.success('家庭成员与人脸特征已录入')
     form.name = ''
+    form.identity = ''
     clearPhoto()
     loadMembers()
   } catch (err) {
@@ -130,11 +125,13 @@ async function onSubmit() {
       try {
         await memberApi.create({
           name: form.name.trim(),
+          identity: form.identity.trim(),
           role: form.role,
           household_id: Number(activeHouseholdId.value),
         })
         ElMessage.warning('成员已保存；本地未安装人脸识别库，人脸特征需在服务器环境补录')
         form.name = ''
+        form.identity = ''
         clearPhoto()
         loadMembers()
       } catch {
@@ -158,8 +155,6 @@ async function removeMember(member) {
 }
 
 onMounted(() => {
-  isMobile.value = isMobileDevice()
-  if (isMobile.value) inputMode.value = 'camera'
   loadHouseholdInfo()
   loadMembers()
 })
@@ -176,23 +171,6 @@ onMounted(() => {
       style="margin-bottom: 16px"
     />
 
-    <el-alert
-      v-if="fromMobileScan && isMobile"
-      title="已从电脑端扫码进入，请确认已登录管理员账号并选中当前家庭"
-      type="success"
-      show-icon
-      :closable="false"
-      style="margin-bottom: 16px"
-    />
-
-    <el-card v-if="!isMobile" shadow="never" style="margin-bottom: 16px">
-      <template #header>管理员手机录入</template>
-      <p class="section-intro">
-        需要给家人拍照录入时，可由管理员用手机打开下方链接，使用后置摄像头实时截取人脸。
-      </p>
-      <MobileRegisterQr />
-    </el-card>
-
     <el-card shadow="never">
       <template #header>
         <span>家庭成员录入</span>
@@ -202,7 +180,10 @@ onMounted(() => {
       </template>
       <el-form :model="form" label-width="88px" style="max-width: 640px">
         <el-form-item label="姓名">
-          <el-input v-model="form.name" placeholder="如：爸爸" />
+          <el-input v-model="form.name" placeholder="如：张三" />
+        </el-form-item>
+        <el-form-item label="身份">
+          <el-input v-model="form.identity" placeholder="如：爸爸、妈妈" />
         </el-form-item>
         <el-form-item label="角色">
           <el-radio-group v-model="form.role">
@@ -214,7 +195,7 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="录入方式">
           <el-radio-group v-model="inputMode">
-            <el-radio value="camera">{{ isMobile ? '手机摄像头' : '电脑摄像头' }}</el-radio>
+            <el-radio value="camera">摄像头</el-radio>
             <el-radio value="upload">上传照片</el-radio>
           </el-radio-group>
         </el-form-item>
@@ -248,6 +229,11 @@ onMounted(() => {
       <template #header>家庭成员列表</template>
       <el-table v-if="members.length" :data="members" stripe>
         <el-table-column prop="name" label="姓名" />
+        <el-table-column label="身份" width="100">
+          <template #default="{ row }">
+            {{ row.identity || '—' }}
+          </template>
+        </el-table-column>
         <el-table-column label="角色" width="100">
           <template #default="{ row }">
             <el-tag size="small">{{ row.role_display || row.role }}</el-tag>
@@ -276,13 +262,6 @@ onMounted(() => {
 .family-page {
   max-width: 760px;
   margin: 0 auto;
-}
-
-.section-intro {
-  margin: 0 0 12px;
-  color: #606266;
-  font-size: 13px;
-  line-height: 1.6;
 }
 
 @media (max-width: 768px) {

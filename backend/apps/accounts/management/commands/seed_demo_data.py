@@ -41,15 +41,15 @@ class Command(BaseCommand):
         )
 
         members_data = [
-            ("爸爸", "adult"),
-            ("妈妈", "adult"),
-            ("小孩", "child"),
+            ("张三", "爸爸", "adult"),
+            ("李四", "妈妈", "adult"),
+            ("小明", "儿子", "child"),
         ]
-        for name, role in members_data:
+        for name, identity, role in members_data:
             FamilyMember.objects.get_or_create(
                 household=household,
                 name=name,
-                defaults={"role": role, "is_active": True},
+                defaults={"identity": identity, "role": role, "is_active": True},
             )
 
         kitchen_zone_points = [[100, 100], [400, 100], [400, 350], [100, 350]]

@@ -1,22 +1,38 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import EventReplayDialog from '@/components/EventReplayDialog.vue'
 import { eventApi } from '@/api'
 
+const POLL_MS = 3000
 const events = ref([])
 const loading = ref(false)
+const lastUpdated = ref('')
 const replayVisible = ref(false)
 const replayItem = ref(null)
+let pollTimer = null
 
-async function loadEvents() {
-  loading.value = true
+async function loadEvents({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const data = await eventApi.list()
     events.value = data.results || data
+    lastUpdated.value = new Date().toLocaleTimeString()
   } catch {
-    events.value = []
+    if (!silent) events.value = []
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
+  }
+}
+
+function startPolling() {
+  stopPolling()
+  pollTimer = window.setInterval(() => loadEvents({ silent: true }), POLL_MS)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    window.clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
@@ -25,12 +41,25 @@ function openReplay(item) {
   replayVisible.value = true
 }
 
-onMounted(loadEvents)
+onMounted(() => {
+  loadEvents()
+  startPolling()
+})
+
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>
   <el-card shadow="never">
-    <template #header>事件记录</template>
+    <template #header>
+      <div class="header">
+        <div class="header-left">
+          <span>事件记录</span>
+          <span v-if="lastUpdated" class="refresh-meta">更新于 {{ lastUpdated }} · 每 {{ POLL_MS / 1000 }}s 自动刷新</span>
+        </div>
+        <el-button size="small" @click="loadEvents()">刷新</el-button>
+      </div>
+    </template>
 
     <el-table v-if="events.length" :data="events" stripe v-loading="loading">
       <el-table-column label="类型" width="140">
@@ -44,7 +73,7 @@ onMounted(loadEvents)
           <el-button
             link
             type="primary"
-            :disabled="!row.snapshot_path"
+            :disabled="!row.snapshot_path && !row.clip_path"
             @click="openReplay(row)"
           >
             回放
@@ -52,7 +81,7 @@ onMounted(loadEvents)
         </template>
       </el-table-column>
     </el-table>
-    <el-empty v-else description="暂无事件记录" />
+    <el-empty v-else v-loading="loading" description="暂无事件记录" />
 
     <EventReplayDialog
       v-model="replayVisible"
@@ -61,6 +90,27 @@ onMounted(loadEvents)
       :timestamp="replayItem?.created_at || ''"
       :stream-id="replayItem?.stream_id || ''"
       :snapshot-path="replayItem?.snapshot_path || ''"
+      :clip-path="replayItem?.clip_path || ''"
     />
   </el-card>
 </template>
+
+<style scoped>
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.refresh-meta {
+  color: #909399;
+  font-size: 12px;
+}
+</style>

@@ -19,6 +19,13 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 
+def _member_display_name(member: dict[str, Any]) -> str:
+    identity = str(member.get("identity") or "").strip()
+    if identity:
+        return identity
+    return str(member.get("name") or "").strip()
+
+
 def _load_face_recognition():
     """Load the native dependency lazily so Django management commands still start."""
     try:
@@ -94,6 +101,7 @@ class FaceRecognitionService:
                 continue
             self._members[str(member_id)] = {
                 "name": str(member.get("name", member_id)),
+                "identity": str(member.get("identity") or ""),
                 "role": str(member.get("role", "adult")),
                 "household_id": member.get("household_id"),
                 "encoding": [float(value) for value in member["encoding"]],
@@ -128,7 +136,7 @@ class FaceRecognitionService:
             rows = FamilyMember.objects.filter(
                 is_active=True,
                 face_encoding__isnull=False,
-            ).values("id", "name", "role", "household_id", "face_encoding")
+            ).values("id", "name", "identity", "role", "household_id", "face_encoding")
 
             members: dict[str, dict[str, Any]] = {}
             for row in rows:
@@ -138,6 +146,7 @@ class FaceRecognitionService:
                 member_id = str(row["id"])
                 members[member_id] = {
                     "name": str(row.get("name") or member_id),
+                    "identity": str(row.get("identity") or ""),
                     "role": str(row.get("role") or "adult"),
                     "household_id": row.get("household_id"),
                     "encoding": [float(value) for value in encoding],
@@ -194,6 +203,7 @@ class FaceRecognitionService:
         role: str,
         encoding: np.ndarray | list[float],
         household_id: int | None = None,
+        identity: str = "",
     ) -> dict[str, Any]:
         member_id = str(member_id).strip()
         values = np.asarray(encoding, dtype=np.float64)
@@ -204,14 +214,18 @@ class FaceRecognitionService:
         with self._lock:
             self._members[member_id] = {
                 "name": str(name).strip(),
+                "identity": str(identity or "").strip(),
                 "role": str(role).strip(),
                 "household_id": household_id,
                 "encoding": values.astype(float).tolist(),
             }
             self._save_registry()
+        display_name = _member_display_name(self._members[member_id])
         return {
             "member_id": member_id,
-            "name": str(name).strip(),
+            "name": display_name,
+            "real_name": str(name).strip(),
+            "identity": str(identity or "").strip(),
             "role": str(role).strip(),
             "household_id": household_id,
         }
@@ -337,16 +351,27 @@ class FaceRecognitionService:
                     matched_index = best
 
             top, right, bottom, left = (int(round(value / scale)) for value in location)
+            real_name = None
+            identity = ""
             if matched_index is None:
                 member_id, name, role, known = None, "Stranger", "stranger", False
                 stranger_count += 1
             else:
                 member_id = known_ids[matched_index]
                 registered = known_members[matched_index]
-                name, role, known = registered["name"], registered["role"], True
+                real_name = registered["name"]
+                identity = str(registered.get("identity") or "").strip()
+                display_name = _member_display_name(registered)
+                name, role, known = display_name, registered["role"], True
                 if member_id not in seen_members:
                     members.append(
-                        {"member_id": member_id, "name": name, "role": role}
+                        {
+                            "member_id": member_id,
+                            "name": display_name,
+                            "real_name": real_name,
+                            "identity": identity,
+                            "role": role,
+                        }
                     )
                     seen_members.add(member_id)
             faces.append(
@@ -354,6 +379,8 @@ class FaceRecognitionService:
                     "track_id": track_id,
                     "member_id": member_id,
                     "name": name,
+                    "real_name": real_name,
+                    "identity": identity,
                     "role": role,
                     "known": known,
                     "distance": round(distance, 4) if distance is not None else None,
@@ -449,7 +476,9 @@ class FaceRecognitionService:
             return [
                 {
                     "member_id": member_id,
-                    "name": member["name"],
+                    "name": _member_display_name(member),
+                    "real_name": member["name"],
+                    "identity": str(member.get("identity") or ""),
                     "role": member["role"],
                     "household_id": member.get("household_id"),
                 }

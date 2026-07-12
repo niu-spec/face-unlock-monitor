@@ -72,7 +72,14 @@ def collect_daily_stats(household_id: int, report_date: date) -> dict[str, Any]:
 
     highlights = list(
         alerts_qs.order_by("-created_at").values(
-            "type", "level", "stream_id", "description", "created_at"
+            "id",
+            "type",
+            "level",
+            "stream_id",
+            "description",
+            "snapshot_path",
+            "clip_path",
+            "created_at",
         )[:8]
     )
     for item in highlights:
@@ -120,7 +127,7 @@ def build_template_report(stats: dict[str, Any]) -> str:
         advice = "建议保持摄像头与推流在线，继续例行巡检。"
     elif pending > 0:
         risk = f"仍有 {pending} 条告警待处置，请优先处理高等级事件。"
-        advice = "建议登录告警中心完成处置，并回看关键截图。"
+        advice = "建议登录告警中心完成处置，并回看关键截图与短视频。"
     else:
         risk = "今日告警均已处置，风险可控。"
         advice = "建议复盘高发区域与时段，优化禁区与灵敏度配置。"

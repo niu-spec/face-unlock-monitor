@@ -154,7 +154,7 @@ defineExpose({ startCamera, stopCamera, captureFrame, captureSequence, switchCam
   <div class="face-capture" :class="{ mobile: isMobile }">
     <el-alert
       v-if="isMobile"
-      title="手机录入模式：默认使用后置摄像头，对准被录入人面部后连续采集"
+      title="请对准面部，建议使用「连续采集 4 帧」完成活体检测"
       type="info"
       :closable="false"
       show-icon

@@ -110,6 +110,7 @@ class FamilyMember(models.Model):
         null=True,
     )
     name = models.CharField("姓名", max_length=64)
+    identity = models.CharField("身份", max_length=32, blank=True, default="")
     role = models.CharField("角色", max_length=16, choices=ROLE_CHOICES, default="adult")
     student_id = models.CharField("学号/工号", max_length=32, blank=True)
     face_encoding = models.JSONField("人脸编码(128维)", null=True, blank=True)

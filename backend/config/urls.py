@@ -5,7 +5,7 @@ from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
 from rest_framework.permissions import AllowAny
 
-from apps.events.replay_views import snapshot_file
+from apps.events.replay_views import clip_file, snapshot_file
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -29,6 +29,7 @@ urlpatterns = [
     path("api/events/", include("apps.events.urls")),
     path("api/reports/", include("apps.reports.urls")),
     path("api/snapshots/<str:filename>/", snapshot_file, name="snapshot-replay"),
+    path("api/clips/<str:filename>/", clip_file, name="clip-replay"),
     path("api/detection/", include("apps.detection.urls")),  # D-李东礼
     path("api/face/", include("apps.face.urls")),            # C-王梓铭
     path("", include("apps.video_stream.urls")),              # B-苏哲勋：视频流

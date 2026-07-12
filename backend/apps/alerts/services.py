@@ -57,10 +57,11 @@ def create_alert(
         metadata=dict(metadata or {}),
     )
 
+    event = None
     try:
         from apps.events.services import record_event_for_alert
 
-        record_event_for_alert(
+        event = record_event_for_alert(
             alert_type=type,
             stream_id=stream_id,
             description=description,
@@ -72,6 +73,20 @@ def create_alert(
         import logging
 
         logging.getLogger(__name__).exception("同步事件日志失败: %s", type)
+
+    try:
+        from apps.video_stream.clips import enqueue_event_clip
+
+        enqueue_event_clip(
+            alert.id,
+            event.id if event else None,
+            stream_id,
+            type,
+        )
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("启动告警短视频录制失败: %s", type)
 
     return alert
 

@@ -20,6 +20,9 @@ CAPTURE_BUFFER_SIZE = max(1, int(os.getenv("VIDEO_CAPTURE_BUFFER_SIZE", "1")))
 METADATA_CACHE_SECONDS = max(
     0.0, float(os.getenv("VIDEO_METADATA_CACHE_SECONDS", "5"))
 )
+PRESENCE_STALE_SECONDS = max(
+    1.0, float(os.getenv("PRESENCE_STALE_SECONDS", "5"))
+)
 SHOW_VIDEO_HUD = os.getenv("VIDEO_SHOW_HUD", "").lower() in ("1", "true", "yes")
 STREAM_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -77,6 +80,35 @@ def ensure_worker_for_query(stream_id: str | None) -> None:
     if not video_stream_id or not STREAM_ID_PATTERN.match(video_stream_id):
         return
     get_worker(video_stream_id)
+
+
+def worker_presence_is_stale(worker: dict | None) -> bool:
+    """推流停止后 last_frame_at 不再更新，超过阈值则视为无画面。"""
+    if not worker:
+        return True
+    last_frame_at = worker.get("last_frame_at")
+    if last_frame_at is None:
+        return True
+    return (time.time() - float(last_frame_at)) > PRESENCE_STALE_SECONDS
+
+
+def resolve_presence_payload(
+    service,
+    biz_stream_id: str | None,
+    worker: dict | None,
+) -> tuple[dict, bool]:
+    """返回 presence 与 stream_live；停推流后清空过期检测数据。"""
+    from apps.face.services import FaceRecognitionService
+
+    stale = worker_presence_is_stale(worker)
+    if stale:
+        presence = FaceRecognitionService._empty_presence()
+        if biz_stream_id:
+            presence["stream_id"] = biz_stream_id
+        return presence, False
+
+    presence = service.get_presence(biz_stream_id)
+    return presence, True
 
 
 def resolve_household_id_for_stream(stream_id: str) -> int | None:

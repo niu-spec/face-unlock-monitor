@@ -56,6 +56,13 @@ class Alert(models.Model):
     stream_id = models.CharField("视频流ID", max_length=32, default="living_room")
     description = models.TextField("告警描述", blank=True)
     snapshot_path = models.CharField("截图路径", max_length=256, blank=True, help_text="告警时刻的截图文件路径")
+    clip_path = models.CharField(
+        "短视频路径",
+        max_length=256,
+        blank=True,
+        default="",
+        help_text="告警时刻前后截取的 MP4 短视频文件名",
+    )
     status = models.CharField("处理状态", max_length=16, choices=STATUS_CHOICES, default="pending")
     assigned_to = models.ForeignKey(
         "accounts.User", on_delete=models.SET_NULL, null=True, blank=True,

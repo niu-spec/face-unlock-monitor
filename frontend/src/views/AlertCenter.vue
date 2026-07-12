@@ -1,14 +1,18 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import EventReplayDialog from '@/components/EventReplayDialog.vue'
-import { alertApi } from '@/api'
+import { alertApi, videoApi } from '@/api'
 
+const POLL_MS = 3000
 const filterType = ref('')
 const alerts = ref([])
 const loading = ref(false)
+const lastUpdated = ref('')
+const pipelineHint = ref('')
 const replayVisible = ref(false)
 const replayItem = ref(null)
+let pollTimer = null
 
 const typeOptions = [
   { label: '全部', value: '' },
@@ -32,16 +36,52 @@ const typeOptions = [
   { label: '联动紧急', value: 'EMERGENCY' },
 ]
 
-async function loadAlerts() {
-  loading.value = true
+async function loadAlerts({ silent = false } = {}) {
+  if (!silent) loading.value = true
   try {
     const params = filterType.value ? { type: filterType.value } : {}
     const data = await alertApi.list(params)
     alerts.value = data.results || data
+    lastUpdated.value = new Date().toLocaleTimeString()
   } catch {
-    alerts.value = []
+    if (!silent) alerts.value = []
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
+  }
+}
+
+async function checkPipeline() {
+  try {
+    const data = await videoApi.status()
+    const workers = data.workers || {}
+    const active = Object.values(workers).filter((w) => w?.has_frame).length
+    const total = Object.keys(workers).length
+    if (active > 0) {
+      pipelineHint.value = `视频 AI 运行中（${active}/${total || active} 路有画面）`
+      return
+    }
+    if (total > 0) {
+      pipelineHint.value = '视频 worker 已启动但未收到画面，请确认 RTSP 推流正常，并先在「居家监控」打开对应摄像头'
+      return
+    }
+    pipelineHint.value = '视频 AI 未启动，请先在「居家监控」页面打开摄像头以启动检测'
+  } catch {
+    pipelineHint.value = ''
+  }
+}
+
+function startPolling() {
+  stopPolling()
+  pollTimer = window.setInterval(() => {
+    loadAlerts({ silent: true })
+    if (alerts.value.length === 0) checkPipeline()
+  }, POLL_MS)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    window.clearInterval(pollTimer)
+    pollTimer = null
   }
 }
 
@@ -77,19 +117,39 @@ function openReplay(alert) {
   replayVisible.value = true
 }
 
-onMounted(loadAlerts)
+onMounted(async () => {
+  await Promise.all([loadAlerts(), checkPipeline()])
+  startPolling()
+})
+
+onBeforeUnmount(stopPolling)
 </script>
 
 <template>
   <el-card shadow="never">
     <template #header>
       <div class="header">
-        <span>告警中心</span>
-        <el-select v-model="filterType" placeholder="按类型筛选" style="width: 200px" @change="loadAlerts">
-          <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
+        <div class="header-left">
+          <span>告警中心</span>
+          <span v-if="lastUpdated" class="refresh-meta">更新于 {{ lastUpdated }} · 每 {{ POLL_MS / 1000 }}s 自动刷新</span>
+        </div>
+        <div class="header-actions">
+          <el-button size="small" @click="loadAlerts()">刷新</el-button>
+          <el-select v-model="filterType" placeholder="按类型筛选" style="width: 200px" @change="loadAlerts()">
+            <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </div>
       </div>
     </template>
+
+    <el-alert
+      v-if="pipelineHint && alerts.length === 0"
+      :title="pipelineHint"
+      type="info"
+      show-icon
+      :closable="false"
+      style="margin-bottom: 12px"
+    />
 
     <el-table v-if="alerts.length" :data="alerts" stripe v-loading="loading">
       <el-table-column label="类型" width="120">
@@ -128,7 +188,7 @@ onMounted(loadAlerts)
           <el-button
             link
             type="primary"
-            :disabled="!row.snapshot_path"
+            :disabled="!row.snapshot_path && !row.clip_path"
             @click="openReplay(row)"
           >
             回放
@@ -152,7 +212,7 @@ onMounted(loadAlerts)
         </template>
       </el-table-column>
     </el-table>
-    <el-empty v-else description="暂无告警" />
+    <el-empty v-else v-loading="loading" description="暂无告警" />
 
     <EventReplayDialog
       v-model="replayVisible"
@@ -161,6 +221,7 @@ onMounted(loadAlerts)
       :timestamp="replayItem?.created_at || ''"
       :stream-id="replayItem?.stream_id || ''"
       :snapshot-path="replayItem?.snapshot_path || ''"
+      :clip-path="replayItem?.clip_path || ''"
     />
   </el-card>
 </template>
@@ -170,5 +231,24 @@ onMounted(loadAlerts)
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.refresh-meta {
+  color: #909399;
+  font-size: 12px;
 }
 </style>

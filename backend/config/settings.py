@@ -133,6 +133,10 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 SNAPSHOT_ROOT = BASE_DIR / "snapshots"
+CLIP_ROOT = BASE_DIR / "snapshots" / "clips"
+EVENT_CLIP_ENABLED = os.getenv("EVENT_CLIP_ENABLED", "true").lower() in ("1", "true", "yes")
+EVENT_CLIP_SECONDS = int(os.getenv("EVENT_CLIP_SECONDS", "10"))
+FFMPEG_BIN = os.getenv("FFMPEG_BIN", "ffmpeg")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 LIVENESS_CONFIG = {

@@ -18,7 +18,7 @@ const householdMembers = ref([])
 const showMembersDialog = ref(false)
 const currentMembers = ref([])
 const editingMember = ref(null)
-const editMemberForm = ref({ name: '', role: 'adult' })
+const editMemberForm = ref({ name: '', identity: '', role: 'adult' })
 const showApplicationsDialog = ref(false)
 const currentApplications = ref([])
 const currentHouseholdId = ref(0)
@@ -122,7 +122,7 @@ async function loadMembers(household) {
 
 function startEditMember(member) {
   editingMember.value = member
-  editMemberForm.value = { name: member.name, role: member.role }
+  editMemberForm.value = { name: member.name, identity: member.identity || '', role: member.role }
 }
 
 async function saveEditMember() {
@@ -224,16 +224,17 @@ onMounted(loadHouseholds)
               <el-tag v-if="row.id === activeId" type="success" size="small">当前</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" min-width="340">
+          <el-table-column label="操作" min-width="280" fixed="right">
             <template #default="{ row }">
-              <el-button size="small" type="success" @click="enterHousehold(row)">进入</el-button>
-              <el-button v-if="row.id !== activeId" size="small" type="primary" @click="switchHousehold(row)">切换</el-button>
-              <el-button size="small" @click="loadMembers(row)">成员管理</el-button>
-              <el-badge v-if="row.is_admin" :value="pendingCounts[row.id] || 0" :hidden="!pendingCounts[row.id]">
-                <el-button size="small" type="warning" @click="loadApplications(row)">审核</el-button>
-              </el-badge>
-              <el-button v-if="!row.is_admin" size="small" style="color:#999" disabled>审核</el-button>
-              <el-button v-if="row.is_admin" size="small" type="danger" @click="deleteHousehold(row)">删除</el-button>
+              <div class="action-buttons">
+                <el-button size="small" type="success" @click="enterHousehold(row)">进入</el-button>
+                <el-button v-if="row.id !== activeId" size="small" type="primary" plain @click="switchHousehold(row)">切换</el-button>
+                <el-button size="small" plain @click="loadMembers(row)">成员管理</el-button>
+                <el-badge v-if="row.is_admin" :value="pendingCounts[row.id] || 0" :hidden="!pendingCounts[row.id]">
+                  <el-button size="small" type="warning" plain @click="loadApplications(row)">审核</el-button>
+                </el-badge>
+                <el-button v-if="row.is_admin" size="small" type="danger" plain @click="deleteHousehold(row)">删除</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -249,7 +250,28 @@ onMounted(loadHouseholds)
           </h3>
 
           <el-table :data="householdMembers" stripe>
-            <el-table-column prop="name" label="姓名" />
+            <el-table-column label="姓名" min-width="100">
+              <template #default="{ row: m }">
+                <el-input
+                  v-if="editingMember?.id === m.id"
+                  v-model="editMemberForm.name"
+                  size="small"
+                  placeholder="真实姓名"
+                />
+                <span v-else>{{ m.name }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="身份" width="120">
+              <template #default="{ row: m }">
+                <el-input
+                  v-if="editingMember?.id === m.id"
+                  v-model="editMemberForm.identity"
+                  size="small"
+                  placeholder="如：爸爸"
+                />
+                <span v-else>{{ m.identity || '—' }}</span>
+              </template>
+            </el-table-column>
             <el-table-column label="角色" width="120">
               <template #default="{ row: m }">
                 <template v-if="editingMember?.id === m.id">
@@ -359,4 +381,13 @@ onMounted(loadHouseholds)
   gap: 12px;
 }
 .toolbar { display: flex; gap: 8px; flex-shrink: 0; }
+.action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.action-buttons :deep(.el-button) {
+  margin: 0;
+}
 </style>
