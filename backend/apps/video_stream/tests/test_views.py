@@ -78,6 +78,7 @@ class VideoPresenceViewTests(SimpleTestCase):
     def test_presence_returns_lightweight_payload(
         self,
         _mock_workers,
+        _mock_stale,
         _mock_liveness,
         mock_face_service,
         mock_ensure_worker,
