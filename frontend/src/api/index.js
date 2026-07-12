@@ -99,6 +99,11 @@ export const videoApi = {
       params: streamId ? { stream_id: streamId } : {},
       silent: true,
     }),
+  presence: (streamId) =>
+    request.get('/api/video/presence', {
+      params: streamId ? { stream_id: streamId } : {},
+      silent: true,
+    }),
 }
 
 // ── 通知配置 ──────────────────────────────────────────

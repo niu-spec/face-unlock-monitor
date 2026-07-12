@@ -12,6 +12,14 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  presence: {
+    type: Object,
+    default: null,
+  },
+  managedExternally: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const POLL_MS = 600
@@ -160,10 +168,10 @@ function applyPresence(presence) {
 }
 
 async function fetchPresence() {
-  if (!props.active) return
+  if (!props.active || props.managedExternally) return
 
   try {
-    const data = await videoApi.status(props.streamId)
+    const data = await videoApi.presence(props.streamId)
     applyPresence(data.presence)
   } catch {
     faces = []
@@ -173,7 +181,7 @@ async function fetchPresence() {
 
 function startPolling() {
   stopPolling()
-  if (!props.active) return
+  if (!props.active || props.managedExternally) return
   fetchPresence()
   pollTimer = window.setInterval(fetchPresence, POLL_MS)
 }
@@ -193,19 +201,28 @@ function setupResizeObserver() {
 }
 
 watch(
+  () => props.presence,
+  (presence) => {
+    if (presence) applyPresence(presence)
+  },
+  { deep: true },
+)
+
+watch(
   () => [props.streamId, props.active],
   () => {
     faces = []
     frameSize = { ...DEFAULT_FRAME }
     clearCanvas()
-    if (props.active) startPolling()
+    if (props.active && !props.managedExternally) startPolling()
     else stopPolling()
   },
 )
 
 onMounted(() => {
   setupResizeObserver()
-  startPolling()
+  if (props.presence) applyPresence(props.presence)
+  if (!props.managedExternally) startPolling()
 })
 
 onUnmounted(() => {

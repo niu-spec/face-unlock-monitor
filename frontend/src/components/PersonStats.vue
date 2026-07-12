@@ -8,6 +8,14 @@ const props = defineProps({
     type: String,
     default: '',
   },
+  presence: {
+    type: Object,
+    default: null,
+  },
+  managedExternally: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const stats = ref({
@@ -29,10 +37,12 @@ function applyPresence(data) {
 }
 
 async function fetchPresence() {
+  if (props.managedExternally) return
+
   const legacyId = props.streamId ? toZoneStreamId(props.streamId) : ''
 
   try {
-    const videoStatus = await videoApi.status(props.streamId || undefined)
+    const videoStatus = await videoApi.presence(props.streamId || undefined)
     if (applyPresence(videoStatus.presence)) return
   } catch {
     // fall through to legacy endpoint
@@ -46,20 +56,42 @@ async function fetchPresence() {
   }
 }
 
+function startPolling() {
+  stopPolling()
+  if (props.managedExternally) return
+  fetchPresence()
+  timer = window.setInterval(fetchPresence, 3000)
+}
+
+function stopPolling() {
+  if (timer) {
+    window.clearInterval(timer)
+    timer = null
+  }
+}
+
+watch(
+  () => props.presence,
+  (presence) => {
+    if (presence) applyPresence(presence)
+  },
+  { deep: true },
+)
+
 watch(
   () => props.streamId,
   () => {
-    fetchPresence()
+    if (!props.managedExternally) fetchPresence()
   },
 )
 
 onMounted(() => {
-  fetchPresence()
-  timer = window.setInterval(fetchPresence, 3000)
+  if (props.presence) applyPresence(props.presence)
+  startPolling()
 })
 
 onUnmounted(() => {
-  if (timer) window.clearInterval(timer)
+  stopPolling()
 })
 </script>
 

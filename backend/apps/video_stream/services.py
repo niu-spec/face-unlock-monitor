@@ -45,6 +45,7 @@ _VIDEO_TO_BUSINESS_STREAM = {
     "1": "living_room",
     "2": "kitchen",
 }
+_BUSINESS_TO_VIDEO_STREAM = {v: k for k, v in _VIDEO_TO_BUSINESS_STREAM.items()}
 
 
 def _to_business_stream_id(stream_id: str) -> str:
@@ -58,6 +59,24 @@ def resolve_presence_stream_id(stream_id: str | None) -> str | None:
     if not raw:
         return None
     return _to_business_stream_id(raw)
+
+
+def resolve_video_stream_id(stream_id: str | None) -> str | None:
+    """将查询参数解析为视频层 stream_id（1/2），供 RTSP worker 使用。"""
+    raw = (stream_id or "").strip()
+    if not raw:
+        return None
+    if raw in _VIDEO_TO_BUSINESS_STREAM:
+        return raw
+    return _BUSINESS_TO_VIDEO_STREAM.get(raw)
+
+
+def ensure_worker_for_query(stream_id: str | None) -> None:
+    """前端轮询 status 时拉起 RTSP worker，无需打开 MJPEG 预览。"""
+    video_stream_id = resolve_video_stream_id(stream_id)
+    if not video_stream_id or not STREAM_ID_PATTERN.match(video_stream_id):
+        return
+    get_worker(video_stream_id)
 
 
 def resolve_household_id_for_stream(stream_id: str) -> int | None:
