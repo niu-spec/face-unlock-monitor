@@ -999,16 +999,22 @@ class DetectionService:
     # -----------------------------------------------------------------------
 
     def _detect_fire(self, frame: np.ndarray, stream_id: str) -> list[dict]:
-        """检测画面中火焰区域（纯 HSV 颜色 + 饱和度 + 形态滤波）。
+        """检测画面中火焰区域（HSV 颜色 + RGB 暖色双路融合）。
 
-        策略：三区间 HSV 掩码 OR 合并 → 形态滤波 → 连通域去噪 → 面积判定。
-        无独立亮度阈值（颜色掩码 V 下限已足够排除暗区噪点）。
+        策略：HSV 三区间掩码 + RGB 暖色掩码 → OR 合并 → 形态滤波 → 连通域去噪 → 面积判定。
+        RGB 暖色作为兜底：R 通道明显大于 G 和 B 的像素（火焰独有特征）。
         """
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
         h, w = frame.shape[:2]
         frame_area = h * w
 
-        # 三区间火焰颜色掩码
+        # 每 30 帧输出一次诊断
+        if not hasattr(self, "_fire_debug_frame"):
+            self._fire_debug_frame = 0
+        self._fire_debug_frame += 1
+        fire_log = self._fire_debug_frame % 30 == 0
+
+        # ---- HSV 三区间火焰颜色掩码 ----
         mask1 = cv2.inRange(
             hsv,
             np.array(_cfg("FIRE_HSV_LOWER_1")),
@@ -1024,14 +1030,28 @@ class DetectionService:
             np.array(_cfg("FIRE_HSV_LOWER_3")),
             np.array(_cfg("FIRE_HSV_UPPER_3")),
         )
-        color_mask = cv2.bitwise_or(mask1, mask2)
-        color_mask = cv2.bitwise_or(color_mask, mask3)
+        hsv_mask = cv2.bitwise_or(mask1, mask2)
+        hsv_mask = cv2.bitwise_or(hsv_mask, mask3)
+        hsv_area = cv2.countNonZero(hsv_mask)
 
-        # 形态滤波：先去噪再连接断裂区域
+        # ---- RGB 暖色兜底：R 通道显著大于 G 和 B ----
+        r = frame[:, :, 2].astype(np.float32)
+        g = frame[:, :, 1].astype(np.float32)
+        b = frame[:, :, 0].astype(np.float32)
+        rgb_warm = (
+            (r > g * 1.15) & (r > b * 1.3) & (r > 60)
+        )
+        rgb_mask = (rgb_warm * 255).astype(np.uint8)
+        rgb_area = cv2.countNonZero(rgb_mask)
+        color_mask = cv2.bitwise_or(hsv_mask, rgb_mask)
+        combined_area = cv2.countNonZero(color_mask)
+
+        # ---- 形态滤波：先去噪再连接断裂区域 ----
         kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
         kernel_large = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
         mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
         mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel_large, iterations=2)
+        morph_area = cv2.countNonZero(mask)
 
         # 过滤小面积噪点
         min_contour_area = _cfg("FIRE_MIN_CONTOUR_AREA")
@@ -1039,14 +1059,30 @@ class DetectionService:
             mask, connectivity=8
         )
         clean_mask = np.zeros_like(mask)
+        kept = 0
         for label_id in range(1, num_labels):
             area = stats[label_id, cv2.CC_STAT_AREA]
             if area >= min_contour_area:
                 clean_mask[labels == label_id] = 255
+                kept += 1
         mask = clean_mask
 
         fire_area = cv2.countNonZero(mask)
         ratio = fire_area / frame_area if frame_area > 0 else 0
+
+        if fire_log:
+            logger.info(
+                "[FIRE DEBUG] 帧#%d stream=%s frame=%dx%d "
+                "hsv=%.2f%% rgb=%.2f%% combined=%.2f%% "
+                "morph=%.2f%% final=%.2f%%(%dcc,%dpx) threshold=%.1f%%",
+                self._fire_debug_frame, stream_id, w, h,
+                hsv_area / frame_area * 100,
+                rgb_area / frame_area * 100,
+                combined_area / frame_area * 100,
+                morph_area / frame_area * 100,
+                ratio * 100, kept, fire_area,
+                _cfg("FIRE_AREA_THRESHOLD") * 100,
+            )
 
         if ratio >= _cfg("FIRE_AREA_THRESHOLD"):
             if not self._check_cooldown("FIRE", stream_id):
@@ -1136,6 +1172,19 @@ class DetectionService:
                 self._fall_last_seen[tid] = now
         self._cleanup_stale_tracks(active_ids)
 
+        # 每 30 帧输出一次摘要（避免刷屏）
+        if not hasattr(self, "_fall_debug_frame"):
+            self._fall_debug_frame = 0
+        self._fall_debug_frame += 1
+        should_log = self._fall_debug_frame % 30 == 0
+
+        if person_boxes and should_log:
+            logger.info(
+                "[FALL DEBUG] 帧#%d stream=%s boxes=%d counters=%s",
+                self._fall_debug_frame, stream_id, len(person_boxes),
+                dict(self._fall_counter) if self._fall_counter else "{}",
+            )
+
         for box in person_boxes:
             bw, bh = box["w"], box["h"]
             if bw <= 0 or bh <= 0:
@@ -1144,11 +1193,21 @@ class DetectionService:
             tid = box.get("track_id", -1)
             is_horizontal = bw > bh  # 宽 > 高 = 横向姿态
 
+            if should_log:
+                logger.info(
+                    "[FALL DEBUG] tid=%d box=%dx%d ar=%.2f horizontal=%s counter=%d/%d",
+                    tid, bw, bh, bh / bw if bw > 0 else 0,
+                    is_horizontal,
+                    self._fall_counter.get(tid, 0), fall_persist,
+                )
+
             if is_horizontal:
                 self._fall_counter[tid] += 1
 
                 if self._fall_counter[tid] >= fall_persist:
                     if not self._check_cooldown("FALL", stream_id):
+                        if should_log:
+                            logger.info("[FALL DEBUG] tid=%d 已达阈值但冷却中", tid)
                         continue
 
                     msg = f"检测到人员疑似摔倒（宽高比 {bh / bw:.2f}，连续 {fall_persist} 帧）"
@@ -1176,6 +1235,11 @@ class DetectionService:
                     self._fall_counter[tid] = 0
             else:
                 # 直立或蹲姿 → 重置计数器
+                if self._fall_counter.get(tid, 0) > 0 and should_log:
+                    logger.info(
+                        "[FALL DEBUG] tid=%d 恢复直立，计数器 %d→0",
+                        tid, self._fall_counter[tid],
+                    )
                 self._fall_counter[tid] = 0
 
         return results
