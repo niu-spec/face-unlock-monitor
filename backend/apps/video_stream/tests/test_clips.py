@@ -29,7 +29,7 @@ class ClipPathTests(TestCase):
 
     def test_build_rtsp_url_maps_business_stream_id(self):
         with patch(
-            "apps.video_stream.clips.build_rtsp_url",
+            "apps.video_stream.services.build_rtsp_url",
             return_value="rtsp://127.0.0.1:8554/stream/2",
         ) as mocked:
             url = build_rtsp_url_for_clip("kitchen")
