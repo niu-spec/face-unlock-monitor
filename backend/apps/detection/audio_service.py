@@ -41,8 +41,8 @@ logger = logging.getLogger(__name__)
 AUDIO_SERVICE_CONFIG = {
     # 模型
     "AUDIO_MODEL": "panns_cnn14",
-    "AUDIO_CONFIDENCE_THRESHOLD": 0.15,   # 单类置信度阈值（AudioSet 527 类，sigmoid 输出）
-    "AUDIO_MULTI_LABEL_THRESHOLD": 0.12,  # 多标签组合判断使用的宽松阈值
+    "AUDIO_CONFIDENCE_THRESHOLD": 0.10,   # 单类置信度阈值（AudioSet 527 类，sigmoid 输出）
+    "AUDIO_MULTI_LABEL_THRESHOLD": 0.08,  # 多标签组合判断使用的宽松阈值
     # 音频预处理
     "SAMPLE_RATE": 32000,
     "N_FFT": 1024,
@@ -507,13 +507,30 @@ class AudioDetectionService:
         if state is None or not state.get("active"):
             return
 
+        # 每 20 个 chunk 输出一次 PCM 诊断
+        chunk_count = state.setdefault("_chunk_count", 0) + 1
+        state["_chunk_count"] = chunk_count
+        debug_log = chunk_count % 20 == 0
+
+        if debug_log:
+            rms = float(np.sqrt(np.mean(pcm.astype(np.float64) ** 2)))
+            peak = float(np.max(np.abs(pcm)))
+            logger.info(
+                "[AUDIO DEBUG] 帧#%d stream=%s "
+                "pcm_samples=%d pcm_rms=%.4f pcm_peak=%.4f",
+                chunk_count, stream_id, len(pcm), rms, peak,
+            )
+
         try:
-            results = self._classify_chunk(pcm)
+            results = self._classify_chunk(pcm, stream_id=stream_id, debug_log=debug_log)
             state["latest_probs"] = {
                 alert_type: round(prob, 4)
                 for alert_type, prob in results.items()
             }
-            self._process_results(stream_id, results, pcm, timestamp, state)
+            self._process_results(
+                stream_id, results, pcm, timestamp, state,
+                debug_log=debug_log,
+            )
         except Exception as e:
             logger.error(
                 "音频分类异常 (stream=%s): %s", stream_id, e, exc_info=True
@@ -523,7 +540,9 @@ class AudioDetectionService:
     # 音频分类
     # ------------------------------------------------------------------
 
-    def _classify_chunk(self, pcm: np.ndarray) -> dict[str, float]:
+    def _classify_chunk(
+        self, pcm: np.ndarray, *, stream_id: str = "", debug_log: bool = False
+    ) -> dict[str, float]:
         """对一段 PCM 音频执行分类。
 
         Args:
@@ -539,6 +558,13 @@ class AudioDetectionService:
 
         # 2. 计算对数梅尔频谱图
         log_mel = self._compute_log_mel(pcm)
+
+        if debug_log:
+            logger.info(
+                "[AUDIO DEBUG] stream=%s mel_shape=%s mel_min=%.2f mel_max=%.2f mel_mean=%.2f",
+                stream_id, log_mel.shape,
+                float(log_mel.min()), float(log_mel.max()), float(log_mel.mean()),
+            )
 
         # 3. 转换为模型输入 tensor
         # PANNs 期望形状: (batch=1, channel=1, time_frames, mel_bins)
@@ -559,21 +585,63 @@ class AudioDetectionService:
 
         probs = torch.sigmoid(logits).squeeze(0).cpu().numpy()  # (527,)
 
+        # ---- 诊断：原始 527 类 top-5 概率 ----
+        if debug_log:
+            top5_idx = np.argsort(probs)[-5:][::-1]
+            top5_info = []
+            for idx in top5_idx:
+                prob_val = float(probs[idx])
+                if prob_val < 0.01:
+                    break
+                label = (
+                    self._class_labels[idx]
+                    if idx < len(self._class_labels)
+                    else f"idx_{idx}"
+                )
+                top5_info.append(f"{label}={prob_val:.3f}")
+            logger.info(
+                "[AUDIO DEBUG] stream=%s top5: %s",
+                stream_id, " | ".join(top5_info) if top5_info else "(all < 0.01)",
+            )
+
         # 5. 映射到业务告警类型
         results: dict[str, float] = {}
         conf_threshold = _ascfg("AUDIO_CONFIDENCE_THRESHOLD")
 
+        # 诊断：所有目标类别的原始概率
+        target_probs_log = []
         for alert_type, idx_list in self._alert_type_indices.items():
             # 对同一业务类型下的多个 AudioSet 类别取 max 概率
             type_probs = [probs[idx] for idx, _ in idx_list]
             max_prob = float(max(type_probs)) if type_probs else 0.0
+            target_probs_log.append(f"{alert_type}={max_prob:.3f}")
             if max_prob >= conf_threshold:
                 results[alert_type] = max_prob
 
+        if debug_log:
+            logger.info(
+                "[AUDIO DEBUG] stream=%s target_probs: %s | threshold=%.2f",
+                stream_id,
+                " ".join(target_probs_log),
+                conf_threshold,
+            )
+
         # 6. 打架声多标签判定
-        fight_prob = self._detect_fight_multilabel(probs)
+        fight_req_max, fight_ctx_max, fight_prob = self._detect_fight_multilabel(probs)
+        if debug_log:
+            logger.info(
+                "[AUDIO DEBUG] stream=%s fight: req_max=%.3f ctx_max=%.3f fused=%.3f",
+                stream_id, fight_req_max, fight_ctx_max, fight_prob,
+            )
         if fight_prob >= conf_threshold:
             results["FIGHT"] = fight_prob
+
+        if debug_log:
+            logger.info(
+                "[AUDIO DEBUG] stream=%s results: %s",
+                stream_id,
+                ", ".join(f"{k}={v:.3f}" for k, v in results.items()) if results else "(无)",
+            )
 
         return results
 
@@ -632,7 +700,7 @@ class AudioDetectionService:
             frames = max(1, len(pcm) // _ascfg("HOP_LENGTH"))
             return np.zeros((n_mels, frames), dtype=np.float32)
 
-    def _detect_fight_multilabel(self, probs: np.ndarray) -> float:
+    def _detect_fight_multilabel(self, probs: np.ndarray) -> tuple[float, float, float]:
         """多标签组合判定打架/争吵声。
 
         判定逻辑:
@@ -644,7 +712,7 @@ class AudioDetectionService:
             probs: (527,) numpy 数组，各类别 sigmoid 概率。
 
         Returns:
-            打架置信度（0.0 ~ 1.0）。
+            (喊叫类max, 上下文类max, 打架置信度) 三元组。
         """
         loose_threshold = _ascfg("AUDIO_MULTI_LABEL_THRESHOLD")
 
@@ -654,7 +722,7 @@ class AudioDetectionService:
 
         # 必须有喊叫类触发
         if max_shout < loose_threshold:
-            return 0.0
+            return max_shout, 0.0, 0.0
 
         # 上下文类概率
         context_probs = [probs[i] for i in self._fight_context_indices] if self._fight_context_indices else []
@@ -663,7 +731,7 @@ class AudioDetectionService:
         # 加权融合
         fight_confidence = max_shout * 0.7 + max_context * 0.3
 
-        return fight_confidence
+        return max_shout, max_context, fight_confidence
 
     # ------------------------------------------------------------------
     # 结果处理与告警
@@ -676,14 +744,22 @@ class AudioDetectionService:
         pcm: np.ndarray,
         timestamp: float,
         state: dict,
+        *,
+        debug_log: bool = False,
     ):
         """处理分类结果：连续帧确认 → 冷却检查 → 创建告警。"""
         if not results:
             # 无检测 → 衰减所有计数器
             for alert_type in list(state["consecutive"].keys()):
+                old_val = state["consecutive"][alert_type]
                 state["consecutive"][alert_type] = max(
-                    0, state["consecutive"][alert_type] - 1
+                    0, old_val - 1
                 )
+                if debug_log and old_val > 0:
+                    logger.info(
+                        "[AUDIO DEBUG] stream=%s %s 计数器衰减: %d→%d",
+                        stream_id, alert_type, old_val, state["consecutive"][alert_type],
+                    )
             return
 
         for alert_type, confidence in results.items():
@@ -694,11 +770,24 @@ class AudioDetectionService:
             consecutive_key = f"{alert_type}_CONSECUTIVE_FRAMES"
             required_frames = _ascfg(consecutive_key)
 
+            if debug_log:
+                logger.info(
+                    "[AUDIO DEBUG] stream=%s %s 计数器=%d/%d (需要%d帧) conf=%.3f",
+                    stream_id, alert_type,
+                    state["consecutive"][alert_type], required_frames,
+                    required_frames, confidence,
+                )
+
             if state["consecutive"][alert_type] < required_frames:
                 continue
 
             # 检查冷却
             if not self._check_audio_cooldown(alert_type, stream_id, state):
+                if debug_log:
+                    logger.info(
+                        "[AUDIO DEBUG] stream=%s %s 冷却中, 跳过告警",
+                        stream_id, alert_type,
+                    )
                 continue
 
             # 创建告警

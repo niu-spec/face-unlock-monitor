@@ -69,7 +69,7 @@ class AudioDetectionServiceTests(TestCase):
             return_value=np.zeros((64, 301), dtype=np.float32)
         )
         service._alert_type_indices = {}
-        service._detect_fight_multilabel = Mock(return_value=0.0)
+        service._detect_fight_multilabel = Mock(return_value=(0.0, 0.0, 0.0))
         fake_torch = SimpleNamespace(
             from_numpy=FakeTensor,
             no_grad=nullcontext,
