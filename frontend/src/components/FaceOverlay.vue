@@ -20,6 +20,14 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  showRecognitionBoxes: {
+    type: Boolean,
+    default: true,
+  },
+  showAlertBoxes: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const POLL_MS = 600
@@ -212,7 +220,10 @@ function drawOverlay() {
   if (!ctx) return
 
   ctx.clearRect(0, 0, canvas.width, canvas.height)
-  if (!persons.length && !faceBoxes.length && !alertBoxes.length) return
+  if (
+    (!props.showAlertBoxes || !alertBoxes.length)
+    && (!props.showRecognitionBoxes || (!persons.length && !faceBoxes.length))
+  ) return
 
   const videoRect = computeVideoRect(
     canvas.width,
@@ -221,29 +232,35 @@ function drawOverlay() {
     frameSize.height,
   )
 
-  for (const person of persons) {
-    const color = person.trusted === false ? '#ff9800' : '#00e5ff'
-    drawRectBox(ctx, mapBoxToCanvas(videoRect, person), color, personLabel(person), 3)
+  if (props.showRecognitionBoxes) {
+    for (const person of persons) {
+      const color = person.trusted === false ? '#ff9800' : '#00e5ff'
+      drawRectBox(ctx, mapBoxToCanvas(videoRect, person), color, personLabel(person), 3)
+    }
   }
 
-  for (const alert of alertBoxes) {
-    drawRectBox(
-      ctx,
-      mapBoxToCanvas(videoRect, alert),
-      alertColor(alert),
-      alertLabel(alert),
-      3,
-    )
+  if (props.showAlertBoxes) {
+    for (const alert of alertBoxes) {
+      drawRectBox(
+        ctx,
+        mapBoxToCanvas(videoRect, alert),
+        alertColor(alert),
+        alertLabel(alert),
+        3,
+      )
+    }
   }
 
-  for (const face of faceBoxes) {
-    drawRectBox(
-      ctx,
-      mapBoxToCanvas(videoRect, face),
-      faceColor(face),
-      faceLabel(face),
-      2,
-    )
+  if (props.showRecognitionBoxes) {
+    for (const face of faceBoxes) {
+      drawRectBox(
+        ctx,
+        mapBoxToCanvas(videoRect, face),
+        faceColor(face),
+        faceLabel(face),
+        2,
+      )
+    }
   }
 }
 
@@ -336,6 +353,16 @@ watch(
     if (props.active && !props.managedExternally) startPolling()
     else stopPolling()
   },
+)
+
+watch(
+  () => props.showRecognitionBoxes,
+  () => scheduleDraw(),
+)
+
+watch(
+  () => props.showAlertBoxes,
+  () => scheduleDraw(),
 )
 
 onMounted(() => {

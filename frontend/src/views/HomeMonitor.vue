@@ -131,6 +131,7 @@ onBeforeUnmount(() => {
               :key="`overlay-${activeStream}`"
               :stream-id="activeStream"
               :presence="streamPresence"
+              :show-alert-boxes="false"
               managed-externally
               active
             />
