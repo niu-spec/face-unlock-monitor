@@ -1074,41 +1074,41 @@ class DetectionService:
             return []
 
         if not self._check_cooldown("FIRE", stream_id):
-                return []
+            return []
 
-            # 提取最大火焰连通域的包围框
-            find_result = cv2.findContours(
-                mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
-            contours = find_result[0] if len(find_result) == 2 else find_result[1]
-            if contours:
-                largest = max(contours, key=cv2.contourArea)
-                x, y, fw, fh = cv2.boundingRect(largest)
-            else:
-                x, y, fw, fh = 0, 0, w, h
+        # 提取最大火焰连通域的包围框
+        find_result = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        contours = find_result[0] if len(find_result) == 2 else find_result[1]
+        if contours:
+            largest = max(contours, key=cv2.contourArea)
+            x, y, fw, fh = cv2.boundingRect(largest)
+        else:
+            x, y, fw, fh = 0, 0, w, h
 
-            msg = f"检测到疑似火焰区域（占比 {ratio:.1%}，面积 {fire_area}px）"
+        msg = f"检测到疑似火焰区域（占比 {ratio:.1%}，面积 {fire_area}px）"
 
-            self._create_alert(
-                alert_type="FIRE",
-                level="HIGH",
-                stream_id=stream_id,
-                description=msg,
-            )
+        self._create_alert(
+            alert_type="FIRE",
+            level="HIGH",
+            stream_id=stream_id,
+            description=msg,
+        )
 
-            logger.info("Fire detected: %s", msg)
-            return [
-                {
-                    "alert_type": "FIRE",
-                    "message": msg,
-                    "bbox": (x, y, fw, fh),
-                    "severity": "high",
-                    "detail": {
-                        "area_ratio": round(ratio, 3),
-                        "area_px": fire_area,
-                    },
-                }
-            ]
+        logger.info("Fire detected: %s", msg)
+        return [
+            {
+                "alert_type": "FIRE",
+                "message": msg,
+                "bbox": (x, y, fw, fh),
+                "severity": "high",
+                "detail": {
+                    "area_ratio": round(ratio, 3),
+                    "area_px": fire_area,
+                },
+            }
+        ]
 
         return []
 
