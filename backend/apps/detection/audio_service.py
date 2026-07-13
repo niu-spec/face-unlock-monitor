@@ -45,8 +45,8 @@ AUDIO_SERVICE_CONFIG = {
     # 分类型置信度阈值（不同声音类型 PANNs 输出天然差异大）
     "AUDIO_CONFIDENCE_THRESHOLDS": {
         "SCREAM": 0.08,       # 尖叫特征明显，阈值适中
-        "CRYING": 0.04,       # 哭声/婴儿哭概率偏低
-        "GLASS_BREAK": 0.04,  # 玻璃破碎瞬时事件，概率偏低
+        "CRYING": 0.03,       # 哭声/婴儿哭概率偏低
+        "GLASS_BREAK": 0.03,  # 玻璃破碎瞬时事件，概率偏低
         "FIGHT": 0.08,        # 打架多标签已做加权，阈值适中
     },
     # 音频预处理
