@@ -23,26 +23,6 @@ from apps.alerts.models import Alert
 logger = logging.getLogger(__name__)
 
 
-def _find_pending_duplicate(
-    alert_type: str,
-    stream_id: str,
-    household_id: int | None,
-) -> Alert | None:
-    """同家庭、同摄像头、同类型已有待处理告警时不再重复创建。"""
-    if household_id is None:
-        return None
-    return (
-        Alert.objects.filter(
-            household_id=household_id,
-            type=alert_type,
-            stream_id=stream_id,
-            status="pending",
-        )
-        .order_by("-created_at")
-        .first()
-    )
-
-
 def create_alert(
     type: str,
     level: str = "MEDIUM",
@@ -64,19 +44,8 @@ def create_alert(
         snapshot_path: 截图文件路径
 
     Returns:
-        新建或已存在的待处理 Alert 实例
+        新建的 Alert 实例
     """
-    existing = _find_pending_duplicate(type, stream_id, household_id)
-    if existing is not None:
-        logger.info(
-            "跳过重复告警: type=%s stream=%s household=%s existing_id=%s",
-            type,
-            stream_id,
-            household_id,
-            existing.id,
-        )
-        return existing
-
     if not snapshot_path and frame is not None:
         try:
             from apps.video_stream.snapshots import save_event_snapshot
@@ -172,3 +141,25 @@ def ignore_alert(alert_id: int, ignored_by=None) -> Alert:
     """将告警标记为已忽略"""
     alert = Alert.objects.get(id=alert_id)
     return _finalize_alert(alert, "ignored", ignored_by, "ignored_by")
+
+
+def batch_handle_alerts(alert_ids, handled_by=None, *, queryset=None) -> int:
+    """批量处置待处理告警，返回成功更新数量。"""
+    if not alert_ids:
+        return 0
+    base = queryset if queryset is not None else Alert.objects.all()
+    alerts = list(base.filter(id__in=alert_ids, status="pending"))
+    for alert in alerts:
+        _finalize_alert(alert, "handled", handled_by, "handled_by")
+    return len(alerts)
+
+
+def batch_ignore_alerts(alert_ids, ignored_by=None, *, queryset=None) -> int:
+    """批量忽略待处理告警，返回成功更新数量。"""
+    if not alert_ids:
+        return 0
+    base = queryset if queryset is not None else Alert.objects.all()
+    alerts = list(base.filter(id__in=alert_ids, status="pending"))
+    for alert in alerts:
+        _finalize_alert(alert, "ignored", ignored_by, "ignored_by")
+    return len(alerts)

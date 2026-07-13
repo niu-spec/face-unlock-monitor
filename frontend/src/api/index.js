@@ -54,6 +54,8 @@ export const alertApi = {
   list: (params) => request.get('/api/alerts/', { params }),
   handle: (id) => request.put(`/api/alerts/${id}/handle/`),
   ignore: (id) => request.put(`/api/alerts/${id}/ignore/`),
+  batchHandle: (ids) => request.put('/api/alerts/batch-handle/', { ids }),
+  batchIgnore: (ids) => request.put('/api/alerts/batch-ignore/', { ids }),
 }
 
 // ── 事件 ──────────────────────────────────────────────

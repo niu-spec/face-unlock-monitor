@@ -8,7 +8,12 @@ from drf_yasg.utils import swagger_auto_schema
 from apps.households.filters import HouseholdFilterBackend
 from apps.alerts.models import Alert
 from apps.alerts.serializers import AlertSerializer
-from apps.alerts.services import handle_alert, ignore_alert
+from apps.alerts.services import (
+    batch_handle_alerts,
+    batch_ignore_alerts,
+    handle_alert,
+    ignore_alert,
+)
 
 
 class AlertViewSet(viewsets.ModelViewSet):
@@ -66,3 +71,29 @@ class AlertViewSet(viewsets.ModelViewSet):
             return Response({"error": "该告警已处理或已忽略"}, status=status.HTTP_400_BAD_REQUEST)
         updated = ignore_alert(alert.id, ignored_by=request.user)
         return Response(AlertSerializer(updated, context={"request": request}).data)
+
+    @swagger_auto_schema(tags=["告警管理"], operation_description="批量处置告警")
+    @action(detail=False, methods=["put"], url_path="batch-handle")
+    def batch_handle(self, request):
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not ids:
+            return Response({"error": "ids 不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+        qs = self.get_queryset()
+        updated_count = batch_handle_alerts(ids, handled_by=request.user, queryset=qs)
+        return Response({
+            "updated_count": updated_count,
+            "skipped_count": len(ids) - updated_count,
+        })
+
+    @swagger_auto_schema(tags=["告警管理"], operation_description="批量忽略告警")
+    @action(detail=False, methods=["put"], url_path="batch-ignore")
+    def batch_ignore(self, request):
+        ids = request.data.get("ids")
+        if not isinstance(ids, list) or not ids:
+            return Response({"error": "ids 不能为空"}, status=status.HTTP_400_BAD_REQUEST)
+        qs = self.get_queryset()
+        updated_count = batch_ignore_alerts(ids, ignored_by=request.user, queryset=qs)
+        return Response({
+            "updated_count": updated_count,
+            "skipped_count": len(ids) - updated_count,
+        })
