@@ -46,6 +46,14 @@ class User(AbstractUser):
         "钉钉手机号", max_length=16, blank=True, default="",
         help_text="如与登录手机号不同，用于钉钉@手机号提醒",
     )
+    supervisor_dingtalk_user_id = models.CharField(
+        "上级钉钉UserID", max_length=128, blank=True, default="",
+        help_text="告警超时升级时 @ 的上级钉钉 UserID（无需对方注册账号）",
+    )
+    supervisor_dingtalk_mobile = models.CharField(
+        "上级钉钉手机号", max_length=16, blank=True, default="",
+        help_text="告警超时升级时 @ 的上级手机号（与 UserID 二选一或同时填）",
+    )
 
     USERNAME_FIELD = "phone"
     REQUIRED_FIELDS = []

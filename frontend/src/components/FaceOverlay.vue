@@ -28,6 +28,11 @@ const props = defineProps({
     type: Boolean,
     default: true,
   },
+  /** 限定显示的异常框类型；空数组表示不过滤 */
+  alertTypes: {
+    type: Array,
+    default: () => [],
+  },
 })
 
 const POLL_MS = 600
@@ -37,8 +42,8 @@ const ALERT_LABELS = {
   FIRE: '火情',
   FALL: '摔倒',
   INTRUSION: '闯入',
-  PROXIMITY: '过近',
-  LOITER: '停留',
+  PROXIMITY: '靠近',
+  LOITER: '逗留',
 }
 
 const ALERT_COLORS = {
@@ -124,7 +129,10 @@ function normalizeFaceBoxes(presence) {
 }
 
 function normalizeAlertBoxes(presence) {
-  return Array.isArray(presence.alert_boxes) ? presence.alert_boxes : []
+  const boxes = Array.isArray(presence.alert_boxes) ? presence.alert_boxes : []
+  if (!props.alertTypes.length) return boxes
+  const allowed = new Set(props.alertTypes)
+  return boxes.filter((box) => allowed.has(box.alert_type))
 }
 
 function computeVideoRect(containerW, containerH, videoW, videoH) {
@@ -363,6 +371,15 @@ watch(
 watch(
   () => props.showAlertBoxes,
   () => scheduleDraw(),
+)
+
+watch(
+  () => props.alertTypes,
+  () => {
+    if (props.presence) applyPresence(props.presence)
+    else scheduleDraw()
+  },
+  { deep: true },
 )
 
 onMounted(() => {

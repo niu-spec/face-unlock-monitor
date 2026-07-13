@@ -840,17 +840,17 @@ def _start_audio_for_stream(stream_id: str):
         # 获取或创建音频服务（注入联动缓冲器）
         audio_svc = get_audio_service(av_correlation_buffer=av_buffer)
 
-        business_stream_id = _to_business_stream_id(str(stream_id))
-
-        # AudioDetectionService uses business stream IDs as keys. Checking the
-        # raw video ID ("1"/"2") caused later preview requests to attempt a
-        # duplicate audio startup.
-        if business_stream_id in audio_svc._captures:
+        biz_stream_id = _to_business_stream_id(str(stream_id))
+        existing = audio_svc._captures.get(biz_stream_id)
+        if existing is not None and existing.is_running and not existing.is_degraded:
             return
+        if existing is not None and existing.is_degraded:
+            logger.info("音频采集已降级，尝试重新启动: %s", biz_stream_id)
+            audio_svc.stop_for_stream(biz_stream_id)
 
         rtsp_url = build_rtsp_url(stream_id)
         audio_svc.start_for_stream(
-            stream_id=business_stream_id,
+            stream_id=biz_stream_id,
             rtsp_url=rtsp_url,
         )
     except Exception as e:

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import EventReplayDialog from '@/components/EventReplayDialog.vue'
 import { alertApi, videoApi } from '@/api'
@@ -13,7 +13,15 @@ const lastUpdated = ref('')
 const pipelineHint = ref('')
 const replayVisible = ref(false)
 const replayItem = ref(null)
+const selectedRows = ref([])
 let pollTimer = null
+
+const statusOptions = [
+  { label: '全部', value: '' },
+  { label: '待处理', value: 'pending' },
+  { label: '已处理', value: 'handled' },
+  { label: '已忽略', value: 'ignored' },
+]
 
 const typeOptions = [
   { label: '全部', value: '' },
@@ -120,6 +128,62 @@ function openReplay(alert) {
   replayVisible.value = true
 }
 
+function isPendingRow(row) {
+  return row?.status === 'pending'
+}
+
+function onSelectionChange(rows) {
+  selectedRows.value = rows
+}
+
+const selectedPendingIds = computed(() =>
+  selectedRows.value.filter(isPendingRow).map((row) => row.id),
+)
+
+async function batchHandle() {
+  const ids = selectedPendingIds.value
+  if (!ids.length) return
+  try {
+    await ElMessageBox.confirm(`确认批量处置 ${ids.length} 条告警？`, '批量处置', {
+      type: 'warning',
+      confirmButtonText: '处置',
+      cancelButtonText: '取消',
+    })
+    const data = await alertApi.batchHandle(ids)
+    ElMessage.success(`已处置 ${data.updated_count} 条`)
+    selectedRows.value = []
+    loadAlerts()
+  } catch (err) {
+    if (err !== 'cancel') {
+      /* request failed */
+    }
+  }
+}
+
+async function batchIgnore() {
+  const ids = selectedPendingIds.value
+  if (!ids.length) return
+  try {
+    await ElMessageBox.confirm(
+      `确认批量忽略 ${ids.length} 条告警？忽略后不再参与升级通知。`,
+      '批量忽略',
+      {
+        type: 'warning',
+        confirmButtonText: '忽略',
+        cancelButtonText: '取消',
+      },
+    )
+    const data = await alertApi.batchIgnore(ids)
+    ElMessage.success(`已忽略 ${data.updated_count} 条`)
+    selectedRows.value = []
+    loadAlerts()
+  } catch (err) {
+    if (err !== 'cancel') {
+      /* request failed */
+    }
+  }
+}
+
 onMounted(async () => {
   await Promise.all([loadAlerts(), checkPipeline()])
   startPolling()
@@ -137,6 +201,21 @@ onBeforeUnmount(stopPolling)
           <span v-if="lastUpdated" class="refresh-meta">更新于 {{ lastUpdated }} · 每 {{ POLL_MS / 1000 }}s 自动刷新</span>
         </div>
         <div class="header-actions">
+          <el-button
+            size="small"
+            type="primary"
+            :disabled="!selectedPendingIds.length"
+            @click="batchHandle"
+          >
+            批量处置{{ selectedPendingIds.length ? ` (${selectedPendingIds.length})` : '' }}
+          </el-button>
+          <el-button
+            size="small"
+            :disabled="!selectedPendingIds.length"
+            @click="batchIgnore"
+          >
+            批量忽略{{ selectedPendingIds.length ? ` (${selectedPendingIds.length})` : '' }}
+          </el-button>
           <el-button size="small" @click="loadAlerts()">刷新</el-button>
           <el-select v-model="filterStatus" placeholder="按状态筛选" style="width: 120px" @change="loadAlerts()">
             <el-option v-for="item in statusOptions" :key="item.value || 'all'" :label="item.label" :value="item.value" />
@@ -157,7 +236,15 @@ onBeforeUnmount(stopPolling)
       style="margin-bottom: 12px"
     />
 
-    <el-table v-if="alerts.length" :data="alerts" stripe v-loading="loading">
+    <el-table
+      v-if="alerts.length"
+      :data="alerts"
+      stripe
+      row-key="id"
+      v-loading="loading"
+      @selection-change="onSelectionChange"
+    >
+      <el-table-column type="selection" width="48" :selectable="isPendingRow" />
       <el-table-column label="类型" width="120">
         <template #default="{ row }">{{ row.type_display || row.type }}</template>
       </el-table-column>

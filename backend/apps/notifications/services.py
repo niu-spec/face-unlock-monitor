@@ -58,34 +58,38 @@ def resolve_assignee(household_id: int | None, config: DingTalkConfig | None = N
 
     优先级:
     1. DingTalkConfig.default_assignee（显式配置）
-    2. 家庭管理员（HouseholdMembership role=admin）中第一个有 dingtalk_user_id 的
-    3. None（无法通知）
+    2. 家庭管理员中第一个有 dingtalk_user_id 的（用于 @ 提醒）
+    3. 任意家庭管理员（无 dingtalk_user_id 时仍可推送群消息，只是无法 @）
 
     Returns:
         User 对象或 None。
     """
-    if config and config.default_assignee_id and config.default_assignee.dingtalk_user_id:
+    if config and config.default_assignee_id:
         return config.default_assignee
 
     if not household_id:
         return None
 
     from apps.accounts.models import User
-    from apps.households.models import HouseholdMembership
 
-    admin_user = (
-        User.objects
-        .filter(
-            memberships__household_id=household_id,
-            memberships__role="admin",
-        )
-        .exclude(dingtalk_user_id="")
-        .first()
+    admin_qs = User.objects.filter(
+        memberships__household_id=household_id,
+        memberships__role="admin",
     )
-    return admin_user
+    admin_with_dingtalk = admin_qs.exclude(dingtalk_user_id="").first()
+    if admin_with_dingtalk:
+        return admin_with_dingtalk
+    return admin_qs.first()
 
 
-def build_alert_message(alert: Alert, target_user, is_escalation: bool = False) -> str:
+def build_alert_message(
+    alert: Alert,
+    target_user,
+    is_escalation: bool = False,
+    *,
+    at_dingtalk_user_id: str = "",
+    at_dingtalk_mobile: str = "",
+) -> str:
     """构建钉钉 Markdown 告警消息。
 
     Args:
@@ -110,6 +114,10 @@ def build_alert_message(alert: Alert, target_user, is_escalation: bool = False) 
         user_mention = f"\n> 👤 **负责人**: @{target_user.phone}"
     elif target_user:
         user_mention = f"\n> 👤 **负责人**: {target_user.phone}"
+    elif at_dingtalk_user_id:
+        user_mention = f"\n> 👤 **上级**: 钉钉 UserID `{at_dingtalk_user_id}`"
+    elif at_dingtalk_mobile:
+        user_mention = f"\n> 👤 **上级**: @{at_dingtalk_mobile}"
 
     message = f"""# {emoji} 安防告警
 
@@ -128,7 +136,14 @@ def build_alert_message(alert: Alert, target_user, is_escalation: bool = False) 
     return message
 
 
-def send_to_dingtalk(alert: Alert, user, escalation_level: int) -> AlertNotification:
+def send_to_dingtalk(
+    alert: Alert,
+    user,
+    escalation_level: int,
+    *,
+    at_dingtalk_user_id: str | None = None,
+    at_dingtalk_mobile: str | None = None,
+) -> AlertNotification:
     """发送钉钉消息并创建通知记录。
 
     Args:
@@ -146,6 +161,10 @@ def send_to_dingtalk(alert: Alert, user, escalation_level: int) -> AlertNotifica
     if user:
         dingtalk_user_id = user.dingtalk_user_id or ""
         dingtalk_mobile = user.dingtalk_mobile or ""
+    if at_dingtalk_user_id is not None:
+        dingtalk_user_id = at_dingtalk_user_id
+    if at_dingtalk_mobile is not None:
+        dingtalk_mobile = at_dingtalk_mobile
 
     at_user_ids = [dingtalk_user_id] if dingtalk_user_id else []
     at_mobiles = [dingtalk_mobile] if dingtalk_mobile else []
@@ -165,7 +184,13 @@ def send_to_dingtalk(alert: Alert, user, escalation_level: int) -> AlertNotifica
     from apps.notifications.dingtalk import DingTalkClient
 
     client = DingTalkClient(config.webhook_url, config.secret or "")
-    message = build_alert_message(alert, user, is_escalation=is_escalation)
+    message = build_alert_message(
+        alert,
+        user,
+        is_escalation=is_escalation,
+        at_dingtalk_user_id=dingtalk_user_id if not user else "",
+        at_dingtalk_mobile=dingtalk_mobile if not user else "",
+    )
 
     title_prefix = getattr(settings, "DINGTALK", {}).get("MESSAGE_TITLE_PREFIX", "安防告警")
     title = f"{title_prefix} - {alert.get_type_display()}"
@@ -228,18 +253,24 @@ def send_alert_notification(alert_id: int) -> AlertNotification | None:
         return None
 
     assignee = resolve_assignee(alert.household_id, config)
-    if not assignee:
-        logger.info("告警 %s 无法确定主 R，跳过通知", alert_id)
-        return None
+    if assignee and not assignee.dingtalk_user_id:
+        logger.info(
+            "告警 %s 负责人 %s 未配置钉钉 UserID，仍向群推送（不 @）",
+            alert_id,
+            assignee.phone,
+        )
+    elif not assignee:
+        logger.info("告警 %s 无负责人，仍向群推送通知", alert_id)
 
     notification = send_to_dingtalk(alert, assignee, escalation_level=0)
 
-    # 更新 Alert 的通知状态
-    Alert.objects.filter(id=alert.id).update(
-        assigned_to=assignee,
-        escalation_level=0,
-        notified_at=timezone.now(),
-    )
+    update_fields = {
+        "escalation_level": 0,
+        "notified_at": timezone.now(),
+    }
+    if assignee:
+        update_fields["assigned_to"] = assignee
+    Alert.objects.filter(id=alert.id).update(**update_fields)
 
     return notification
 
@@ -248,35 +279,49 @@ def send_alert_notification(alert_id: int) -> AlertNotification | None:
 
 
 def resolve_next_in_chain(alert: Alert):
-    """沿 supervisor 链查找下一个有 dingtalk_user_id 的人。
+    """查找下一级升级目标。
 
-    安全机制:
-    - 检查循环引用（visited set）
-    - 不超过最大升级层级（默认 3）
-    - 跳过没有 dingtalk_user_id 的用户
+    优先级:
+    1. 系统内 supervisor 账号链（可多级）
+    2. 当前负责人填写的上级钉钉 UserID / 手机号（单级）
 
     Returns:
-        User 对象或 None（链已耗尽）。
+        dict(user, dingtalk_user_id, dingtalk_mobile, chain_key) 或 None
     """
     max_level = getattr(settings, "DINGTALK", {}).get("MAX_ESCALATION_LEVEL", 3)
     if alert.escalation_level >= max_level:
         return None
 
     current = alert.assigned_to
-    visited = alert.metadata.get("escalation_chain", [])
-    if current:
-        visited.append(current.id)
+    if not current:
+        return None
 
-    # 沿 supervisor 链向上找
-    while current and current.supervisor_id:
+    chain = alert.metadata.get("escalation_chain", [])
+
+    if current.supervisor_id:
         supervisor = current.supervisor
-        if supervisor.id in visited:
+        if supervisor.id in chain or supervisor.id == current.id:
             logger.warning("升级链检测到循环引用: alert=%s user=%s", alert.id, supervisor.id)
-            break
-        visited.append(supervisor.id)
-        if supervisor.dingtalk_user_id:
-            return supervisor
-        current = supervisor
+            return None
+        return {
+            "user": supervisor,
+            "dingtalk_user_id": None,
+            "dingtalk_mobile": None,
+            "chain_key": supervisor.id,
+        }
+
+    sup_uid = current.supervisor_dingtalk_user_id or ""
+    sup_mobile = current.supervisor_dingtalk_mobile or ""
+    if sup_uid or sup_mobile:
+        chain_key = f"dingtalk:{sup_uid or sup_mobile}"
+        if chain_key in chain:
+            return None
+        return {
+            "user": None,
+            "dingtalk_user_id": sup_uid,
+            "dingtalk_mobile": sup_mobile,
+            "chain_key": chain_key,
+        }
 
     return None
 
@@ -311,32 +356,54 @@ def process_escalation(alert: Alert) -> bool:
         return False  # 未到超时
 
     # 需要升级
-    next_user = resolve_next_in_chain(alert)
-    if not next_user:
+    target = resolve_next_in_chain(alert)
+    if not target:
         alert.metadata["escalation_exhausted"] = True
         alert.metadata["escalation_exhausted_at"] = timezone.now().isoformat()
         alert.save(update_fields=["metadata"])
         logger.info("告警 %s 升级链已耗尽，停止升级", alert.id)
         return False
 
+    next_user = target["user"]
+    at_uid = target["dingtalk_user_id"]
+    at_mobile = target["dingtalk_mobile"]
+    if next_user and not next_user.dingtalk_user_id:
+        logger.info(
+            "告警 %s 升级至 %s，未配置钉钉 UserID，仍向群推送（不 @）",
+            alert.id,
+            next_user.phone,
+        )
+    elif not next_user and not at_uid and not at_mobile:
+        logger.info("告警 %s 升级目标无钉钉信息，仍向群推送（不 @）", alert.id)
+
     # 执行升级
     new_level = alert.escalation_level + 1
-    send_to_dingtalk(alert, next_user, escalation_level=new_level)
+    send_to_dingtalk(
+        alert,
+        next_user,
+        escalation_level=new_level,
+        at_dingtalk_user_id=at_uid,
+        at_dingtalk_mobile=at_mobile,
+    )
 
     # 更新告警
     chain = alert.metadata.get("escalation_chain", [])
-    chain.append(next_user.id)
-    alert.assigned_to = next_user
+    chain.append(target["chain_key"])
+    if next_user:
+        alert.assigned_to = next_user
     alert.escalation_level = new_level
     alert.escalation_last_at = timezone.now()
     alert.metadata["escalation_chain"] = chain
-    alert.save(update_fields=[
-        "assigned_to", "escalation_level", "escalation_last_at", "metadata",
-    ])
+    update_fields = ["escalation_level", "escalation_last_at", "metadata"]
+    if next_user:
+        update_fields.append("assigned_to")
+    alert.save(update_fields=update_fields)
 
     logger.info(
-        "告警 %s 已升级: Lv.%d → %s (dingtalk_id=%s)",
-        alert.id, new_level, next_user.phone, next_user.dingtalk_user_id,
+        "告警 %s 已升级: Lv.%d → %s",
+        alert.id,
+        new_level,
+        next_user.phone if next_user else (at_uid or at_mobile or "group"),
     )
     return True
 

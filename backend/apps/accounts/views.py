@@ -201,6 +201,8 @@ def me_view(request):
         "dingtalk_user_id": user.dingtalk_user_id,
         "dingtalk_mobile": user.dingtalk_mobile,
         "supervisor_id": user.supervisor_id,
+        "supervisor_dingtalk_user_id": user.supervisor_dingtalk_user_id,
+        "supervisor_dingtalk_mobile": user.supervisor_dingtalk_mobile,
         "households": [
             {"id": h["household__id"], "name": h["household__name"], "role": h["role"]}
             for h in households
@@ -219,6 +221,8 @@ def profile_view(request):
         "dingtalk_user_id": user.dingtalk_user_id,
         "dingtalk_mobile": user.dingtalk_mobile,
         "supervisor_id": user.supervisor_id,
+        "supervisor_dingtalk_user_id": user.supervisor_dingtalk_user_id,
+        "supervisor_dingtalk_mobile": user.supervisor_dingtalk_mobile,
     })
 
 
@@ -232,6 +236,8 @@ def update_profile_view(request):
     dingtalk_user_id = request.data.get("dingtalk_user_id", None)
     dingtalk_mobile = request.data.get("dingtalk_mobile", None)
     supervisor_id = request.data.get("supervisor_id", None)
+    supervisor_dingtalk_user_id = request.data.get("supervisor_dingtalk_user_id", None)
+    supervisor_dingtalk_mobile = request.data.get("supervisor_dingtalk_mobile", None)
 
     update_fields = []
     if dingtalk_user_id is not None:
@@ -240,9 +246,17 @@ def update_profile_view(request):
     if dingtalk_mobile is not None:
         user.dingtalk_mobile = dingtalk_mobile
         update_fields.append("dingtalk_mobile")
+    if supervisor_dingtalk_user_id is not None:
+        user.supervisor_dingtalk_user_id = supervisor_dingtalk_user_id
+        update_fields.append("supervisor_dingtalk_user_id")
+    if supervisor_dingtalk_mobile is not None:
+        user.supervisor_dingtalk_mobile = supervisor_dingtalk_mobile
+        update_fields.append("supervisor_dingtalk_mobile")
     if supervisor_id is not None:
         if supervisor_id:
             from apps.accounts.models import User
+            if int(supervisor_id) == user.id:
+                return Response({"error": "不能将自己设为上级"}, status=400)
             try:
                 User.objects.get(id=supervisor_id)
             except User.DoesNotExist:
@@ -259,6 +273,8 @@ def update_profile_view(request):
         "dingtalk_user_id": user.dingtalk_user_id,
         "dingtalk_mobile": user.dingtalk_mobile,
         "supervisor_id": user.supervisor_id,
+        "supervisor_dingtalk_user_id": user.supervisor_dingtalk_user_id,
+        "supervisor_dingtalk_mobile": user.supervisor_dingtalk_mobile,
     })
 
 

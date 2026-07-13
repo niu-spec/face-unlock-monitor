@@ -46,20 +46,26 @@ DETECTION_CONFIG = {
     "FRAME_HEIGHT": 480,
     "FRAME_SKIP": 3,
     # --- 着火（FIRE）---
-    # 火焰颜色范围：三个 HSV 区间覆盖明焰、暗焰与红热区域
-    # Range 1: 红/橙/黄明焰（高饱和度要求，过滤暖色灯光）
-    "FIRE_HSV_LOWER_1": (0, 120, 80),
+    # 策略：颜色宽松捕获火焰像素，面积严格过滤误报。
+    # 三个 HSV 区间 + RGB 暖色确保真火焰不漏检，
+    # 20% 面积阈值 + 连通域过滤挡住暖色灯光/反光。
+    # Range 1: 红/橙/黄明焰
+    "FIRE_HSV_LOWER_1": (0, 55, 80),
     "FIRE_HSV_UPPER_1": (35, 255, 255),
-    # Range 2: 深红/品红区域（高饱和度要求）
-    "FIRE_HSV_LOWER_2": (155, 120, 80),
+    # Range 2: 深红/品红区域
+    "FIRE_HSV_LOWER_2": (150, 55, 80),
     "FIRE_HSV_UPPER_2": (180, 255, 255),
-    # Range 3: 黄/白热焰核心（高亮高饱和）
-    "FIRE_HSV_LOWER_3": (18, 25, 200),
-    "FIRE_HSV_UPPER_3": (38, 120, 255),
-    # 面积阈值（画面占比 ≥ 15% 才触发，过滤远处小火苗/误报）
-    "FIRE_AREA_THRESHOLD": 0.15,
-    # 火焰区域最小连通域（大幅提升，过滤碎片噪点）
+    # Range 3: 黄/白热焰核心（高亮）
+    "FIRE_HSV_LOWER_3": (15, 15, 200),
+    "FIRE_HSV_UPPER_3": (38, 130, 255),
+    # 面积阈值：画面占比 ≥ 20% 才触发（真火焰大面积，灯光反光分散）
+    "FIRE_AREA_THRESHOLD": 0.20,
+    # 火焰区域最小连通域（过滤碎片噪点）
     "FIRE_MIN_CONTOUR_AREA": 500,
+    # 亮核判定：真火焰有高亮核心（V > 200），墙/暖色物体没有
+    # 火焰掩码内亮核像素占比 ≥ 此值才认定为真火
+    "FIRE_BRIGHT_CORE_V": 200,
+    "FIRE_BRIGHT_CORE_RATIO": 0.08,
     # --- 摔倒（FALL）---
     # 双路径判定 + 中心点追踪：
     #   Path 1（标准）: 曾站立 → AR 骤降或中心点大幅下移 → 横向姿态（多帧确认）
@@ -994,7 +1000,7 @@ class DetectionService:
         g = frame[:, :, 1].astype(np.float32)
         b = frame[:, :, 0].astype(np.float32)
         rgb_warm = (
-            (r > g * 1.3) & (r > b * 1.5) & (r > 100)
+            (r > g * 1.2) & (r > b * 1.4) & (r > 80)
         )
         rgb_mask = (rgb_warm * 255).astype(np.uint8)
         rgb_area = cv2.countNonZero(rgb_mask)
@@ -1025,57 +1031,84 @@ class DetectionService:
         fire_area = cv2.countNonZero(mask)
         ratio = fire_area / frame_area if frame_area > 0 else 0
 
+        # ---- 亮核判定：真火焰有高亮核心，墙壁/暖色物体没有 ----
+        # 在火焰掩码内统计高亮像素（V > 200 + 低饱和）占比
+        bright_core_mask = cv2.inRange(
+            hsv,
+            np.array([0, 0, _cfg("FIRE_BRIGHT_CORE_V")]),
+            np.array([255, 100, 255]),
+        )
+        core_in_fire = cv2.bitwise_and(mask, bright_core_mask)
+        core_pixels = cv2.countNonZero(core_in_fire)
+        core_ratio = core_pixels / fire_area if fire_area > 0 else 0
+
         if fire_log:
             logger.info(
                 "[FIRE DEBUG] 帧#%d stream=%s frame=%dx%d "
                 "hsv=%.2f%% rgb=%.2f%% combined=%.2f%% "
-                "morph=%.2f%% final=%.2f%%(%dcc,%dpx) threshold=%.1f%%",
+                "morph=%.2f%% final=%.2f%%(%dcc,%dpx) "
+                "core=%.1f%%(%dpx) threshold=%.1f%% core_min=%.1f%%",
                 self._fire_debug_frame, stream_id, w, h,
                 hsv_area / frame_area * 100,
                 rgb_area / frame_area * 100,
                 combined_area / frame_area * 100,
                 morph_area / frame_area * 100,
                 ratio * 100, kept, fire_area,
+                core_ratio * 100, core_pixels,
                 _cfg("FIRE_AREA_THRESHOLD") * 100,
+                _cfg("FIRE_BRIGHT_CORE_RATIO") * 100,
             )
 
-        if ratio >= _cfg("FIRE_AREA_THRESHOLD"):
-            if not self._check_cooldown("FIRE", stream_id):
-                return []
+        if ratio < _cfg("FIRE_AREA_THRESHOLD"):
+            return []
 
-            # 提取最大火焰连通域的包围框
-            find_result = cv2.findContours(
-                mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-            )
-            contours = find_result[0] if len(find_result) == 2 else find_result[1]
-            if contours:
-                largest = max(contours, key=cv2.contourArea)
-                x, y, fw, fh = cv2.boundingRect(largest)
-            else:
-                x, y, fw, fh = 0, 0, w, h
+        # 亮核占比不足 → 大概率是墙壁/暖色物体，不是真火
+        if core_ratio < _cfg("FIRE_BRIGHT_CORE_RATIO"):
+            if fire_log:
+                logger.info(
+                    "[FIRE DEBUG] 帧#%d 面积达标但亮核不足(%.1f%% < %.1f%%), 跳过",
+                    self._fire_debug_frame,
+                    core_ratio * 100,
+                    _cfg("FIRE_BRIGHT_CORE_RATIO") * 100,
+                )
+            return []
 
-            msg = f"检测到疑似火焰区域（占比 {ratio:.1%}，面积 {fire_area}px）"
+        if not self._check_cooldown("FIRE", stream_id):
+            return []
 
-            self._create_alert(
-                alert_type="FIRE",
-                level="HIGH",
-                stream_id=stream_id,
-                description=msg,
-            )
+        # 提取最大火焰连通域的包围框
+        find_result = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        contours = find_result[0] if len(find_result) == 2 else find_result[1]
+        if contours:
+            largest = max(contours, key=cv2.contourArea)
+            x, y, fw, fh = cv2.boundingRect(largest)
+        else:
+            x, y, fw, fh = 0, 0, w, h
 
-            logger.info("Fire detected: %s", msg)
-            return [
-                {
-                    "alert_type": "FIRE",
-                    "message": msg,
-                    "bbox": (x, y, fw, fh),
-                    "severity": "high",
-                    "detail": {
-                        "area_ratio": round(ratio, 3),
-                        "area_px": fire_area,
-                    },
-                }
-            ]
+        msg = f"检测到疑似火焰区域（占比 {ratio:.1%}，面积 {fire_area}px）"
+
+        self._create_alert(
+            alert_type="FIRE",
+            level="HIGH",
+            stream_id=stream_id,
+            description=msg,
+        )
+
+        logger.info("Fire detected: %s", msg)
+        return [
+            {
+                "alert_type": "FIRE",
+                "message": msg,
+                "bbox": (x, y, fw, fh),
+                "severity": "high",
+                "detail": {
+                    "area_ratio": round(ratio, 3),
+                    "area_px": fire_area,
+                },
+            }
+        ]
 
         return []
 

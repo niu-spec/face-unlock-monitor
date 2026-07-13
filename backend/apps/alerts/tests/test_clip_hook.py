@@ -37,10 +37,10 @@ class CreateAlertClipTests(TestCase):
 class CreateAlertDedupTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(phone="13800000002", password="test")
-        self.household = Household.objects.create(name="去重测试家", created_by=self.user)
+        self.household = Household.objects.create(name="告警测试家", created_by=self.user)
 
     @patch("apps.video_stream.clips.enqueue_event_clip")
-    def test_pending_duplicate_is_not_created_again(self, enqueue_mock):
+    def test_same_type_creates_separate_pending_alerts(self, enqueue_mock):
         first = create_alert(
             type="INTRUSION",
             level="HIGH",
@@ -56,9 +56,9 @@ class CreateAlertDedupTests(TestCase):
             household_id=self.household.id,
         )
 
-        self.assertEqual(first.id, second.id)
-        self.assertEqual(Alert.objects.filter(type="INTRUSION").count(), 1)
-        enqueue_mock.assert_called_once()
+        self.assertNotEqual(first.id, second.id)
+        self.assertEqual(Alert.objects.filter(type="INTRUSION", status="pending").count(), 2)
+        self.assertEqual(enqueue_mock.call_count, 2)
 
     @patch("apps.video_stream.clips.enqueue_event_clip")
     def test_new_alert_after_handled(self, enqueue_mock):
