@@ -68,23 +68,31 @@ DETECTION_CONFIG = {
     # --- 着火（FIRE）---
     # 火焰颜色范围：三个 HSV 区间覆盖明焰、暗焰与红热区域
     # Range 1: 红/橙/黄明焰
-    "FIRE_HSV_LOWER_1": (0, 50, 60),
+    "FIRE_HSV_LOWER_1": (0, 80, 60),
     "FIRE_HSV_UPPER_1": (40, 255, 255),
     # Range 2: 深红/品红区域
-    "FIRE_HSV_LOWER_2": (150, 50, 60),
+    "FIRE_HSV_LOWER_2": (150, 80, 60),
     "FIRE_HSV_UPPER_2": (180, 255, 255),
     # Range 3: 黄/白热焰核心（低饱和高亮）
     "FIRE_HSV_LOWER_3": (15, 15, 180),
     "FIRE_HSV_UPPER_3": (45, 130, 255),
     # 不再使用独立的亮度阈值（颜色掩码的 V 下限已足够）
     # 面积阈值
-    "FIRE_AREA_THRESHOLD": 0.01,
+    "FIRE_AREA_THRESHOLD": 0.02,
     # 火焰区域最小连通域（过滤噪声）
-    "FIRE_MIN_CONTOUR_AREA": 60,
+    "FIRE_MIN_CONTOUR_AREA": 100,
     # --- 摔倒（FALL）---
-    # 极简策略：人体框宽大于高 = 横向姿态 = 疑似摔倒。
-    # 连续 N 帧确认后告警，无需曾站立/速度/位移等前置条件。
-    "FALL_PERSIST_FRAMES": 3,                  # 横向姿态持续帧数
+    # 双路径判定 + 中心点追踪：
+    #   Path 1（标准）: 曾站立 → AR 骤降或中心点大幅下移 → 横向姿态（多帧确认）
+    #   Path 2（快速）: 极端横向姿态（h/w < 0.55），无需曾站立直接告警
+    # 蹲下 vs 摔倒：蹲下变化缓慢且中心点小幅下移，AR 速度不触发骤变阈值。
+    "FALL_ASPECT_RATIO_THRESHOLD": 0.90,       # 高宽比阈值（< 此值视为横向，1.0=正方形）
+    "FALL_EXTREME_AR_THRESHOLD": 0.55,         # 极端高宽比（直接触发，不要求曾站立）
+    "FALL_PERSIST_FRAMES": 5,                  # 横向姿态持续帧数
+    "FALL_MIN_STANDING_RATIO": 1.45,           # 站立高宽比（≥ 此值视为站立）
+    "FALL_CENTER_DROP_RATIO": 0.20,            # 中心点下移比例（> 此值视为骤降）
+    "FALL_AR_VELOCITY_THRESHOLD": 0.50,        # AR 变化速率阈值（/s，dt 上限 0.5s 防丢帧稀释）
+    "FALL_MAX_STANDING_FRAMES_TO_RESET": 2,    # 非站立帧数阈值（降低，避免短暂遮挡重置）
     # --- YOLO 行人检测（优先）---
     "YOLO_MODEL": "yolov8n.pt",
     "YOLO_IMGSZ": 480,
@@ -456,6 +464,7 @@ class DetectionService:
         self._cooldown: dict[str, dict[str, float]] = defaultdict(dict)
         self._fall_counter: dict[int, int] = defaultdict(int)
         self._fall_last_seen: dict[int, float] = {}   # 摔倒状态最后活跃时间（秒级 epoch）
+        self._person_history: dict[int, dict] = {}    # 人物历史状态（AR/中心点/站立追踪）
         self._loiter_since: dict[tuple[int, int], float] = {}
         self._current_snapshot_frame = None
         self._current_household_id: int | None = None
@@ -1245,18 +1254,39 @@ class DetectionService:
         for tid in stale_fall_ids:
             self._fall_counter.pop(tid, None)
             self._fall_last_seen.pop(tid, None)
+            self._person_history.pop(tid, None)
 
     def _detect_fall(
         self, person_boxes: list[dict], stream_id: str
     ) -> list[dict]:
-        """检测人员摔倒 — 极简策略。
+        """检测人员摔倒 — 双路径 + 中心点追踪。
 
-        判定：人体框宽大于高（横向姿态）连续 FALL_PERSIST_FRAMES 帧 → 告警。
-        无前置条件（不要求曾站立/速度/位移），蹲下（近似方形）不会触发。
+        Path 1 — 标准摔倒（曾站立 → 姿态骤变 → 横向姿态）:
+          条件 a: 高宽比 h/w < FALL_ASPECT_RATIO_THRESHOLD（横向）
+          条件 b: 曾站立（h/w ≥ FALL_MIN_STANDING_RATIO 持续 ≥ 3 帧）
+          条件 c: 骤变确认（AR 变化速率 > 阈值 或 中心点大幅下移）
+          持续 FALL_PERSIST_FRAMES 帧后告警。
+
+        Path 2 — 极端姿态（无需曾站立，直接触发）:
+          条件: h/w < FALL_EXTREME_AR_THRESHOLD（人几乎平躺）
+          持续 FALL_PERSIST_FRAMES 帧后告警。
+
+        蹲下 vs 摔倒区分:
+          - 蹲下: h/w ≈ 0.8~1.2, 变化缓慢, 中心点小幅下移 → 递减计数器
+          - 摔倒: h/w < 0.9 + 骤变信号, 或 h/w < 0.55 → 告警
+
+        防丢帧: AR 速度计算时 dt 上限 0.5s，避免 YOLO 间歇丢帧稀释速度信号。
         """
         results = []
         now = time.time()
+
+        fall_ar_threshold = _cfg("FALL_ASPECT_RATIO_THRESHOLD")
+        fall_extreme_ar = _cfg("FALL_EXTREME_AR_THRESHOLD")
+        fall_min_standing = _cfg("FALL_MIN_STANDING_RATIO")
         fall_persist = _cfg("FALL_PERSIST_FRAMES")
+        fall_ar_velocity = _cfg("FALL_AR_VELOCITY_THRESHOLD")
+        fall_center_drop = _cfg("FALL_CENTER_DROP_RATIO")
+        max_standing_reset = _cfg("FALL_MAX_STANDING_FRAMES_TO_RESET")
 
         active_ids = {box.get("track_id", -1) for box in person_boxes}
         for tid in active_ids:
@@ -1264,7 +1294,7 @@ class DetectionService:
                 self._fall_last_seen[tid] = now
         self._cleanup_stale_tracks(active_ids)
 
-        # 每 30 帧输出一次摘要（避免刷屏）
+        # 每 30 帧输出一次诊断摘要
         if not hasattr(self, "_fall_debug_frame"):
             self._fall_debug_frame = 0
         self._fall_debug_frame += 1
@@ -1272,9 +1302,10 @@ class DetectionService:
 
         if person_boxes and should_log:
             logger.info(
-                "[FALL DEBUG] 帧#%d stream=%s boxes=%d counters=%s",
+                "[FALL DEBUG] 帧#%d stream=%s boxes=%d counters=%s history=%d",
                 self._fall_debug_frame, stream_id, len(person_boxes),
                 dict(self._fall_counter) if self._fall_counter else "{}",
+                len(self._person_history),
             )
 
         for box in person_boxes:
@@ -1282,27 +1313,97 @@ class DetectionService:
             if bw <= 0 or bh <= 0:
                 continue
 
+            aspect_ratio = bh / bw  # h/w
             tid = box.get("track_id", -1)
-            is_horizontal = bw > bh  # 宽 > 高 = 横向姿态
+            center_y = box["y"] + bh // 2
+
+            # ---- 初始化 / 获取该人物历史状态 ----
+            if tid not in self._person_history:
+                self._person_history[tid] = {
+                    "prev_ar": aspect_ratio,
+                    "prev_cy": center_y,
+                    "prev_h": bh,
+                    "prev_time": now,
+                    "was_standing": False,
+                    "standing_frames": 0,
+                }
+
+            hist = self._person_history[tid]
+            dt = now - hist.get("prev_time", now)
+            # 上限 0.5s：YOLO 丢 3-5 帧时不稀释 AR 速度信号
+            effective_dt = min(dt, 0.5)
+
+            # ---- 追踪站立历史 ----
+            if aspect_ratio >= fall_min_standing:
+                hist["standing_frames"] += 1
+                if hist["standing_frames"] >= 3:
+                    hist["was_standing"] = True
+            else:
+                hist["standing_frames"] = max(0, hist["standing_frames"] - 1)
+                if hist["standing_frames"] <= 0:
+                    hist["was_standing"] = False
+
+            # ---- 计算骤变信号 ----
+            ar_velocity = 0.0
+            if hist["prev_ar"] > 0 and effective_dt > 0.01:
+                ar_velocity = (hist["prev_ar"] - aspect_ratio) / effective_dt
+            is_rapid_drop = ar_velocity > fall_ar_velocity
+
+            cy_drop = center_y - hist["prev_cy"]
+            ref_h = max(bh, hist.get("prev_h", bh))
+            center_drop_ratio = cy_drop / ref_h if ref_h > 0 else 0
+            is_center_dropped = center_drop_ratio > fall_center_drop
+
+            is_sudden = is_rapid_drop or is_center_dropped
+            is_low_ar = aspect_ratio < fall_ar_threshold
+            is_extreme = aspect_ratio < fall_extreme_ar
+            is_fallen_pose = bw > bh  # 宽大于高 = 横向姿态
+
+            # ---- 判定 ----
+            path1 = (
+                is_low_ar and is_fallen_pose
+                and hist["was_standing"] and is_sudden
+            )
+            path2 = is_extreme and is_fallen_pose
 
             if should_log:
                 logger.info(
-                    "[FALL DEBUG] tid=%d box=%dx%d ar=%.2f horizontal=%s counter=%d/%d",
-                    tid, bw, bh, bh / bw if bw > 0 else 0,
-                    is_horizontal,
+                    "[FALL DEBUG] tid=%d box=%dx%d ar=%.2f dt=%.2fs "
+                    "ar_vel=%.2f cy_drop=%.1f%% "
+                    "standing=%s(%d) low=%s extreme=%s "
+                    "rapid_drop=%s center_dropped=%s "
+                    "path1=%s path2=%s counter=%d/%d",
+                    tid, bw, bh, aspect_ratio, dt,
+                    ar_velocity, center_drop_ratio * 100,
+                    hist["was_standing"], hist["standing_frames"],
+                    is_low_ar, is_extreme,
+                    is_rapid_drop, is_center_dropped,
+                    path1, path2,
                     self._fall_counter.get(tid, 0), fall_persist,
                 )
 
-            if is_horizontal:
+            if path1 or path2:
+                trigger_path = "extreme_pose" if (path2 and not path1) else "standard"
                 self._fall_counter[tid] += 1
 
                 if self._fall_counter[tid] >= fall_persist:
                     if not self._check_cooldown("FALL", stream_id):
                         if should_log:
                             logger.info("[FALL DEBUG] tid=%d 已达阈值但冷却中", tid)
+                        # 仍更新历史，避免 dt 累积
+                        hist["prev_ar"] = aspect_ratio
+                        hist["prev_cy"] = center_y
+                        hist["prev_h"] = bh
+                        hist["prev_time"] = now
                         continue
 
-                    msg = f"检测到人员疑似摔倒（宽高比 {bh / bw:.2f}，连续 {fall_persist} 帧）"
+                    msg = (
+                        f"检测到人员疑似摔倒"
+                        f"（高宽比 {aspect_ratio:.2f}, "
+                        f"路径 {trigger_path}, "
+                        f"AR 速率 {ar_velocity:.1f}/s, "
+                        f"中心下移 {center_drop_ratio:.1%}）"
+                    )
 
                     self._create_alert(
                         alert_type="FALL",
@@ -1311,7 +1412,10 @@ class DetectionService:
                         description=msg,
                     )
 
-                    logger.info("Fall detected (track=%d): %s", tid, msg)
+                    logger.info(
+                        "Fall detected [%s] (track=%d): %s",
+                        trigger_path, tid, msg,
+                    )
                     results.append(
                         {
                             "alert_type": "FALL",
@@ -1319,20 +1423,36 @@ class DetectionService:
                             "bbox": (box["x"], box["y"], bw, bh),
                             "severity": "high",
                             "detail": {
-                                "aspect_ratio": round(bh / bw, 2),
+                                "aspect_ratio": round(aspect_ratio, 2),
                                 "track_id": tid,
+                                "ar_velocity": round(ar_velocity, 2),
+                                "center_drop_ratio": round(center_drop_ratio, 2),
+                                "trigger_path": trigger_path,
                             },
                         }
                     )
+                    # 告警后重置计数器和历史（避免连续重复告警）
                     self._fall_counter[tid] = 0
+                    hist["prev_ar"] = aspect_ratio
+                    hist["standing_frames"] = 0
+                    hist["was_standing"] = False
+            elif is_low_ar and is_fallen_pose and not is_sudden:
+                # 低高宽比但变化缓慢 → 蹲下/坐下，递减计数器
+                self._fall_counter[tid] = max(0, self._fall_counter[tid] - 1)
             else:
-                # 直立或蹲姿 → 重置计数器
+                # 站起来了 → 重置计数器
                 if self._fall_counter.get(tid, 0) > 0 and should_log:
                     logger.info(
                         "[FALL DEBUG] tid=%d 恢复直立，计数器 %d→0",
                         tid, self._fall_counter[tid],
                     )
                 self._fall_counter[tid] = 0
+
+            # ---- 更新历史 ----
+            hist["prev_ar"] = aspect_ratio
+            hist["prev_cy"] = center_y
+            hist["prev_h"] = bh
+            hist["prev_time"] = now
 
         return results
 
