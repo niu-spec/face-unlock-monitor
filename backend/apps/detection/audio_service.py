@@ -41,8 +41,14 @@ logger = logging.getLogger(__name__)
 AUDIO_SERVICE_CONFIG = {
     # 模型
     "AUDIO_MODEL": "panns_cnn14",
-    "AUDIO_CONFIDENCE_THRESHOLD": 0.10,   # 单类置信度阈值（AudioSet 527 类，sigmoid 输出）
     "AUDIO_MULTI_LABEL_THRESHOLD": 0.08,  # 多标签组合判断使用的宽松阈值
+    # 分类型置信度阈值（不同声音类型 PANNs 输出天然差异大）
+    "AUDIO_CONFIDENCE_THRESHOLDS": {
+        "SCREAM": 0.08,       # 尖叫特征明显，阈值适中
+        "CRYING": 0.04,       # 哭声/婴儿哭概率偏低
+        "GLASS_BREAK": 0.04,  # 玻璃破碎瞬时事件，概率偏低
+        "FIGHT": 0.08,        # 打架多标签已做加权，阈值适中
+    },
     # 音频预处理
     "SAMPLE_RATE": 32000,
     "N_FFT": 1024,
@@ -603,9 +609,9 @@ class AudioDetectionService:
                 stream_id, " | ".join(top5_info) if top5_info else "(all < 0.01)",
             )
 
-        # 5. 映射到业务告警类型
+        # 5. 映射到业务告警类型（分类型阈值）
         results: dict[str, float] = {}
-        conf_threshold = _ascfg("AUDIO_CONFIDENCE_THRESHOLD")
+        thresholds = _ascfg("AUDIO_CONFIDENCE_THRESHOLDS")
 
         # 诊断：所有目标类别的原始概率
         target_probs_log = []
@@ -613,26 +619,27 @@ class AudioDetectionService:
             # 对同一业务类型下的多个 AudioSet 类别取 max 概率
             type_probs = [probs[idx] for idx, _ in idx_list]
             max_prob = float(max(type_probs)) if type_probs else 0.0
-            target_probs_log.append(f"{alert_type}={max_prob:.3f}")
-            if max_prob >= conf_threshold:
+            threshold = thresholds.get(alert_type, 0.10)
+            target_probs_log.append(f"{alert_type}={max_prob:.3f}(>{threshold})")
+            if max_prob >= threshold:
                 results[alert_type] = max_prob
 
         if debug_log:
             logger.info(
-                "[AUDIO DEBUG] stream=%s target_probs: %s | threshold=%.2f",
+                "[AUDIO DEBUG] stream=%s target_probs: %s",
                 stream_id,
                 " ".join(target_probs_log),
-                conf_threshold,
             )
 
         # 6. 打架声多标签判定
         fight_req_max, fight_ctx_max, fight_prob = self._detect_fight_multilabel(probs)
+        fight_threshold = thresholds.get("FIGHT", 0.08)
         if debug_log:
             logger.info(
-                "[AUDIO DEBUG] stream=%s fight: req_max=%.3f ctx_max=%.3f fused=%.3f",
-                stream_id, fight_req_max, fight_ctx_max, fight_prob,
+                "[AUDIO DEBUG] stream=%s fight: req_max=%.3f ctx_max=%.3f fused=%.3f(>%.2f)",
+                stream_id, fight_req_max, fight_ctx_max, fight_prob, fight_threshold,
             )
-        if fight_prob >= conf_threshold:
+        if fight_prob >= fight_threshold:
             results["FIGHT"] = fight_prob
 
         if debug_log:
