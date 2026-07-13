@@ -131,7 +131,7 @@ onBeforeUnmount(() => {
               :key="`overlay-${activeStream}`"
               :stream-id="activeStream"
               :presence="streamPresence"
-              :show-alert-boxes="false"
+              :alert-types="['FIRE', 'FALL']"
               managed-externally
               active
             />
@@ -139,7 +139,7 @@ onBeforeUnmount(() => {
 
           <div class="video-footer">
             <span class="video-hint">
-              低延迟 WebRTC 预览 · AI 人物/人脸/异常标注由 Canvas 叠加（后端 RTSP 检测）
+              低延迟 WebRTC 预览 · Canvas 叠加人物/人脸/摔倒/火情框（后端 RTSP 检测）
             </span>
             <el-button
               link

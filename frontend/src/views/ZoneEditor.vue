@@ -292,7 +292,7 @@ onBeforeUnmount(() => {
         type="info"
         :closable="false"
         show-icon
-        title="保存后蓝色绘制框会消失，红色区域为已生效禁区。Canvas 会叠加人物/人脸/闯入等检测框，便于对照区域是否生效。"
+        title="保存后蓝色绘制框会消失，红色区域为已生效禁区。Canvas 会叠加闯入/靠近/逗留检测框，便于对照区域是否生效。"
       />
       <el-card shadow="never">
         <template #header>
@@ -319,6 +319,7 @@ onBeforeUnmount(() => {
             :stream-id="activeStream"
             :presence="streamPresence"
             :show-recognition-boxes="false"
+            :alert-types="['INTRUSION', 'PROXIMITY', 'LOITER']"
             managed-externally
             active
           />
