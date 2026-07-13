@@ -121,3 +121,21 @@ class EscalationNotificationTests(TestCase):
         self.alert.refresh_from_db()
         self.assertEqual(self.alert.escalation_level, 1)
         self.assertEqual(self.alert.assigned_to_id, self.supervisor.id)
+
+    @patch("apps.notifications.dingtalk.DingTalkClient.send_markdown")
+    def test_escalation_with_supervisor_dingtalk_user_id(self, send_markdown_mock):
+        self.user.supervisor = None
+        self.user.supervisor_dingtalk_user_id = "manager001"
+        self.user.save(update_fields=["supervisor", "supervisor_dingtalk_user_id"])
+
+        send_markdown_mock.return_value = {"errcode": 0, "errmsg": "ok"}
+
+        triggered = process_escalation(self.alert)
+
+        self.assertTrue(triggered)
+        send_markdown_mock.assert_called_once()
+        self.assertEqual(send_markdown_mock.call_args.kwargs.get("at_user_ids"), ["manager001"])
+
+        self.alert.refresh_from_db()
+        self.assertEqual(self.alert.escalation_level, 1)
+        self.assertEqual(self.alert.assigned_to_id, self.user.id)

@@ -1,14 +1,13 @@
 <script setup>
 import { reactive, ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { authApi, householdApi } from '@/api'
+import { authApi } from '@/api'
 
 const currentPhone = ref('')
-const currentUserId = ref(null)
 const dingtalkUserId = ref('')
 const dingtalkMobile = ref('')
-const supervisorId = ref(null)
-const supervisorOptions = ref([])
+const supervisorDingtalkUserId = ref('')
+const supervisorDingtalkMobile = ref('')
 const changing = ref(false)
 const smsCountdown = ref(0)
 const savingProfile = ref(false)
@@ -18,37 +17,15 @@ const form = reactive({
   smsCode: '',
 })
 
-async function loadSupervisorOptions(householdId) {
-  if (!householdId) {
-    supervisorOptions.value = []
-    return
-  }
-  try {
-    const members = await householdApi.getMembers(householdId)
-    supervisorOptions.value = (members || [])
-      .filter((m) => m.user_id !== currentUserId.value)
-      .map((m) => ({
-        value: m.user_id,
-        label: `${m.user_phone}${m.role === 'admin' ? '（管理员）' : ''}`,
-      }))
-  } catch {
-    supervisorOptions.value = []
-  }
-}
-
 async function loadProfile() {
   try {
     const data = await authApi.getMe()
-    currentUserId.value = data.id
     currentPhone.value = data.phone || ''
     dingtalkUserId.value = data.dingtalk_user_id || ''
     dingtalkMobile.value = data.dingtalk_mobile || ''
-    supervisorId.value = data.supervisor_id || null
+    supervisorDingtalkUserId.value = data.supervisor_dingtalk_user_id || ''
+    supervisorDingtalkMobile.value = data.supervisor_dingtalk_mobile || ''
     localStorage.setItem('user', JSON.stringify({ phone: data.phone, id: data.id }))
-
-    const householdId = localStorage.getItem('activeHouseholdId')
-      || data.households?.[0]?.id
-    await loadSupervisorOptions(householdId)
   } catch { /* ignore */ }
 }
 
@@ -76,7 +53,6 @@ async function changePhone() {
     await authApi.changePhone({ phone: form.phone, sms_code: form.smsCode })
     ElMessage.success('手机号已更换')
     currentPhone.value = form.phone
-    localStorage.setItem('user', JSON.stringify({ phone: form.phone, id: currentUserId.value }))
     changing.value = false
     form.phone = ''
     form.smsCode = ''
@@ -95,7 +71,8 @@ async function saveProfile() {
     await authApi.updateProfile({
       dingtalk_user_id: dingtalkUserId.value,
       dingtalk_mobile: dingtalkMobile.value,
-      supervisor_id: supervisorId.value,
+      supervisor_dingtalk_user_id: supervisorDingtalkUserId.value,
+      supervisor_dingtalk_mobile: supervisorDingtalkMobile.value,
     })
     ElMessage.success('个人信息已保存')
   } catch (err) {
@@ -113,42 +90,41 @@ onMounted(loadProfile)
     <el-card shadow="never">
       <template #header>个人信息</template>
 
-      <!-- 当前信息 -->
-      <el-form v-if="!changing" label-width="100px" style="max-width: 480px">
+      <el-form v-if="!changing" label-width="120px" style="max-width: 520px">
         <el-form-item label="手机号">
           <span style="font-size: 16px; font-weight: 500">{{ currentPhone }}</span>
         </el-form-item>
+
+        <el-divider content-position="left">我的钉钉（首次通知 @ 我）</el-divider>
+
         <el-form-item label="钉钉 UserID">
-          <el-input v-model="dingtalkUserId" placeholder="钉钉企业内部UserID，用于@提醒" />
+          <el-input v-model="dingtalkUserId" placeholder="钉钉企业内部 UserID" />
         </el-form-item>
         <el-form-item label="钉钉手机号">
-          <el-input v-model="dingtalkMobile" placeholder="如与登录手机号不同，用于@提醒" />
+          <el-input v-model="dingtalkMobile" placeholder="可选，与 UserID 二选一或同时填" />
         </el-form-item>
-        <el-form-item label="直属上级">
-          <el-select
-            v-model="supervisorId"
-            clearable
-            placeholder="选择告警升级时的上级（同家庭成员）"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="opt in supervisorOptions"
-              :key="opt.value"
-              :label="opt.label"
-              :value="opt.value"
-            />
-          </el-select>
-          <div style="color: #999; font-size: 12px; margin-top: 4px">
-            告警超时未处理时将通知上级；未填钉钉 UserID 时仍发群消息，只是不 @
+
+        <el-divider content-position="left">上级钉钉（超时升级 @ 上级）</el-divider>
+
+        <el-form-item label="上级 UserID">
+          <el-input v-model="supervisorDingtalkUserId" placeholder="上级的钉钉 UserID，无需对方注册账号" />
+        </el-form-item>
+        <el-form-item label="上级手机号">
+          <el-input v-model="supervisorDingtalkMobile" placeholder="可选，用于 @ 上级手机号" />
+        </el-form-item>
+        <el-form-item>
+          <div style="color: #999; font-size: 12px; line-height: 1.6">
+            告警超时未处理时，系统会向群推送升级消息并 @ 上级。<br>
+            上级不必是本系统用户，填对方的钉钉 UserID 即可。
           </div>
         </el-form-item>
+
         <el-form-item>
           <el-button type="primary" :loading="savingProfile" @click="saveProfile">保存</el-button>
           <el-button @click="changing = true">更换手机号</el-button>
         </el-form-item>
       </el-form>
 
-      <!-- 更换手机号 -->
       <el-form v-else :model="form" label-width="100px" style="max-width: 480px">
         <el-form-item label="原手机号">
           <span style="color: #999">{{ currentPhone }}</span>
