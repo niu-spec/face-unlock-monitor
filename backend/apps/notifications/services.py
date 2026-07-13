@@ -58,31 +58,28 @@ def resolve_assignee(household_id: int | None, config: DingTalkConfig | None = N
 
     优先级:
     1. DingTalkConfig.default_assignee（显式配置）
-    2. 家庭管理员（HouseholdMembership role=admin）中第一个有 dingtalk_user_id 的
-    3. None（无法通知）
+    2. 家庭管理员中第一个有 dingtalk_user_id 的（用于 @ 提醒）
+    3. 任意家庭管理员（无 dingtalk_user_id 时仍可推送群消息，只是无法 @）
 
     Returns:
         User 对象或 None。
     """
-    if config and config.default_assignee_id and config.default_assignee.dingtalk_user_id:
+    if config and config.default_assignee_id:
         return config.default_assignee
 
     if not household_id:
         return None
 
     from apps.accounts.models import User
-    from apps.households.models import HouseholdMembership
 
-    admin_user = (
-        User.objects
-        .filter(
-            memberships__household_id=household_id,
-            memberships__role="admin",
-        )
-        .exclude(dingtalk_user_id="")
-        .first()
+    admin_qs = User.objects.filter(
+        memberships__household_id=household_id,
+        memberships__role="admin",
     )
-    return admin_user
+    admin_with_dingtalk = admin_qs.exclude(dingtalk_user_id="").first()
+    if admin_with_dingtalk:
+        return admin_with_dingtalk
+    return admin_qs.first()
 
 
 def build_alert_message(alert: Alert, target_user, is_escalation: bool = False) -> str:
@@ -228,18 +225,24 @@ def send_alert_notification(alert_id: int) -> AlertNotification | None:
         return None
 
     assignee = resolve_assignee(alert.household_id, config)
-    if not assignee:
-        logger.info("告警 %s 无法确定主 R，跳过通知", alert_id)
-        return None
+    if assignee and not assignee.dingtalk_user_id:
+        logger.info(
+            "告警 %s 负责人 %s 未配置钉钉 UserID，仍向群推送（不 @）",
+            alert_id,
+            assignee.phone,
+        )
+    elif not assignee:
+        logger.info("告警 %s 无负责人，仍向群推送通知", alert_id)
 
     notification = send_to_dingtalk(alert, assignee, escalation_level=0)
 
-    # 更新 Alert 的通知状态
-    Alert.objects.filter(id=alert.id).update(
-        assigned_to=assignee,
-        escalation_level=0,
-        notified_at=timezone.now(),
-    )
+    update_fields = {
+        "escalation_level": 0,
+        "notified_at": timezone.now(),
+    }
+    if assignee:
+        update_fields["assigned_to"] = assignee
+    Alert.objects.filter(id=alert.id).update(**update_fields)
 
     return notification
 
