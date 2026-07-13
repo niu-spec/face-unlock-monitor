@@ -16,7 +16,31 @@
     create_alert(type="FACE_UNKNOWN", level="HIGH", stream_id="living_room", ...)
 """
 
+import logging
+
 from apps.alerts.models import Alert
+
+logger = logging.getLogger(__name__)
+
+
+def _find_pending_duplicate(
+    alert_type: str,
+    stream_id: str,
+    household_id: int | None,
+) -> Alert | None:
+    """同家庭、同摄像头、同类型已有待处理告警时不再重复创建。"""
+    if household_id is None:
+        return None
+    return (
+        Alert.objects.filter(
+            household_id=household_id,
+            type=alert_type,
+            stream_id=stream_id,
+            status="pending",
+        )
+        .order_by("-created_at")
+        .first()
+    )
 
 
 def create_alert(
@@ -40,8 +64,19 @@ def create_alert(
         snapshot_path: 截图文件路径
 
     Returns:
-        创建的 Alert 实例
+        新建或已存在的待处理 Alert 实例
     """
+    existing = _find_pending_duplicate(type, stream_id, household_id)
+    if existing is not None:
+        logger.info(
+            "跳过重复告警: type=%s stream=%s household=%s existing_id=%s",
+            type,
+            stream_id,
+            household_id,
+            existing.id,
+        )
+        return existing
+
     if not snapshot_path and frame is not None:
         try:
             from apps.video_stream.snapshots import save_event_snapshot

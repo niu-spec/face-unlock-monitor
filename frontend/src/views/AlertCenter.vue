@@ -6,6 +6,7 @@ import { alertApi, videoApi } from '@/api'
 
 const POLL_MS = 3000
 const filterType = ref('')
+const filterStatus = ref('pending')
 const alerts = ref([])
 const loading = ref(false)
 const lastUpdated = ref('')
@@ -39,7 +40,9 @@ const typeOptions = [
 async function loadAlerts({ silent = false } = {}) {
   if (!silent) loading.value = true
   try {
-    const params = filterType.value ? { type: filterType.value } : {}
+    const params = {}
+    if (filterType.value) params.type = filterType.value
+    if (filterStatus.value) params.status = filterStatus.value
     const data = await alertApi.list(params)
     alerts.value = data.results || data
     lastUpdated.value = new Date().toLocaleTimeString()
@@ -135,8 +138,11 @@ onBeforeUnmount(stopPolling)
         </div>
         <div class="header-actions">
           <el-button size="small" @click="loadAlerts()">刷新</el-button>
+          <el-select v-model="filterStatus" placeholder="按状态筛选" style="width: 120px" @change="loadAlerts()">
+            <el-option v-for="item in statusOptions" :key="item.value || 'all'" :label="item.label" :value="item.value" />
+          </el-select>
           <el-select v-model="filterType" placeholder="按类型筛选" style="width: 200px" @change="loadAlerts()">
-            <el-option v-for="item in typeOptions" :key="item.value" :label="item.label" :value="item.value" />
+            <el-option v-for="item in typeOptions" :key="item.value || 'all-types'" :label="item.label" :value="item.value" />
           </el-select>
         </div>
       </div>
