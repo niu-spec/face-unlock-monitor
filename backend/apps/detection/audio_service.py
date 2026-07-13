@@ -41,8 +41,8 @@ logger = logging.getLogger(__name__)
 AUDIO_SERVICE_CONFIG = {
     # 模型
     "AUDIO_MODEL": "panns_cnn14",
-    "AUDIO_CONFIDENCE_THRESHOLD": 0.15,   # 单类置信度阈值（AudioSet 527 类，sigmoid 输出）
-    "AUDIO_MULTI_LABEL_THRESHOLD": 0.12,  # 多标签组合判断使用的宽松阈值
+    "AUDIO_CONFIDENCE_THRESHOLD": 0.10,   # 单类置信度阈值（AudioSet 527 类，sigmoid 输出）
+    "AUDIO_MULTI_LABEL_THRESHOLD": 0.08,  # 多标签组合判断使用的宽松阈值
     # 音频预处理
     "SAMPLE_RATE": 32000,
     "N_FFT": 1024,
