@@ -128,13 +128,16 @@ class AudioCapture:
 
     def start(self):
         """启动音频采集（后台线程）。"""
-        if self._running:
+        if self._running and not self._degraded:
             logger.warning("AudioCapture 已在运行: %s", self._stream_id)
             return
 
+        if self._degraded or (self._thread and not self._thread.is_alive()):
+            self._terminate_process()
+            self._degraded = False
+            self._reconnect_count = 0
+
         self._running = True
-        self._degraded = False
-        self._reconnect_count = 0
         self._thread = threading.Thread(
             target=self._read_loop, daemon=True, name=f"audio-{self._stream_id}"
         )
@@ -257,6 +260,7 @@ class AudioCapture:
                     self._stream_id,
                 )
                 self._degraded = True
+                self._running = False
                 break
 
             logger.info(
@@ -365,3 +369,11 @@ def stop_all_audio_captures():
             cap.stop()
             del _captures[key]
     logger.info("所有 AudioCapture 已停止")
+
+
+def remove_audio_capture(stream_id: str) -> None:
+    """从全局注册表移除采集器（重启前调用）。"""
+    with _captures_lock:
+        cap = _captures.pop(stream_id, None)
+    if cap:
+        cap.stop()

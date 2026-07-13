@@ -444,9 +444,10 @@ class AudioDetectionService:
 
     def stop_for_stream(self, stream_id: str):
         """停止指定流的音频检测。"""
-        cap = self._captures.pop(stream_id, None)
-        if cap:
-            cap.stop()
+        from .audio_capture import remove_audio_capture
+
+        self._captures.pop(stream_id, None)
+        remove_audio_capture(stream_id)
 
         with self._states_lock:
             state = self._stream_states.pop(stream_id, None)
