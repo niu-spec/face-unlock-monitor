@@ -24,8 +24,6 @@ import logging
 import os
 import threading
 import time
-import urllib.error
-import urllib.request
 from collections import defaultdict
 from pathlib import Path
 from typing import Optional
@@ -170,6 +168,7 @@ class AudioDetectionService:
         self._label_to_idx: dict[str, int] = {}  # 类别名 → 索引
         self._model_ready = False
         self._model_load_attempted = False
+        self._model_error = ""
         self._model_lock = threading.Lock()
 
         # 每个流的运行状态
@@ -218,63 +217,28 @@ class AudioDetectionService:
                 )
                 return True
             except Exception as e:
+                self._model_error = str(e)
                 logger.error("PANNs 模型加载失败，音频检测不可用: %s", e, exc_info=True)
                 return False
-
-    @staticmethod
-    def _github_available(timeout: float = 5.0) -> bool:
-        """Return whether the PANNs GitHub repository is reachable promptly."""
-        request = urllib.request.Request(
-            "https://github.com/qiuqiangkong/panns_audioset",
-            method="HEAD",
-            headers={"User-Agent": "home-camera-monitor/1.0"},
-        )
-        try:
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                return response.status < 400
-        except (OSError, TimeoutError, urllib.error.URLError):
-            return False
 
     def _load_panns_model(self):
         """加载 PANNs CNN14 模型。
 
-        尝试顺序:
-          1. torch.hub.load（推荐，自动下载权重 ~80MB）
-          2. 直接下载权重文件（torch.hub 不可用时的兜底）
+        The official PANNs project distributes CNN14 checkpoints through
+        Zenodo, not a torch.hub entrypoint. Loading the official checkpoint
+        directly avoids a guaranteed hub lookup failure and uses the local
+        pre-computed log-mel input path consistently.
         """
-        if not self._github_available():
-            logger.warning("PANNs GitHub 不可达，直接使用 Zenodo checkpoint")
-            self._load_panns_fallback()
-            return
-
-        import torch
-
-        try:
-            # 方式 1: torch.hub
-            logger.info("正在通过 torch.hub 加载 PANNs CNN14 ...")
-            self._model = torch.hub.load(
-                "qiuqiangkong/panns_audioset",
-                "cnn14",
-                pretrained=True,
-                verbose=False,
-            )
-            self._model.eval()
-
-            # 尝试获取类别标签
-            self._class_labels = self._resolve_class_labels_from_model()
-
-        except Exception as hub_err:
-            logger.warning("torch.hub 加载 PANNs 失败: %s，尝试直接加载", hub_err)
-            self._load_panns_fallback()
+        self._load_panns_fallback()
 
     def _load_panns_fallback(self):
         """torch.hub 不可用时的兜底加载: 直接下载 checkpoint。"""
         import torch
 
-        # PANNs CNN14 checkpoint 的直链（Zenodo）
+        # PANNs CNN14 checkpoint 的官方直链（Zenodo）
         checkpoint_url = (
             "https://zenodo.org/record/3987831/files/"
-            "Cnn14_mAP%3D0.431.pth"
+            "Cnn14_mAP%3D0.431.pth?download=1"
         )
         cache_dir = Path(torch.hub.get_dir()) / "checkpoints"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -480,6 +444,7 @@ class AudioDetectionService:
             "stream_id": stream_id,
             "active": state.get("active", False),
             "model_ready": self._model_ready,
+            "model_error": self._model_error,
             "capture": cap_status,
             "latest_probs": {
                 k: round(v, 4)
@@ -980,10 +945,16 @@ def _build_cnn14(num_classes: int = 527):
             x = self.conv_block3(x, pool_size=(2, 2), pool_type="avg")
             x = self.conv_block4(x, pool_size=(2, 2), pool_type="avg")
             x = self.conv_block5(x, pool_size=(2, 2), pool_type="avg")
-            x = self.conv_block6(x, pool_size=(2, 2), pool_type="avg")
+            # CNN14 keeps the final temporal resolution, then combines the
+            # maximum and mean activations across time.  Adaptive pooling
+            # here changes the representation used by the released weights
+            # and makes the pretrained classifier unreliable.
+            x = self.conv_block6(x, pool_size=(1, 1), pool_type="avg")
 
-            x = F.adaptive_avg_pool2d(x, (1, 1))  # → (B, 2048, 1, 1)
-            x = x.view(x.size(0), -1)              # → (B, 2048)
+            x = torch.mean(x, dim=3)               # (B, 2048, time)
+            x_max, _ = torch.max(x, dim=2)
+            x_mean = torch.mean(x, dim=2)
+            x = x_max + x_mean                      # (B, 2048)
 
             x = F.dropout(x, p=0.5, training=self.training)
             x = F.relu_(self.fc1(x))

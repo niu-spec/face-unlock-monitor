@@ -16,6 +16,7 @@ import subprocess
 import threading
 import time
 import os
+import shutil
 from typing import Callable, Optional
 
 import numpy as np
@@ -95,6 +96,7 @@ class AudioCapture:
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._degraded = False         # True = 无音频轨道，已降级
+        self._last_error = ""
         self._reconnect_count = 0
         self._lock = threading.Lock()
         self._sample_rate = _acfg("SAMPLE_RATE")
@@ -156,6 +158,7 @@ class AudioCapture:
             "rtsp_url": self._rtsp_url,
             "running": self._running,
             "degraded": self._degraded,
+            "last_error": self._last_error,
             "sample_rate": self._sample_rate,
             "chunk_duration_s": self._chunk_duration,
             "reconnect_count": self._reconnect_count,
@@ -167,8 +170,18 @@ class AudioCapture:
 
     def _spawn_ffmpeg(self) -> Optional[subprocess.Popen]:
         """启动 FFmpeg 子进程，输出 PCM 到 stdout。"""
+        ffmpeg_path = self._resolve_ffmpeg_path()
+        if not ffmpeg_path:
+            self._last_error = (
+                "FFmpeg 不可用：请安装 backend/requirements.txt 中的 "
+                "imageio-ffmpeg，或设置 DETECTION_CONFIG.AUDIO.FFMPEG_PATH"
+            )
+            self._degraded = True
+            logger.error(self._last_error)
+            return None
+
         cmd = [
-            _acfg("FFMPEG_PATH"),
+            ffmpeg_path,
             "-loglevel", "error",
             "-rtsp_transport", "tcp",       # RTSP over TCP 更稳定
             "-i", self._rtsp_url,
@@ -192,16 +205,39 @@ class AudioCapture:
             )
             return proc
         except FileNotFoundError:
-            logger.error(
-                "FFmpeg 未找到！请确认 ffmpeg 已安装且在 PATH 中。"
-                "音频检测将降级。"
-            )
+            self._last_error = f"FFmpeg 未找到: {ffmpeg_path}"
+            logger.error(self._last_error)
             self._degraded = True
             return None
         except Exception as e:
-            logger.error("启动 FFmpeg 失败: %s", e)
+            self._last_error = f"启动 FFmpeg 失败: {e}"
+            logger.error(self._last_error)
             self._degraded = True
             return None
+
+    @staticmethod
+    def _resolve_ffmpeg_path() -> Optional[str]:
+        """Return a usable FFmpeg executable without requiring a PATH edit.
+
+        A configured path takes precedence. On Windows development machines,
+        imageio-ffmpeg supplies a bundled binary, so a normal ``pip install
+        -r requirements.txt`` setup can enable audio detection.
+        """
+        configured = str(_acfg("FFMPEG_PATH"))
+        if os.path.isfile(configured) or shutil.which(configured):
+            return configured
+
+        try:
+            import imageio_ffmpeg
+
+            bundled = imageio_ffmpeg.get_ffmpeg_exe()
+            if bundled and os.path.isfile(bundled):
+                logger.info("使用 imageio-ffmpeg 提供的 FFmpeg: %s", bundled)
+                return bundled
+        except Exception as e:
+            logger.debug("imageio-ffmpeg 不可用: %s", e)
+
+        return None
 
     def _terminate_process(self):
         """安全终止 FFmpeg 子进程。"""
@@ -295,6 +331,10 @@ class AudioCapture:
                     pass
 
                 if proc.returncode != 0:
+                    self._last_error = (
+                        f"FFmpeg 异常退出 (code={proc.returncode}): "
+                        f"{stderr_output[:200]}"
+                    )
                     logger.warning(
                         "FFmpeg 异常退出 (code=%d): %s stderr: %s",
                         proc.returncode,

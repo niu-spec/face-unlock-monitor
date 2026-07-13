@@ -35,8 +35,14 @@ setuptools<81
 librosa~=0.10.0
 soundfile~=0.12.0
 scipy~=1.11.0
+# The audio classifier imports torch directly. Do not rely on an optional
+# dependency of another package to provide it.
+torch>=2.2,<3.0
 ffmpeg-python~=0.2.0
 torchaudio~=2.0.0
+# Includes a platform FFmpeg binary, used automatically when ffmpeg is not on
+# PATH (for example on a fresh Windows development machine).
+imageio-ffmpeg>=0.5,<1.0
 
 # DingTalk notification
 requests~=2.31.0
