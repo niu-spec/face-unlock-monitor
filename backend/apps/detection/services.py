@@ -2,9 +2,8 @@
 
 负责：
   - 危险区域闯入 / 距边缘过近 / 异常停留检测（YOLO 行人检测 + IoU 追踪 + 多边形碰撞）
-  - 积水检测（镜面反射 + 边缘纹理分析 + 颜色辅助，三信号融合）
-  - 着火检测（三区间 HSV + 亮度 + 连通域滤波）
-  - 摔倒检测（IoU 跨帧追踪 + 状态持久化 + 双路径判定；容忍 YOLO 横向人体间歇丢帧）
+  - 着火检测（三区间 HSV + RGB 暖色兜底 + 连通域滤波，面积阈值 15%）
+  - 摔倒检测（IoU 跨帧追踪 + 状态持久化 + 双路径 + 中心点判定；容忍 YOLO 横向人体间歇丢帧）
   - 异常声学事件检测（PANNs CNN14 音频分类）★ v1.3 新增
   - 音视频联动告警（AVCorrelationBuffer）★ v1.3 新增
 
@@ -46,41 +45,21 @@ DETECTION_CONFIG = {
     "FRAME_WIDTH": 480,
     "FRAME_HEIGHT": 480,
     "FRAME_SKIP": 3,
-    # --- 积水（WATER）---
-    # 室内地板积水的多信号融合检测：
-    #   Signal A — 镜面反射：湿滑地板产生亮斑（低饱和 + 高亮度）
-    #   Signal B — 纹理抑制：水面平滑，边缘密度显著低于干燥地面
-    #   Signal C — 蓝/青色液体（洗涤剂、泳池水等有色溢水）
-    "FLOOD_ROI_BOTTOM_RATIO": 0.55,
-    # Signal A: 镜面反射检测
-    "FLOOD_REFLECT_V_LOWER": 160,       # 高亮度阈值
-    "FLOOD_REFLECT_S_UPPER": 80,        # 低饱和度上限（反光区域色彩淡）
-    "FLOOD_REFLECT_AREA_THRESHOLD": 0.06,
-    # Signal B: 边缘/纹理稀疏检测
-    "FLOOD_EDGE_CANNY_LOW": 40,
-    "FLOOD_EDGE_CANNY_HIGH": 120,
-    "FLOOD_EDGE_SPARSITY_THRESHOLD": 0.65,  # 边缘像素占比低于此值视为平滑
-    # Signal C: 蓝/青色液体（保留原有逻辑作为辅助）
-    "FLOOD_HSV_LOWER": (85, 40, 40),
-    "FLOOD_HSV_UPPER": (145, 255, 255),
-    "FLOOD_COLOR_AREA_THRESHOLD": 0.10,
-    # 综合判定：至少满足 (A + B) 或 C 才触发告警
     # --- 着火（FIRE）---
     # 火焰颜色范围：三个 HSV 区间覆盖明焰、暗焰与红热区域
-    # Range 1: 红/橙/黄明焰
-    "FIRE_HSV_LOWER_1": (0, 80, 60),
-    "FIRE_HSV_UPPER_1": (40, 255, 255),
-    # Range 2: 深红/品红区域
-    "FIRE_HSV_LOWER_2": (150, 80, 60),
+    # Range 1: 红/橙/黄明焰（高饱和度要求，过滤暖色灯光）
+    "FIRE_HSV_LOWER_1": (0, 120, 80),
+    "FIRE_HSV_UPPER_1": (35, 255, 255),
+    # Range 2: 深红/品红区域（高饱和度要求）
+    "FIRE_HSV_LOWER_2": (155, 120, 80),
     "FIRE_HSV_UPPER_2": (180, 255, 255),
-    # Range 3: 黄/白热焰核心（低饱和高亮）
-    "FIRE_HSV_LOWER_3": (15, 15, 180),
-    "FIRE_HSV_UPPER_3": (45, 130, 255),
-    # 不再使用独立的亮度阈值（颜色掩码的 V 下限已足够）
-    # 面积阈值
-    "FIRE_AREA_THRESHOLD": 0.02,
-    # 火焰区域最小连通域（过滤噪声）
-    "FIRE_MIN_CONTOUR_AREA": 100,
+    # Range 3: 黄/白热焰核心（高亮高饱和）
+    "FIRE_HSV_LOWER_3": (18, 25, 200),
+    "FIRE_HSV_UPPER_3": (38, 120, 255),
+    # 面积阈值（画面占比 ≥ 15% 才触发，过滤远处小火苗/误报）
+    "FIRE_AREA_THRESHOLD": 0.15,
+    # 火焰区域最小连通域（大幅提升，过滤碎片噪点）
+    "FIRE_MIN_CONTOUR_AREA": 500,
     # --- 摔倒（FALL）---
     # 双路径判定 + 中心点追踪：
     #   Path 1（标准）: 曾站立 → AR 骤降或中心点大幅下移 → 横向姿态（多帧确认）
@@ -110,7 +89,6 @@ DETECTION_CONFIG = {
     "INTRUSION_PERSIST_FRAMES": 1,
     # --- 告警冷却（秒）---
     "ALERT_COOLDOWN_SECONDS": {
-        "WATER": 30,
         "FIRE": 30,
         "FALL": 15,
         "INTRUSION": 10,
@@ -548,9 +526,6 @@ class DetectionService:
                 )
             )
 
-        # 2. 积水检测
-        results.extend(self._detect_water(frame, stream_id))
-
         if include_fast:
             results.extend(self.detect_fast_alerts(
                 frame,
@@ -975,128 +950,7 @@ class DetectionService:
         return results
 
     # -----------------------------------------------------------------------
-    # 2. 积水检测（WATER）
-    # -----------------------------------------------------------------------
-
-    def _detect_water(self, frame: np.ndarray, stream_id: str) -> list[dict]:
-        """检测画面下方积水（多信号融合）。
-
-        室内地面积水通常表现为：
-          - 镜面反射（Signal A）：湿滑地面产生亮斑
-          - 纹理抑制（Signal B）：水面平滑，边缘密度低
-          - 有色液体（Signal C）：蓝/青色溢水（洗涤剂等）
-
-        判定规则：满足 (A + B) 或 C 任一组合即触发告警。
-        """
-        h, w = frame.shape[:2]
-        roi_y_start = int(h * _cfg("FLOOD_ROI_BOTTOM_RATIO"))
-        roi = frame[roi_y_start:h, 0:w]
-        roi_h, roi_w = roi.shape[:2]
-        roi_area = roi_h * roi_w
-
-        if roi_area <= 0:
-            return []
-
-        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-        gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-
-        # ---- Signal A: 镜面反射检测 ----
-        # 湿地板 = 高亮度 + 低饱和（反光区域色彩被冲刷）
-        s_channel = hsv_roi[:, :, 1]
-        v_channel = hsv_roi[:, :, 2]
-        refl_mask = np.zeros((roi_h, roi_w), dtype=np.uint8)
-        refl_mask[
-            (v_channel >= _cfg("FLOOD_REFLECT_V_LOWER"))
-            & (s_channel <= _cfg("FLOOD_REFLECT_S_UPPER"))
-        ] = 255
-
-        kernel_small = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-        refl_mask = cv2.morphologyEx(refl_mask, cv2.MORPH_OPEN, kernel_small, iterations=1)
-        refl_mask = cv2.morphologyEx(refl_mask, cv2.MORPH_CLOSE, kernel_small, iterations=2)
-
-        refl_area = cv2.countNonZero(refl_mask)
-        refl_ratio = refl_area / roi_area
-
-        # ---- Signal B: 边缘/纹理稀疏检测 ----
-        # 水面平滑，Canny 边缘密度显著低于正常地板纹理
-        blurred = cv2.GaussianBlur(gray_roi, (5, 5), 0)
-        edges = cv2.Canny(
-            blurred,
-            _cfg("FLOOD_EDGE_CANNY_LOW"),
-            _cfg("FLOOD_EDGE_CANNY_HIGH"),
-        )
-        edge_pixels = cv2.countNonZero(edges)
-        edge_ratio = edge_pixels / roi_area
-        is_texture_sparse = edge_ratio < (1.0 - _cfg("FLOOD_EDGE_SPARSITY_THRESHOLD"))
-        # 计算边缘密度（1 - 归一化边缘比），高值 = 纹理少 = 可能积水
-        edge_sparsity = 1.0 - min(1.0, edge_ratio * 3)  # 放大敏感度
-
-        # ---- Signal C: 蓝/青色液体检测（保留原逻辑）----
-        color_mask = cv2.inRange(
-            hsv_roi,
-            np.array(_cfg("FLOOD_HSV_LOWER")),
-            np.array(_cfg("FLOOD_HSV_UPPER")),
-        )
-        kernel_med = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-        color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_OPEN, kernel_med, iterations=2)
-        color_mask = cv2.morphologyEx(color_mask, cv2.MORPH_CLOSE, kernel_med, iterations=2)
-        color_area = cv2.countNonZero(color_mask)
-        color_ratio = color_area / roi_area
-
-        # ---- 组合判定 ----
-        signal_ab = (
-            refl_ratio >= _cfg("FLOOD_REFLECT_AREA_THRESHOLD")
-            and edge_sparsity >= _cfg("FLOOD_EDGE_SPARSITY_THRESHOLD")
-        )
-        signal_c = color_ratio >= _cfg("FLOOD_COLOR_AREA_THRESHOLD")
-
-        if not (signal_ab or signal_c):
-            return []
-
-        if not self._check_cooldown("WATER", stream_id):
-            return []
-
-        # 确定主要检测信号（用于日志）
-        if signal_ab and signal_c:
-            source = "reflection+texture+color"
-        elif signal_ab:
-            source = "reflection+texture"
-        else:
-            source = "color"
-
-        msg = (
-            f"检测到疑似积水区域"
-            f"（信号源: {source}, "
-            f"反光 {refl_ratio:.1%}, "
-            f"纹理稀疏度 {edge_sparsity:.1%}, "
-            f"颜色 {color_ratio:.1%}）"
-        )
-
-        self._create_alert(
-            alert_type="WATER",
-            level="HIGH",
-            stream_id=stream_id,
-            description=msg,
-        )
-
-        logger.info("Water detected (%s): %s", source, msg)
-        return [
-            {
-                "alert_type": "WATER",
-                "message": msg,
-                "bbox": (0, roi_y_start, w, h - roi_y_start),
-                "severity": "high",
-                "detail": {
-                    "source": source,
-                    "reflection_ratio": round(refl_ratio, 3),
-                    "edge_sparsity": round(edge_sparsity, 3),
-                    "color_ratio": round(color_ratio, 3),
-                },
-            }
-        ]
-
-    # -----------------------------------------------------------------------
-    # 3. 着火检测（FIRE）
+    # 2. 着火检测（FIRE）
     # -----------------------------------------------------------------------
 
     def _detect_fire(self, frame: np.ndarray, stream_id: str) -> list[dict]:
@@ -1140,7 +994,7 @@ class DetectionService:
         g = frame[:, :, 1].astype(np.float32)
         b = frame[:, :, 0].astype(np.float32)
         rgb_warm = (
-            (r > g * 1.15) & (r > b * 1.3) & (r > 60)
+            (r > g * 1.3) & (r > b * 1.5) & (r > 100)
         )
         rgb_mask = (rgb_warm * 255).astype(np.uint8)
         rgb_area = cv2.countNonZero(rgb_mask)
@@ -1226,7 +1080,7 @@ class DetectionService:
         return []
 
     # -----------------------------------------------------------------------
-    # 4. 摔倒检测（FALL）
+    # 3. 摔倒检测（FALL）
     # -----------------------------------------------------------------------
 
     def _cleanup_stale_tracks(self, active_ids: set[int]) -> None:
@@ -1478,7 +1332,7 @@ class DetectionService:
 
         仅入队可能与音频事件联动的告警类型:
           FALL, FIRE, INTRUSION, PROXIMITY
-        （WATER / LOITER 通常无典型关联声音，不入队以节省缓冲器空间）
+        （LOITER 通常无典型关联声音，不入队以节省缓冲器空间）
         """
         self._ensure_av_correlation()
         if self._av_correlation is None:
@@ -1543,7 +1397,6 @@ class DetectionService:
           - INTRUSION（区域闯入）
           - PROXIMITY（距边缘过近）
           - LOITER（异常停留）
-          - WATER（积水）
           - FIRE（火情）
           - FALL（人员摔倒）
         """
@@ -1620,7 +1473,6 @@ class DetectionService:
             "INTRUSION": (0, 0, 255),
             "PROXIMITY": (0, 128, 255),
             "LOITER": (255, 128, 0),
-            "WATER": (255, 0, 0),
             "FIRE": (0, 165, 255),
             "FALL": (0, 255, 255),
         }
