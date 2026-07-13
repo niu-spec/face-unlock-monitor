@@ -243,6 +243,8 @@ def update_profile_view(request):
     if supervisor_id is not None:
         if supervisor_id:
             from apps.accounts.models import User
+            if int(supervisor_id) == user.id:
+                return Response({"error": "不能将自己设为上级"}, status=400)
             try:
                 User.objects.get(id=supervisor_id)
             except User.DoesNotExist:

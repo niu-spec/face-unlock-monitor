@@ -251,37 +251,25 @@ def send_alert_notification(alert_id: int) -> AlertNotification | None:
 
 
 def resolve_next_in_chain(alert: Alert):
-    """沿 supervisor 链查找下一个有 dingtalk_user_id 的人。
+    """沿 supervisor 链查找下一级上级。
 
-    安全机制:
-    - 检查循环引用（visited set）
-    - 不超过最大升级层级（默认 3）
-    - 跳过没有 dingtalk_user_id 的用户
-
-    Returns:
-        User 对象或 None（链已耗尽）。
+    返回当前负责人的直属上级；无 dingtalk_user_id 时仍返回（仅不 @）。
     """
     max_level = getattr(settings, "DINGTALK", {}).get("MAX_ESCALATION_LEVEL", 3)
     if alert.escalation_level >= max_level:
         return None
 
     current = alert.assigned_to
-    visited = alert.metadata.get("escalation_chain", [])
-    if current:
-        visited.append(current.id)
+    if not current or not current.supervisor_id:
+        return None
 
-    # 沿 supervisor 链向上找
-    while current and current.supervisor_id:
-        supervisor = current.supervisor
-        if supervisor.id in visited:
-            logger.warning("升级链检测到循环引用: alert=%s user=%s", alert.id, supervisor.id)
-            break
-        visited.append(supervisor.id)
-        if supervisor.dingtalk_user_id:
-            return supervisor
-        current = supervisor
+    supervisor = current.supervisor
+    chain = alert.metadata.get("escalation_chain", [])
+    if supervisor.id in chain or supervisor.id == current.id:
+        logger.warning("升级链检测到循环引用: alert=%s user=%s", alert.id, supervisor.id)
+        return None
 
-    return None
+    return supervisor
 
 
 def process_escalation(alert: Alert) -> bool:
@@ -321,6 +309,13 @@ def process_escalation(alert: Alert) -> bool:
         alert.save(update_fields=["metadata"])
         logger.info("告警 %s 升级链已耗尽，停止升级", alert.id)
         return False
+
+    if not next_user.dingtalk_user_id:
+        logger.info(
+            "告警 %s 升级至 %s，未配置钉钉 UserID，仍向群推送（不 @）",
+            alert.id,
+            next_user.phone,
+        )
 
     # 执行升级
     new_level = alert.escalation_level + 1
