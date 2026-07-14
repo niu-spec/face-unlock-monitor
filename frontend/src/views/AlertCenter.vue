@@ -37,11 +37,8 @@ const typeOptions = [
   { label: '火情', value: 'FIRE' },
   { label: '积水', value: 'WATER' },
   { label: '人员摔倒', value: 'FALL' },
-  { label: '尖叫/呼救', value: 'SCREAM' },
-  { label: '打架/争吵', value: 'FIGHT' },
   { label: '哭喊声', value: 'CRYING' },
   { label: '玻璃破碎', value: 'GLASS_BREAK' },
-  { label: '异常声音', value: 'ABNORMAL_SOUND' },
   { label: '联动紧急', value: 'EMERGENCY' },
 ]
 

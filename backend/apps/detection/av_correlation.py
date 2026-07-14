@@ -5,9 +5,6 @@
 触发联动告警（severity=critical），提升异常行为的检测可靠性。
 
 联动规则:
-    SCREAM/FIGHT + FALL   → EMERGENCY（尖叫+摔倒 = 紧急呼救）
-    SCREAM/FIGHT + FIRE   → EMERGENCY（尖叫+着火）
-    SCREAM/FIGHT + INTRUSION → EMERGENCY（尖叫+闯入 = 入室冲突）
     CRYING  + FALL        → EMERGENCY（哭喊+摔倒 = 需救助，severity=high 非 critical）
 
 告警通过 apps.alerts.services.create_alert() 写入。
@@ -94,11 +91,7 @@ class VideoEvent:
 
 CORRELATION_RULES: list[tuple[set[str], set[str], str, str, int]] = [
     # (audio_types, video_types, emergency_type , level  , priority)
-    ({"SCREAM", "FIGHT"}, {"FALL"},  "EMERGENCY", "CRITICAL", 100),
-    ({"SCREAM", "FIGHT"}, {"FIRE"},  "EMERGENCY", "CRITICAL", 90),
-    ({"SCREAM", "FIGHT"}, {"INTRUSION"}, "EMERGENCY", "CRITICAL", 85),
     ({"CRYING"},          {"FALL"},  "EMERGENCY", "HIGH",     70),
-    ({"SCREAM", "FIGHT"}, {"PROXIMITY"}, "EMERGENCY", "HIGH",  60),
     ({"CRYING"},          {"INTRUSION"}, "EMERGENCY", "HIGH",  55),
     ({"GLASS_BREAK"},     {"INTRUSION"}, "EMERGENCY", "HIGH",  50),
     ({"GLASS_BREAK"},     {"FALL"},  "EMERGENCY", "MEDIUM",   40),
@@ -122,10 +115,10 @@ class AVCorrelationBuffer:
 
     Usage:
         buffer = AVCorrelationBuffer()
-        buffer.enqueue_audio_event("living_room", "SCREAM", 0.85, timestamp)
+        buffer.enqueue_audio_event("living_room", "CRYING", 0.85, timestamp)
         buffer.enqueue_video_event("living_room", "FALL", 1.0, "摔倒检测")
 
-        若窗口内同时存在 SCREAM 和 FALL:
+        若窗口内同时存在 CRYING 和 FALL:
             → 自动创建 EMERGENCY 告警
     """
 
@@ -303,8 +296,6 @@ class AVCorrelationBuffer:
 
         # 构建描述
         type_labels = {
-            "SCREAM": "尖叫/呼救",
-            "FIGHT": "打架/争吵",
             "CRYING": "哭喊",
             "GLASS_BREAK": "玻璃破碎",
             "FALL": "人员摔倒",

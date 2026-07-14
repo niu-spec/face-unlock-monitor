@@ -101,11 +101,8 @@ DETECTION_CONFIG = {
         "PROXIMITY": 10,
         "LOITER": 15,
         # 音频告警冷却 ★ v1.3
-        "SCREAM": 15,
-        "FIGHT": 20,
         "CRYING": 20,
         "GLASS_BREAK": 10,
-        "ABNORMAL_SOUND": 30,
         "EMERGENCY": 30,  # 联动紧急告警
     },
 }

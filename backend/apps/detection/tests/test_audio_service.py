@@ -103,8 +103,8 @@ class AudioDetectionServiceTests(TestCase):
     def test_emergency_mapping_uses_official_audioset_indices(self):
         mapping = _get_hardcoded_label_indices()
 
-        self.assertEqual(mapping["Speech"], 0)
-        self.assertEqual(mapping["Screaming"], 14)
+        self.assertEqual(mapping["Crying, sobbing"], 22)
+        self.assertEqual(mapping["Baby cry, infant cry"], 23)
         self.assertEqual(mapping["Glass"], 441)
         self.assertEqual(mapping["Shatter"], 443)
 
@@ -133,18 +133,23 @@ class AudioDetectionServiceTests(TestCase):
                 np.array([4, 5, 6, 7, 8, 9, 10, 11], dtype=np.float32),
             )
 
-    def test_audio_alerts_use_very_low_thresholds(self):
-        self.assertEqual(AUDIO_SERVICE_CONFIG["AUDIO_MULTI_LABEL_THRESHOLD"], 0.01)
+    def test_only_crying_and_glass_break_alerts_are_enabled(self):
         self.assertEqual(
             AUDIO_SERVICE_CONFIG["AUDIO_CONFIDENCE_THRESHOLDS"],
             {
-                "SCREAM": 0.01,
                 "CRYING": 0.01,
                 "GLASS_BREAK": 0.01,
-                "FIGHT": 0.01,
             },
         )
         self.assertEqual(AUDIO_SERVICE_CONFIG["CRYING_CONSECUTIVE_FRAMES"], 1)
+
+    def test_resolved_audio_alerts_only_include_crying_and_glass_break(self):
+        service = AudioDetectionService()
+        service._class_labels = service._resolve_class_labels_fallback()
+
+        service._resolve_class_indices()
+
+        self.assertEqual(set(service._alert_type_indices), {"CRYING", "GLASS_BREAK"})
 
     def test_classify_converts_numpy_input_to_torch_tensor_at_inference(self):
         service = AudioDetectionService()
@@ -153,7 +158,6 @@ class AudioDetectionServiceTests(TestCase):
             return_value=np.zeros((64, 301), dtype=np.float32)
         )
         service._alert_type_indices = {}
-        service._detect_fight_multilabel = Mock(return_value=(0.0, 0.0, 0.0))
         fake_torch = SimpleNamespace(
             from_numpy=FakeTensor,
             no_grad=nullcontext,

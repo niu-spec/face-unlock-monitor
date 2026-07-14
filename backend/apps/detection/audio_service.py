@@ -3,8 +3,6 @@
 基于 PANNs CNN14 预训练模型（AudioSet 527 类），对实时音频流进行分类，
 识别以下异常声音事件：
 
-    - SCREAM:     尖叫 / 呼救声（映射自 AudioSet 的 Screaming, Shout, Yell）
-    - FIGHT:      打架 / 争吵声（映射自 AudioSet 的 Shout + 嘈杂人声组合）
     - CRYING:     哭喊声（映射自 AudioSet 的 Crying, Baby cry）
     - GLASS_BREAK: 玻璃破碎声（映射自 AudioSet 的 Shatter, Glass）
 
@@ -40,14 +38,11 @@ AUDIO_SERVICE_CONFIG = {
     # 模型
     "AUDIO_MODEL": "panns_cnn14",
     # 低灵敏度部署：1% 即进入多标签组合判断，优先捕获微弱异常声。
-    "AUDIO_MULTI_LABEL_THRESHOLD": 0.01,
     # 分类型置信度阈值（不同声音类型 PANNs 输出天然差异大）
     "AUDIO_CONFIDENCE_THRESHOLDS": {
         # 所有声音告警以 1% 为阈值；连续帧确认与冷却时间仍会抑制重复告警。
-        "SCREAM": 0.01,
         "CRYING": 0.01,
         "GLASS_BREAK": 0.01,
-        "FIGHT": 0.01,
     },
     # 音频预处理
     "SAMPLE_RATE": 32000,
@@ -60,17 +55,12 @@ AUDIO_SERVICE_CONFIG = {
     "AUDIO_MIN_ANALYSIS_SECONDS": 3.0,
     "AUDIO_ANALYSIS_WINDOW_SECONDS": 10.0,
     # 告警策略
-    "SCREAM_CONSECUTIVE_FRAMES": 2,       # 连续检测到尖叫的帧数（防误报）
-    "FIGHT_CONSECUTIVE_FRAMES": 3,        # 连续检测到打架的帧数（更需要确认）
     # 一个 chunk 为 3 秒；哭声命中后立即告警，避免再等待一个完整 chunk。
     "CRYING_CONSECUTIVE_FRAMES": 1,
     "GLASS_BREAK_CONSECUTIVE_FRAMES": 1,  # 玻璃破碎声单次即可告警（瞬时事件）
     "AUDIO_ALERT_COOLDOWN": {
-        "SCREAM": 15,
-        "FIGHT": 20,
         "CRYING": 20,
         "GLASS_BREAK": 10,
-        "ABNORMAL_SOUND": 30,
     },
     # 音频片段保存
     "AUDIO_SNIPPET_DIR": "snapshots/audio/",
@@ -105,14 +95,8 @@ def _prepare_panns_input(log_mel: np.ndarray) -> np.ndarray:
 # 映射策略：
 #   - 同类 AudioSet 标签聚合：多个相似标签 → 同一业务告警类型
 #   - 取 max 概率作为该业务类型的置信度
-#   - FIGHT 需要多标签条件：Shout + (Speech | Hubbub) 同时高置信
 
 AUDIOSET_TO_ALERT_MAP: dict[str, str] = {
-    # 尖叫 / 呼救
-    "Screaming": "SCREAM",
-    "Shout": "SCREAM",
-    "Yell": "SCREAM",
-    "Battle cry": "SCREAM",
     # 哭喊
     "Crying, sobbing": "CRYING",
     "Baby cry, infant cry": "CRYING",
@@ -121,25 +105,7 @@ AUDIOSET_TO_ALERT_MAP: dict[str, str] = {
     # 玻璃破碎
     "Shatter": "GLASS_BREAK",
     "Glass": "GLASS_BREAK",
-    # 打架 / 暴力
-    # FIGHT 使用多标签逻辑（见 _detect_fight），此处仅为单标签兜底
-    "Gunshot, gunfire": "SCREAM",  # 枪声 = 紧急事件
-    "Explosion": "SCREAM",
-    "Bang": "SCREAM",
 }
-
-# 打架声判定所需的多标签组合
-FIGHT_REQUIRED_CLASSES = [
-    "Shout",
-    "Yell",
-    "Battle cry",
-    "Screaming",
-]
-FIGHT_CONTEXT_CLASSES = [
-    "Speech",
-    "Conversation",
-    "Hubbub, speech noise, speech babble",
-]
 
 
 # ---------------------------------------------------------------------------
@@ -192,8 +158,6 @@ class AudioDetectionService:
 
         # 类别索引缓存：业务告警类型 → [(AudioSet索引, 类别名), ...]
         self._alert_type_indices: dict[str, list[tuple[int, str]]] = {}
-        self._fight_required_indices: list[int] = []
-        self._fight_context_indices: list[int] = []
 
         logger.info("AudioDetectionService 已创建")
 
@@ -358,23 +322,9 @@ class AudioDetectionService:
                     audioset_name,
                 )
 
-        # 构建 FIGHT 多标签索引
-        self._fight_required_indices = [
-            self._label_to_idx[name]
-            for name in FIGHT_REQUIRED_CLASSES
-            if name in self._label_to_idx
-        ]
-        self._fight_context_indices = [
-            self._label_to_idx[name]
-            for name in FIGHT_CONTEXT_CLASSES
-            if name in self._label_to_idx
-        ]
-
         logger.info(
-            "类别索引解析完成: alert_types=%s, fight_required=%d, fight_context=%d",
+            "类别索引解析完成: alert_types=%s",
             list(self._alert_type_indices.keys()),
-            len(self._fight_required_indices),
-            len(self._fight_context_indices),
         )
 
     # ------------------------------------------------------------------
@@ -580,7 +530,7 @@ class AudioDetectionService:
             pcm: float32 数组，形状 (samples,)，范围 [-1, 1]。
 
         Returns:
-            {alert_type: confidence} 字典，如 {"SCREAM": 0.78, "CRYING": 0.12}。
+            {alert_type: confidence} 字典，如 {"CRYING": 0.12}。
         """
         import torch
 
@@ -656,17 +606,6 @@ class AudioDetectionService:
                 " ".join(target_probs_log),
             )
 
-        # 5. 打架声多标签判定
-        fight_req_max, fight_ctx_max, fight_prob = self._detect_fight_multilabel(probs)
-        fight_threshold = thresholds.get("FIGHT", 0.08)
-        if debug_log:
-            logger.info(
-                "[AUDIO DEBUG] stream=%s fight: req_max=%.3f ctx_max=%.3f fused=%.3f(>%.2f)",
-                stream_id, fight_req_max, fight_ctx_max, fight_prob, fight_threshold,
-            )
-        if fight_prob >= fight_threshold:
-            results["FIGHT"] = fight_prob
-
         if debug_log:
             logger.info(
                 "[AUDIO DEBUG] stream=%s results: %s",
@@ -729,39 +668,6 @@ class AudioDetectionService:
             n_mels = _ascfg("N_MELS")
             frames = max(1, len(pcm) // _ascfg("HOP_LENGTH"))
             return np.zeros((n_mels, frames), dtype=np.float32)
-
-    def _detect_fight_multilabel(self, probs: np.ndarray) -> tuple[float, float, float]:
-        """多标签组合判定打架/争吵声。
-
-        判定逻辑:
-          - 必要条件: 任一高声喊叫类 (Shout/Yell/Screaming/Battle cry) 概率 > 阈值
-          - 上下文增强: 同时有嘈杂人声/对话类概率 > 阈值 → 提高置信度
-          - 最终置信度 = max(喊叫类) × 0.7 + max(上下文类) × 0.3
-
-        Args:
-            probs: (527,) numpy 数组，各类别 sigmoid 概率。
-
-        Returns:
-            (喊叫类max, 上下文类max, 打架置信度) 三元组。
-        """
-        loose_threshold = _ascfg("AUDIO_MULTI_LABEL_THRESHOLD")
-
-        # 喊叫类概率
-        shout_probs = [probs[i] for i in self._fight_required_indices] if self._fight_required_indices else []
-        max_shout = float(max(shout_probs)) if shout_probs else 0.0
-
-        # 必须有喊叫类触发
-        if max_shout < loose_threshold:
-            return max_shout, 0.0, 0.0
-
-        # 上下文类概率
-        context_probs = [probs[i] for i in self._fight_context_indices] if self._fight_context_indices else []
-        max_context = float(max(context_probs)) if context_probs else 0.0
-
-        # 加权融合
-        fight_confidence = max_shout * 0.7 + max_context * 0.3
-
-        return max_shout, max_context, fight_confidence
 
     # ------------------------------------------------------------------
     # 结果处理与告警
@@ -864,11 +770,8 @@ class AudioDetectionService:
         """
         # 构建告警消息
         type_labels = {
-            "SCREAM": "尖叫/呼救声",
-            "FIGHT": "打架/争吵声",
             "CRYING": "哭喊声",
             "GLASS_BREAK": "玻璃破碎声",
-            "ABNORMAL_SOUND": "异常声音",
         }
         label = type_labels.get(alert_type, alert_type)
         description = f"检测到{label}（置信度 {confidence:.1%}）"
@@ -881,11 +784,8 @@ class AudioDetectionService:
             )
 
         severity_map = {
-            "SCREAM": "HIGH",
-            "FIGHT": "HIGH",
             "CRYING": "MEDIUM",
             "GLASS_BREAK": "MEDIUM",
-            "ABNORMAL_SOUND": "LOW",
         }
         level = severity_map.get(alert_type, "MEDIUM")
 
@@ -937,7 +837,7 @@ class AudioDetectionService:
         """保存异常音频片段为 WAV 文件。
 
         Returns:
-            WAV 文件相对路径（如 "snapshots/audio/living_room_SCREAM_1704978000.wav"）。
+            WAV 文件相对路径（如 "snapshots/audio/living_room_CRYING_1704978000.wav"）。
         """
         try:
             import wave
@@ -977,16 +877,6 @@ class AudioDetectionService:
             "model_name": _ascfg("AUDIO_MODEL"),
             "active_streams": list(self._stream_states.keys()),
             "target_classes": list(self._alert_type_indices.keys()),
-            "fight_required_classes": [
-                self._class_labels[i]
-                for i in self._fight_required_indices
-                if i < len(self._class_labels)
-            ] if self._class_labels else FIGHT_REQUIRED_CLASSES,
-            "fight_context_classes": [
-                self._class_labels[i]
-                for i in self._fight_context_indices
-                if i < len(self._class_labels)
-            ] if self._class_labels else FIGHT_CONTEXT_CLASSES,
         }
 
 
@@ -1005,22 +895,11 @@ def _get_hardcoded_label_indices() -> dict[str, int]:
     # fmt: off
     known = {
         "Baby cry, infant cry": 23,
-        "Battle cry": 12,
         "Crying, sobbing": 22,
         "Glass": 441,
-        "Gunshot, gunfire": 427,
-        "Screaming": 14,
         "Shatter": 443,
-        "Shout": 8,
-        "Yell": 11,
-        "Explosion": 426,
-        "Bang": 466,
         "Groan": 38,
         "Whimper": 24,
-        # 以下为 FIGHT 多标签判定所需上下文类别
-        "Speech": 0,
-        "Conversation": 4,
-        "Hubbub, speech noise, speech babble": 70,
     }
     # fmt: on
     return known

@@ -109,11 +109,8 @@ def detection_status(request):
                 "FIRE",
                 "FALL",
                 # ★ v1.3 音频检测能力
-                "SCREAM",
-                "FIGHT",
                 "CRYING",
                 "GLASS_BREAK",
-                "ABNORMAL_SOUND",
                 "EMERGENCY",
             ],
         }
