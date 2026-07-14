@@ -336,13 +336,36 @@ class AudioDetectionService:
         return self._resolve_class_labels_fallback()
 
     def _resolve_class_labels_fallback(self) -> list[str]:
-        """硬编码的 AudioSet 527 类名称列表（仅包含我们需要的类别）。
+        """从 PANNs 官方仓库下载 class_labels_indices.csv 并解析。
 
-        完整列表太长（527 条），这里仅返回一个占位列表。
-        实际使用时不依赖完整列表，而是通过 _resolve_class_indices
-        以字典查找方式按名称匹配目标类别。
+        torch.hub 路径已失败，但可以通过 raw.githubusercontent.com
+        直接获取 CSV。如果 GitHub 不可达，回退到硬编码索引。
         """
-        return []  # 空列表表示使用硬编码索引
+        import torch
+
+        csv_url = (
+            "https://raw.githubusercontent.com/"
+            "qiuqiangkong/panns_audioset/master/assets/class_labels_indices.csv"
+        )
+        csv_path = Path(torch.hub.get_dir()) / "audioset_class_labels_indices.csv"
+
+        if not csv_path.exists():
+            logger.info("下载 AudioSet 类别标签: %s", csv_url)
+            try:
+                torch.hub.download_url_to_file(str(csv_url), str(csv_path))
+            except Exception as e:
+                logger.warning("下载类别标签失败: %s，回退到硬编码索引", e)
+                return []  # 触发硬编码索引路径
+
+        labels = _parse_audioset_labels_csv(str(csv_path))
+        if len(labels) == 527:
+            logger.info("从 CSV 解析了 %d 个 AudioSet 类别标签", len(labels))
+            return labels
+        else:
+            logger.warning(
+                "CSV 解析结果异常 (%d 条 != 527)，回退到硬编码索引", len(labels)
+            )
+            return []
 
     def _resolve_class_indices(self):
         """解析目标 AudioSet 类别 → 模型输出索引的映射。
