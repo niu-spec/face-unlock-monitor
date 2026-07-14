@@ -13,7 +13,7 @@
 架构:
     AudioCapture（PCM 流）
         → AudioDetectionService.on_audio_chunk(pcm, timestamp)
-        → 预加重 → 梅尔频谱图 → PANNs CNN14 推理
+        → LogMel(dB) 频谱图 → PANNs CNN14 推理
         → 527 类概率 → 映射到业务告警类型 → create_alert()
 
 由团队成员 D（李东礼）负责实现和维护。
@@ -43,7 +43,9 @@ AUDIO_SERVICE_CONFIG = {
     # 分类型置信度阈值（不同声音类型 PANNs 输出天然差异大）
     "AUDIO_CONFIDENCE_THRESHOLDS": {
         "SCREAM": 0.08,       # 尖叫特征明显，阈值适中
-        "CRYING": 0.03,       # 哭声/婴儿哭概率偏低
+        # 哭声通常音量较低且持续时间长；先用正确的 PANNs 特征尺度，
+        # 再略微放宽该类别阈值。冷却时间用于抑制重复告警。
+        "CRYING": 0.02,
         "GLASS_BREAK": 0.03,  # 玻璃破碎瞬时事件，概率偏低
         "FIGHT": 0.08,        # 打架多标签已做加权，阈值适中
     },
@@ -57,7 +59,8 @@ AUDIO_SERVICE_CONFIG = {
     # 告警策略
     "SCREAM_CONSECUTIVE_FRAMES": 2,       # 连续检测到尖叫的帧数（防误报）
     "FIGHT_CONSECUTIVE_FRAMES": 3,        # 连续检测到打架的帧数（更需要确认）
-    "CRYING_CONSECUTIVE_FRAMES": 2,
+    # 一个 chunk 为 3 秒；哭声命中后立即告警，避免再等待一个完整 chunk。
+    "CRYING_CONSECUTIVE_FRAMES": 1,
     "GLASS_BREAK_CONSECUTIVE_FRAMES": 1,  # 玻璃破碎声单次即可告警（瞬时事件）
     "AUDIO_ALERT_COOLDOWN": {
         "SCREAM": 15,
@@ -547,10 +550,9 @@ class AudioDetectionService:
         """
         import torch
 
-        # 1. 预加重（简单高通滤波，增强高频）
-        pcm = self._preemphasis(pcm, coeff=0.97)
-
-        # 2. 计算对数梅尔频谱图
+        # 1. 计算对数梅尔频谱图。
+        # CNN14 的预训练权重以原始波形计算的 LogMel(dB) 为输入；
+        # 额外预加重会改变哭声的低频共振峰，降低与训练分布的一致性。
         log_mel = self._compute_log_mel(pcm)
 
         if debug_log:
@@ -560,12 +562,12 @@ class AudioDetectionService:
                 float(log_mel.min()), float(log_mel.max()), float(log_mel.mean()),
             )
 
-        # 3. 转换为模型输入 tensor
+        # 2. 转换为模型输入 tensor
         # PANNs 期望形状: (batch=1, channel=1, time_frames, mel_bins)
         model_input = _prepare_panns_input(log_mel)
         tensor = torch.from_numpy(model_input).float()
 
-        # 4. 推理
+        # 3. 推理
         with torch.no_grad():
             output = self._model(tensor)
 
@@ -598,7 +600,7 @@ class AudioDetectionService:
                 stream_id, " | ".join(top5_info) if top5_info else "(all < 0.01)",
             )
 
-        # 5. 映射到业务告警类型（分类型阈值）
+        # 4. 映射到业务告警类型（分类型阈值）
         results: dict[str, float] = {}
         thresholds = _ascfg("AUDIO_CONFIDENCE_THRESHOLDS")
 
@@ -620,7 +622,7 @@ class AudioDetectionService:
                 " ".join(target_probs_log),
             )
 
-        # 6. 打架声多标签判定
+        # 5. 打架声多标签判定
         fight_req_max, fight_ctx_max, fight_prob = self._detect_fight_multilabel(probs)
         fight_threshold = thresholds.get("FIGHT", 0.08)
         if debug_log:
@@ -639,15 +641,6 @@ class AudioDetectionService:
             )
 
         return results
-
-    def _preemphasis(self, pcm: np.ndarray, coeff: float = 0.97) -> np.ndarray:
-        """预加重：y[t] = x[t] - coeff * x[t-1]。"""
-        if len(pcm) <= 1:
-            return pcm
-        emphasized = np.zeros_like(pcm)
-        emphasized[0] = pcm[0]
-        emphasized[1:] = pcm[1:] - coeff * pcm[:-1]
-        return emphasized
 
     def _compute_log_mel(self, pcm: np.ndarray) -> np.ndarray:
         """计算对数梅尔频谱图。
@@ -683,8 +676,15 @@ class AudioDetectionService:
                 power=2.0,
             )
 
-            # 对数变换: ln(x + epsilon) — 必须与 PANNs 训练时一致
-            log_mel = np.log(np.maximum(mel_spec, 1e-10))
+            # PANNs 的 LogmelFilterBank 使用 power_to_db：10 * log10(power)。
+            # 使用自然对数会让输入尺度缩小约 4.34 倍，导致预训练分类器
+            # 对哭声等目标类别给出极低、不可校准的概率。
+            log_mel = librosa.power_to_db(
+                mel_spec,
+                ref=1.0,
+                amin=1e-10,
+                top_db=None,
+            )
 
             return log_mel.astype(np.float32)
 

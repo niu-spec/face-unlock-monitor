@@ -6,7 +6,11 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from apps.detection.audio_service import AudioDetectionService, _prepare_panns_input
+from apps.detection.audio_service import (
+    AUDIO_SERVICE_CONFIG,
+    AudioDetectionService,
+    _prepare_panns_input,
+)
 
 
 class FakeTensor:
@@ -61,6 +65,31 @@ class AudioDetectionServiceTests(TestCase):
         self.assertEqual(model_input.shape, (1, 1, 301, 64))
         self.assertEqual(model_input.dtype, log_mel.dtype)
         self.assertTrue(model_input.flags.c_contiguous)
+
+    def test_log_mel_uses_panns_decibel_scale(self):
+        service = AudioDetectionService()
+        mel = np.ones((64, 2), dtype=np.float64)
+        power_to_db = Mock(return_value=np.full((64, 2), -20.0))
+        fake_librosa = SimpleNamespace(
+            feature=SimpleNamespace(melspectrogram=Mock(return_value=mel)),
+            power_to_db=power_to_db,
+        )
+
+        with patch.dict(sys.modules, {"librosa": fake_librosa}):
+            output = service._compute_log_mel(np.zeros(1024, dtype=np.float32))
+
+        power_to_db.assert_called_once_with(
+            mel, ref=1.0, amin=1e-10, top_db=None
+        )
+        self.assertEqual(output.dtype, np.float32)
+        self.assertTrue(np.all(output == -20.0))
+
+    def test_crying_uses_a_lower_threshold_and_one_chunk_confirmation(self):
+        self.assertEqual(
+            AUDIO_SERVICE_CONFIG["AUDIO_CONFIDENCE_THRESHOLDS"]["CRYING"],
+            0.02,
+        )
+        self.assertEqual(AUDIO_SERVICE_CONFIG["CRYING_CONSECUTIVE_FRAMES"], 1)
 
     def test_classify_converts_numpy_input_to_torch_tensor_at_inference(self):
         service = AudioDetectionService()
