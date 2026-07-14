@@ -43,7 +43,7 @@ context: |
     - 每个 feature PR 关联一个 change（propose → apply → archive）
     - 已归档 change: ai-video-integration（2026-07-12，WebRTC + overlay API 验收完成）
     - 进行中 change: audio-abnormal-sound-detection（v1.3 音频检测，代码已实现于 feature/detection）
-    - 使用说明: docs/项目管理/OpenSpec/OpenSpec使用说明.md
+    - 使用说明: docs/项目管理/项目基础建设教师查阅说明.md（§5.2 OpenSpec）；规格目录 openspec/
 
 rules:
   proposal:

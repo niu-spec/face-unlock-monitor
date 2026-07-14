@@ -22,8 +22,8 @@ The system SHALL process each video frame through a chain of AI modules before M
 
 #### Scenario: Anomaly detection alerts
 
-- **WHEN** water, fire, or fall conditions are detected in a frame
-- **THEN** corresponding alerts with types `WATER`, `FIRE`, or `FALL` are created
+- **WHEN** fire or fall conditions are detected in a frame
+- **THEN** corresponding alerts with types `FIRE` or `FALL` are created
 
 ### Requirement: Presence statistics update
 

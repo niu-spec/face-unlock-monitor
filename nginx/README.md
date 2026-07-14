@@ -2,7 +2,7 @@
 
 居家摄像头视频推流服务当前使用 MediaMTX，Nginx 只负责将 Web/API 请求反代到 Django/Gunicorn。
 
-**完整对接说明（含 WebRTC 低延迟预览）**：见 [docs/部署运维/video-stream-webrtc-integration.md](../docs/部署运维/video-stream-webrtc-integration.md)
+**架构与预览链路（WebRTC + overlay）**：见 [docs/总体架构说明.md](../docs/总体架构说明.md)；端口与反代以本文为准。
 
 ## 端口一览
 
@@ -36,4 +36,4 @@ location /video_feed/ {
 }
 ```
 
-> 生产环境 `home-camera-backend.service` 绑定 `127.0.0.1:8010`；本地开发 `runserver :8000`。详见 [video-stream-webrtc-integration.md](../docs/部署运维/video-stream-webrtc-integration.md)。
+> 生产环境 `home-camera-backend.service` 绑定 `127.0.0.1:8010`；本地开发 `runserver :8000`。架构与预览链路见 [总体架构说明.md](../docs/总体架构说明.md)。

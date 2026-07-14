@@ -4,7 +4,7 @@ Smart home camera monitoring system with RTMP streaming, Django business backend
 
 ## 应用场景
 
-**居家智能摄像头监控**：通过家庭摄像头实时分析家中画面，识别家庭成员、统计当前在家人数、检测陌生人；支持设定危险区域（如厨房禁止小孩进入）；对积水、着火、人员摔倒等异常情况进行识别并告警。
+**居家智能摄像头监控**：通过家庭摄像头实时分析家中画面，识别家庭成员、统计当前在家人数、检测陌生人；支持设定危险区域（如厨房禁止小孩进入）；对着火、人员摔倒等异常情况进行识别并告警。
 
 ## 核心功能
 
@@ -13,7 +13,7 @@ Smart home camera monitoring system with RTMP streaming, Django business backend
 | 人脸识别 | 家庭成员注册与识别、陌生人告警、本机摄像头录入 |
 | 人员统计 | 实时统计画面/家中人数、熟人/陌生人数量 |
 | 危险区域 | 前端画框配置禁区，闯入 / 接近 / 逗留告警 |
-| 异常检测 | 积水、着火、人员摔倒（≥2 种，满足课程验收） |
+| 异常检测 | 着火、人员摔倒（≥2 种，满足课程验收） |
 | 告警中心 | 事件展示、处置、日志与快照回放 |
 | AI 日报 | 按日汇总告警与事件（模板 / 可选 LLM） |
 
@@ -69,11 +69,12 @@ home-camera-monitor/
 | 文档 | 说明 |
 |------|------|
 | [开发指南/DEV_SETUP.md](docs/开发指南/DEV_SETUP.md) | 本地开发（必读） |
-| [架构设计/总体架构说明.md](docs/架构设计/总体架构说明.md) | 结题架构文档 |
-| [部署运维/B组-云部署与联调指引.md](docs/部署运维/B组-云部署与联调指引.md) | 云服务器部署 |
-| [部署运维/CI-CD使用说明.md](docs/部署运维/CI-CD使用说明.md) | Jenkins + GitHub Actions |
-| [部署运维/video-stream-webrtc-integration.md](docs/部署运维/video-stream-webrtc-integration.md) | 流媒体详细配置 |
-| [项目管理/OpenSpec/OpenSpec使用说明.md](docs/项目管理/OpenSpec/OpenSpec使用说明.md) | 规格驱动开发 |
+| [总体架构说明.md](docs/总体架构说明.md) | 结题架构文档 |
+| [产品需求与设计文档3.0.pdf](docs/产品需求与设计文档3.0.pdf) | 需求与设计终稿 |
+| [项目基础建设教师查阅说明.md](docs/项目管理/项目基础建设教师查阅说明.md) | 结题 §5（Git / OpenSpec / Swagger / CI） |
+| [deploy/README.md](deploy/README.md) | 云部署脚本 |
+| [nginx/README.md](nginx/README.md) | MediaMTX / Nginx 端口与反代 |
+| [openspec/](openspec/) | OpenSpec 规格与归档 |
 
 ## 团队
 

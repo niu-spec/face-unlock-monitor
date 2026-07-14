@@ -2,22 +2,31 @@
 
 > **仓库**：https://github.com/niu-spec/home-camera-monitor  
 > **主分支**：`dev`  
-> **最后整理**：2026-07-12
+> **最后整理**：2026-07-14（按当前 `docs/` 实存文件重编）
 
 ---
 
-## 目录结构
+## 目录结构（当前）
 
 ```
 docs/
-├── 课程要求/          # 课程下发的 PDF（立项/中期/结题依据）
-├── 开发指南/          # 本地开发环境
-├── 架构设计/          # 结题架构与模块技术文档
-├── 部署运维/          # 云部署、流媒体、CI/CD
-│   └── 记录/          # 部署过程沟通与问题记录
-└── 项目管理/          # 分工表、OpenSpec 指南
-    └── OpenSpec/
+├── README.md                         # 本索引
+├── 总体架构说明.md                     # 结题架构文档（原架构设计/ 已并入此处）
+├── 产品需求与设计文档3.0.pdf            # 需求与设计终稿
+├── 课程要求/                          # 课程下发 PDF
+├── 工作日报/                          # 组内日报 0708–0714
+├── 开发指南/
+│   └── DEV_SETUP.md                  # 本地开发必读
+└── 项目管理/
+    ├── 项目基础建设教师查阅说明.md      # §5 交老师（链接查阅）
+    ├── Git 昵称对应的真实姓名.md        # 与根目录 CONTRIBUTORS.md 对照
+    ├── 项目组总结报告.md / .pdf
+    ├── 相关截图/                      # §5 可选附图（分支/Contributors/Swagger）
+    └── …
 ```
+
+> **已删除、不再引用**：`docs/架构设计/`、`docs/部署运维/`（含 CI/Swagger 运维专篇）。  
+> 部署操作以仓库根目录 `deploy/README.md`、`nginx/README.md` 及云服务器现场为准；架构说明见 `总体架构说明.md`。
 
 ---
 
@@ -26,74 +35,54 @@ docs/
 | 文档 | 读者 | 说明 |
 |------|------|------|
 | [开发指南/DEV_SETUP.md](开发指南/DEV_SETUP.md) | 全员 | **本地开发必读** — conda、dlib、MySQL、前后端启动 |
-| [../README.md](../README.md) | 全员 | 项目概览与快速链接 |
-| [../frontend/README.md](../frontend/README.md) | A/E | 前端路由、WebRTC 预览、环境变量 |
-| [../backend/README.md](../backend/README.md) | B/C/D/E | 后端入口，指向 DEV_SETUP |
+| [../README.md](../README.md) | 全员 | 项目概览 |
+| [../frontend/README.md](../frontend/README.md) | A/E | 前端 |
+| [../backend/README.md](../backend/README.md) | B/C/D/E | 后端 |
+| [../deploy/README.md](../deploy/README.md) | A/B | 部署脚本 |
+| [../nginx/README.md](../nginx/README.md) | B | MediaMTX / Nginx 端口与反代 |
 
 ---
 
-## 架构与验收
+## 架构与产品文档
 
 | 文档 | 读者 | 说明 |
 |------|------|------|
-| [架构设计/总体架构说明.md](架构设计/总体架构说明.md) | 全员 / 答辩 | **结题设计文档 v1.5** — WebRTC + overlay API 架构 |
-| [架构设计/AI危险区域与异常检测模块_技术文档.md](架构设计/AI危险区域与异常检测模块_技术文档.md) | D | 检测 + 音频模块技术细节 |
-| [架构设计/C组-反欺骗完善清单.md](架构设计/C组-反欺骗完善清单.md) | C | 活体反欺骗（已完成项记录） |
+| [总体架构说明.md](总体架构说明.md) | 全员 / 答辩 | **结题设计文档 v1.5** — WebRTC + overlay、模块划分 |
+| [产品需求与设计文档3.0.pdf](产品需求与设计文档3.0.pdf) | 全员 / 平台提交 | 需求与设计终稿 |
 
 ---
 
-## 流媒体与云部署（B 组）
+## 课程要求与结题材料
 
 | 文档 | 读者 | 说明 |
 |------|------|------|
-| [部署运维/B组-部署修复指引-20260713.md](部署运维/B组-部署修复指引-20260713.md) | B | **当前必做** — 前端路径修复、完整重部署与验收 |
-| [部署运维/B组-云部署与联调指引.md](部署运维/B组-云部署与联调指引.md) | B | **统一部署手册** — pull、重启、Nginx、验收 |
-| [部署运维/B组-最新部署指引-20260712.md](部署运维/B组-最新部署指引-20260712.md) | B | 近期功能部署（短视频回放、身份字段等） |
-| [部署运维/video-stream-webrtc-integration.md](部署运维/video-stream-webrtc-integration.md) | B/A | WebRTC 主预览 + MJPEG 备用 + overlay API |
-| [../nginx/README.md](../nginx/README.md) | B | Nginx 反代示例（8010） |
-| [../deploy/README.md](../deploy/README.md) | B/A | 部署脚本说明 |
-| [部署运维/B组-Jenkins安装指引.md](部署运维/B组-Jenkins安装指引.md) | B | Jenkins 一次性安装 + Webhook |
+| [课程要求/](课程要求/) | 全员 | 日程、任务清单、CICD 参考等课程 PDF |
+| [工作日报/](工作日报/) | 平台提交 | 0708–0714 组内日报 |
+| [项目管理/项目基础建设教师查阅说明.md](项目管理/项目基础建设教师查阅说明.md) | **交老师** | §5「去哪看」：GitHub / OpenSpec / Swagger / CI 链接 |
+| [项目管理/Git 昵称对应的真实姓名.md](项目管理/Git%20昵称对应的真实姓名.md) | 验收 | 昵称 ↔ 姓名（亦见根目录 [CONTRIBUTORS.md](../CONTRIBUTORS.md)） |
+| [项目管理/项目组总结报告.md](项目管理/项目组总结报告.md) / [pdf](项目管理/项目组总结报告.pdf) | 平台提交 | 组总结 |
+| [项目管理/相关截图/](项目管理/相关截图/) | 可选附图 | 分支管理、Contributors、Swagger 等 |
+
+OpenSpec 规格与归档在仓库 **`openspec/`**（不在 `docs/`）：  
+https://github.com/niu-spec/home-camera-monitor/tree/dev/openspec
 
 ---
 
-## CI/CD 与规范
+## CI/CD 与 Swagger（代码内位置）
 
-| 文档 | 读者 | 说明 |
-|------|------|------|
-| [部署运维/CI-CD使用说明.md](部署运维/CI-CD使用说明.md) | A / 全员 | Jenkins（CD）+ GitHub Actions（CI） |
-| [项目管理/OpenSpec/OpenSpec使用说明.md](项目管理/OpenSpec/OpenSpec使用说明.md) | A / Cursor 用户 | OpenSpec 工作流 |
-| [项目管理/OpenSpec/OpenSpec组员上手指南.md](项目管理/OpenSpec/OpenSpec组员上手指南.md) | C/D/E | 非 Cursor 组员 OpenSpec 指南 |
-| [../openspec/config.yaml](../openspec/config.yaml) | Agent | 项目上下文（技术栈、流 ID、预览架构） |
-
----
-
-## 课程要求与项目管理
-
-| 文档 | 读者 | 说明 |
-|------|------|------|
-| [课程要求/4_小学期任务清单.pdf](课程要求/4_小学期任务清单.pdf) | 全员 | 验收任务清单 |
-| [项目管理/项目任务分工表.pdf](项目管理/项目任务分工表.pdf) | 全员 | 六组分工与进度（v1.6，2026-07-12） |
-
----
-
-## 部署过程记录
-
-| 文档 | 说明 |
-|------|------|
-| [部署运维/记录/B组-CD落地任务清单.md](部署运维/记录/B组-CD落地任务清单.md) | B 组 CD 落地步骤 |
-| [部署运维/记录/B组-CD落地反馈.md](部署运维/记录/B组-CD落地反馈.md) | B 组反馈与阻塞项（历史） |
-| [部署运维/记录/A组回复-B组CD阻塞修复.md](部署运维/记录/A组回复-B组CD阻塞修复.md) | A 组修复说明 |
-| [部署运维/记录/生产目录文件策略.md](部署运维/记录/生产目录文件策略.md) | 生产机 .env / 数据文件策略 |
-| [部署运维/B组-Camera补配置指引-20260712.md](部署运维/B组-Camera补配置指引-20260712.md) | Camera 未配导致告警不可见时的排查指引 |
-| [部署运维/大组长小组员 2026年7月12日.md](部署运维/大组长小组员 2026年7月12日.md) | Worker 崩溃排查记录（已修复） |
+| 项 | 位置 |
+|----|------|
+| GitHub Actions | [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) · [运行记录](https://github.com/niu-spec/home-camera-monitor/actions) |
+| Jenkins Pipeline | 根目录 [`Jenkinsfile`](../Jenkinsfile) · 服务 `http://152.136.29.158:8080/` |
+| Swagger UI | 生产 `http://152.136.29.158/api/docs/` · 本地 `http://127.0.0.1:8000/api/docs/` |
+| 详细查阅路径 | [项目管理/项目基础建设教师查阅说明.md](项目管理/项目基础建设教师查阅说明.md) |
 
 ---
 
 ## 文档维护约定
 
-1. **不要**在文档里写死 commit hash，用「最新 `dev`」+ `git log -1`
-2. **不要**再写「双推 GitLab」— 主仓库仅 GitHub
-3. 结题架构以 `架构设计/总体架构说明.md` 为准；`部署运维/` 为工作过程记录，保留当时上下文即可
-4. 云部署操作可参考 `部署运维/B组-云部署与联调指引.md`（过程文档，非规范来源）
-5. 架构变更同步更新 `架构设计/总体架构说明.md` 与 `openspec/config.yaml`
-6. 课程 PDF 统一放在 `课程要求/`，不要在 `docs/` 根目录重复存放
+1. 结题架构以 **`docs/总体架构说明.md`** 为准  
+2. 不要写「双推 GitLab」— 主仓库仅 GitHub  
+3. 课程 PDF 放在 `课程要求/`；产品需求 PDF 可放在 `docs/` 根目录  
+4. 新增结题说明优先更新本索引与「教师查阅说明」  
+5. 部署步骤变更时同步 `deploy/README.md` / `nginx/README.md`

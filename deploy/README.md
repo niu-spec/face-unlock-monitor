@@ -2,7 +2,7 @@
 
 > **生产服务器**：152.136.29.158  
 > **项目路径**：`/service/home-camera-monitor`  
-> **详细步骤**：见 [docs/部署运维/B组-云部署与联调指引.md](../docs/部署运维/B组-云部署与联调指引.md)
+> **详细步骤**：以本目录脚本与下方说明为准；架构与端口见 [docs/总体架构说明.md](../docs/总体架构说明.md)、[nginx/README.md](../nginx/README.md)
 
 ---
 

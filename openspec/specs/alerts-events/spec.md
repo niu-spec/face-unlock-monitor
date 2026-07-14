@@ -37,7 +37,7 @@ The system SHALL provide `GET /api/events/` and `POST /api/events/` for event lo
 
 ### Requirement: Alert type taxonomy
 
-The system SHALL support alert types including `FACE_UNKNOWN`, `INTRUSION`, `PROXIMITY`, `LOITER`, `TAILGATE`, `WATER`, `FIRE`, `FALL`, `SCREAM`, `FIGHT`, `CRYING`, `GLASS_BREAK`, `ABNORMAL_SOUND`, and `EMERGENCY`.
+The system SHALL support alert types including `FACE_UNKNOWN`, `INTRUSION`, `PROXIMITY`, `LOITER`, `TAILGATE`, `FIRE`, `FALL`, `SCREAM`, `FIGHT`, `CRYING`, `GLASS_BREAK`, `ABNORMAL_SOUND`, and `EMERGENCY`.
 
 #### Scenario: Fire alert creation
 

@@ -38,6 +38,6 @@
 - `backend/apps/alerts/models.py` — 修改：新增告警类型与等级枚举
 - `backend/apps/video_stream/services.py` — 修改：CameraWorker 启动时自动开启音频采集
 - `backend/requirements.txt` — 修改：新增 `librosa`、`soundfile`、`scipy`、`ffmpeg-python`、`torchaudio`
-- `docs/架构设计/AI危险区域与异常检测模块_技术文档.md` — 修改：新增第 9 节技术方案
+- `docs/总体架构说明.md` — 架构与异常检测相关说明（原 `docs/架构设计/AI危险区域与异常检测模块_技术文档.md` 已删除）
 
 **状态：代码已实现于 `feature/detection` 分支，OpenSpec 文档本条 change 即为补齐。**

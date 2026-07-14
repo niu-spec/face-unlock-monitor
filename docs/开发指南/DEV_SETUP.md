@@ -142,11 +142,13 @@ X-Active-Household-Id: <家庭 ID>
 
 生产环境脚本见 `deploy/deploy-django.sh`。Linux 上 dlib 可通过 conda-forge 或系统编译依赖 + pip 安装；推荐同样使用 `environment.yml`。
 
-流媒体：OBS → RTMP `:9090` → MediaMTX → RTSP `:8554` → Django OpenCV 拉流。详见 [nginx/README.md](../../nginx/README.md)、[video-stream-webrtc-integration.md](../部署运维/video-stream-webrtc-integration.md)。
+流媒体：OBS → RTMP `:9090` → MediaMTX → RTSP `:8554` → Django OpenCV 拉流；浏览器主预览 WebRTC `:8889`。详见 [nginx/README.md](../../nginx/README.md)、[总体架构说明.md](../总体架构说明.md)。
 
 ## 9. 相关文档
 
 - [backend/README.md](../../backend/README.md) — 后端专项说明
 - [frontend/README.md](../../frontend/README.md) — 前端路由与目录
 - [backend/dat/README.md](../../backend/dat/README.md) — dlib 模型
-- [OpenSpec 使用说明](../项目管理/OpenSpec/OpenSpec使用说明.md) — 规范驱动开发流程
+- [总体架构说明.md](../总体架构说明.md) — 结题架构
+- [openspec/](../../openspec/) — OpenSpec 规格与归档
+- [项目基础建设教师查阅说明.md](../项目管理/项目基础建设教师查阅说明.md) — 结题 §5

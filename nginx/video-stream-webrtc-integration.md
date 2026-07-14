@@ -1,5 +1,10 @@
 # 视频推流与 WebRTC 对接（索引）
 
-完整文档见：**[docs/部署运维/video-stream-webrtc-integration.md](../docs/部署运维/video-stream-webrtc-integration.md)**
+原 `docs/部署运维/video-stream-webrtc-integration.md` 已删除；内容并入：
 
-本目录为流媒体部署配置说明，详细内容（WebRTC 端口、Docker 启动、OBS 参数、前端 iframe、排查命令）统一维护在上述文档中。
+| 文档 | 内容 |
+|------|------|
+| [nginx/README.md](./README.md) | 端口、OBS 推流、WebRTC / RTSP / MJPEG、Nginx 反代示例 |
+| [mediamtx_notes.md](./mediamtx_notes.md) | MediaMTX 补充说明 |
+| [docs/总体架构说明.md](../docs/总体架构说明.md) | 结题架构（WebRTC 主预览 + Canvas overlay + MJPEG 备用） |
+| [deploy/README.md](../deploy/README.md) | 云部署脚本 |
