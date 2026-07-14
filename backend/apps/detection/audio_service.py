@@ -56,7 +56,8 @@ AUDIO_SERVICE_CONFIG = {
     "N_MELS": 64,
     "FMIN": 50,
     "FMAX": 14000,
-    # 采集仍按 3 秒回调；模型每次分析最近 10 秒的滑动窗口。
+    # 首个 3 秒采集块立即推理，之后逐步扩展至最近 10 秒的滑动窗口。
+    "AUDIO_MIN_ANALYSIS_SECONDS": 3.0,
     "AUDIO_ANALYSIS_WINDOW_SECONDS": 10.0,
     # 告警策略
     "SCREAM_CONSECUTIVE_FRAMES": 2,       # 连续检测到尖叫的帧数（防误报）
@@ -508,8 +509,8 @@ class AudioDetectionService:
         if analysis_pcm is None:
             if debug_log:
                 logger.info(
-                    "[AUDIO DEBUG] stream=%s waiting for %.1fs analysis window",
-                    stream_id, _ascfg("AUDIO_ANALYSIS_WINDOW_SECONDS"),
+                    "[AUDIO DEBUG] stream=%s waiting for %.1fs initial audio",
+                    stream_id, _ascfg("AUDIO_MIN_ANALYSIS_SECONDS"),
                 )
             return
 
@@ -533,7 +534,7 @@ class AudioDetectionService:
     def _append_analysis_window(
         self, state: dict, pcm: np.ndarray
     ) -> np.ndarray | None:
-        """返回填满后的最近固定时长音频；首次填满前不做推理。"""
+        """3 秒后立即推理，并逐步扩展至最近固定时长音频。"""
         window_samples = max(
             1,
             round(
@@ -555,7 +556,14 @@ class AudioDetectionService:
                 pcm_window[0] = oldest[overflow:]
             state["buffered_samples"] -= min(overflow, len(oldest))
 
-        if state["buffered_samples"] < window_samples:
+        min_samples = max(
+            1,
+            round(
+                int(_ascfg("SAMPLE_RATE"))
+                * float(_ascfg("AUDIO_MIN_ANALYSIS_SECONDS"))
+            ),
+        )
+        if state["buffered_samples"] < min_samples:
             return None
         return np.concatenate(tuple(pcm_window))
 

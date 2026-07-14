@@ -116,11 +116,13 @@ class AudioDetectionServiceTests(TestCase):
             "apps.detection.audio_service._ascfg",
             side_effect=lambda key: {
                 "SAMPLE_RATE": 4,
+                "AUDIO_MIN_ANALYSIS_SECONDS": 1,
                 "AUDIO_ANALYSIS_WINDOW_SECONDS": 2,
             }[key],
         ):
-            self.assertIsNone(
-                service._append_analysis_window(state, np.array([0, 1, 2, 3]))
+            np.testing.assert_array_equal(
+                service._append_analysis_window(state, np.array([0, 1, 2, 3])),
+                np.array([0, 1, 2, 3], dtype=np.float32),
             )
             np.testing.assert_array_equal(
                 service._append_analysis_window(state, np.array([4, 5, 6, 7])),
