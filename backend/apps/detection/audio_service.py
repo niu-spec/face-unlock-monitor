@@ -24,7 +24,7 @@ import logging
 import os
 import threading
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from pathlib import Path
 from typing import Optional
 
@@ -56,6 +56,8 @@ AUDIO_SERVICE_CONFIG = {
     "N_MELS": 64,
     "FMIN": 50,
     "FMAX": 14000,
+    # 采集仍按 3 秒回调；模型每次分析最近 10 秒的滑动窗口。
+    "AUDIO_ANALYSIS_WINDOW_SECONDS": 10.0,
     # 告警策略
     "SCREAM_CONSECUTIVE_FRAMES": 2,       # 连续检测到尖叫的帧数（防误报）
     "FIGHT_CONSECUTIVE_FRAMES": 3,        # 连续检测到打架的帧数（更需要确认）
@@ -135,10 +137,7 @@ FIGHT_REQUIRED_CLASSES = [
 FIGHT_CONTEXT_CLASSES = [
     "Speech",
     "Conversation",
-    "Brawl",
-    "Argument",
     "Hubbub, speech noise, speech babble",
-    "Rowdy crowd",
 ]
 
 
@@ -303,36 +302,22 @@ class AudioDetectionService:
         return self._resolve_class_labels_fallback()
 
     def _resolve_class_labels_fallback(self) -> list[str]:
-        """从 PANNs 官方仓库下载 class_labels_indices.csv 并解析。
+        """读取随项目发布的 PANNs 官方 527 类标签表。
 
-        torch.hub 路径已失败，但可以通过 raw.githubusercontent.com
-        直接获取 CSV。如果 GitHub 不可达，回退到硬编码索引。
+        类别索引是模型输出的契约，运行时不应依赖网络下载。这样离线部署
+        或 GitHub 不可达时仍使用经版本控制的相同映射。
         """
-        import torch
-
-        csv_url = (
-            "https://raw.githubusercontent.com/"
-            "qiuqiangkong/panns_audioset/master/assets/class_labels_indices.csv"
-        )
-        csv_path = Path(torch.hub.get_dir()) / "audioset_class_labels_indices.csv"
-
-        if not csv_path.exists():
-            logger.info("下载 AudioSet 类别标签: %s", csv_url)
-            try:
-                torch.hub.download_url_to_file(str(csv_url), str(csv_path))
-            except Exception as e:
-                logger.warning("下载类别标签失败: %s，回退到硬编码索引", e)
-                return []  # 触发硬编码索引路径
-
+        csv_path = Path(__file__).with_name("assets") / "class_labels_indices.csv"
         labels = _parse_audioset_labels_csv(str(csv_path))
         if len(labels) == 527:
-            logger.info("从 CSV 解析了 %d 个 AudioSet 类别标签", len(labels))
+            logger.info("从内置 CSV 解析了 %d 个 AudioSet 类别标签", len(labels))
             return labels
-        else:
-            logger.warning(
-                "CSV 解析结果异常 (%d 条 != 527)，回退到硬编码索引", len(labels)
-            )
-            return []
+
+        logger.error(
+            "内置 AudioSet 标签表异常（%d 条 != 527）；使用经校验的最小映射",
+            len(labels),
+        )
+        return []
 
     def _resolve_class_indices(self):
         """解析目标 AudioSet 类别 → 模型输出索引的映射。
@@ -422,7 +407,8 @@ class AudioDetectionService:
                 "last_alert_time": defaultdict(float),  # alert_type → 上次告警时间
                 "latest_probs": {},                     # 最近一次推理概率
                 "pcm_buffer": bytearray(),              # PCM 原始缓冲区
-                "pcm_float_buffer": [],                 # float32 缓冲区
+                "pcm_float_buffer": deque(),             # 最近分析窗口的 float32 PCM
+                "buffered_samples": 0,
                 "active": True,
             }
 
@@ -518,20 +504,60 @@ class AudioDetectionService:
                 chunk_count, stream_id, len(pcm), rms, peak,
             )
 
+        analysis_pcm = self._append_analysis_window(state, pcm)
+        if analysis_pcm is None:
+            if debug_log:
+                logger.info(
+                    "[AUDIO DEBUG] stream=%s waiting for %.1fs analysis window",
+                    stream_id, _ascfg("AUDIO_ANALYSIS_WINDOW_SECONDS"),
+                )
+            return
+
         try:
-            results = self._classify_chunk(pcm, stream_id=stream_id, debug_log=debug_log)
+            results = self._classify_chunk(
+                analysis_pcm, stream_id=stream_id, debug_log=debug_log
+            )
             state["latest_probs"] = {
                 alert_type: round(prob, 4)
                 for alert_type, prob in results.items()
             }
             self._process_results(
-                stream_id, results, pcm, timestamp, state,
+                stream_id, results, analysis_pcm, timestamp, state,
                 debug_log=debug_log,
             )
         except Exception as e:
             logger.error(
                 "音频分类异常 (stream=%s): %s", stream_id, e, exc_info=True
             )
+
+    def _append_analysis_window(
+        self, state: dict, pcm: np.ndarray
+    ) -> np.ndarray | None:
+        """返回填满后的最近固定时长音频；首次填满前不做推理。"""
+        window_samples = max(
+            1,
+            round(
+                int(_ascfg("SAMPLE_RATE"))
+                * float(_ascfg("AUDIO_ANALYSIS_WINDOW_SECONDS"))
+            ),
+        )
+        pcm_window = state["pcm_float_buffer"]
+        pcm = np.ascontiguousarray(pcm, dtype=np.float32)
+        pcm_window.append(pcm)
+        state["buffered_samples"] += len(pcm)
+
+        while state["buffered_samples"] > window_samples:
+            overflow = state["buffered_samples"] - window_samples
+            oldest = pcm_window[0]
+            if overflow >= len(oldest):
+                pcm_window.popleft()
+            else:
+                pcm_window[0] = oldest[overflow:]
+            state["buffered_samples"] -= min(overflow, len(oldest))
+
+        if state["buffered_samples"] < window_samples:
+            return None
+        return np.concatenate(tuple(pcm_window))
 
     # ------------------------------------------------------------------
     # 音频分类
@@ -674,6 +700,7 @@ class AudioDetectionService:
                 fmin=fmin,
                 fmax=fmax,
                 power=2.0,
+                pad_mode="reflect",
             )
 
             # PANNs 的 LogmelFilterBank 使用 power_to_db：10 * log10(power)。
@@ -958,35 +985,34 @@ class AudioDetectionService:
 # ---------------------------------------------------------------------------
 # 硬编码 AudioSet 类别索引（fallback，当无法从模型获取标签时使用）
 # ---------------------------------------------------------------------------
-# PANNs CNN14 输出 527 类，按 AudioSet ontology mid 字母序排列。
-# 以下索引从标准 AudioSet class_labels_indices.csv 提取。
+# PANNs CNN14 输出维度严格对应官方 class_labels_indices.csv 的 index 列。
+# 此最小映射仅在内置 CSV 损坏时兜底，数值由同一官方文件校验。
 
 
 def _get_hardcoded_label_indices() -> dict[str, int]:
     """返回已知的 AudioSet 类别名称 → 索引映射（仅包含本项目需要的类别）。
 
     这些索引从 PANNs/AudioSet 标准 527 类 CSV 中提取。
-    如果模型版本不同，索引可能有 ±1~2 的偏移。
     """
     # fmt: off
     known = {
-        "Baby cry, infant cry": 25,
-        "Battle cry": 48,
-        "Crying, sobbing": 106,
-        "Glass": 198,
-        "Gunshot, gunfire": 203,
-        "Screaming": 415,
-        "Shatter": 417,
-        "Shout": 416,
-        "Yell": 499,
-        "Explosion": 165,
-        "Bang": 43,
-        "Groan": 201,
-        "Whimper": 495,
+        "Baby cry, infant cry": 23,
+        "Battle cry": 12,
+        "Crying, sobbing": 22,
+        "Glass": 441,
+        "Gunshot, gunfire": 427,
+        "Screaming": 14,
+        "Shatter": 443,
+        "Shout": 8,
+        "Yell": 11,
+        "Explosion": 426,
+        "Bang": 466,
+        "Groan": 38,
+        "Whimper": 24,
         # 以下为 FIGHT 多标签判定所需上下文类别
-        "Speech": 437,
-        "Conversation": 97,
-        "Hubbub, speech noise, speech babble": 236,
+        "Speech": 0,
+        "Conversation": 4,
+        "Hubbub, speech noise, speech babble": 70,
     }
     # fmt: on
     return known

@@ -1,4 +1,5 @@
 import sys
+from collections import deque
 from contextlib import nullcontext
 from types import SimpleNamespace
 from unittest import TestCase, main
@@ -9,6 +10,7 @@ import numpy as np
 from apps.detection.audio_service import (
     AUDIO_SERVICE_CONFIG,
     AudioDetectionService,
+    _get_hardcoded_label_indices,
     _prepare_panns_input,
 )
 
@@ -81,8 +83,53 @@ class AudioDetectionServiceTests(TestCase):
         power_to_db.assert_called_once_with(
             mel, ref=1.0, amin=1e-10, top_db=None
         )
+        self.assertEqual(
+            fake_librosa.feature.melspectrogram.call_args.kwargs["pad_mode"],
+            "reflect",
+        )
         self.assertEqual(output.dtype, np.float32)
         self.assertTrue(np.all(output == -20.0))
+
+    def test_packaged_labels_use_official_audioset_indices(self):
+        labels = AudioDetectionService()._resolve_class_labels_fallback()
+
+        self.assertEqual(len(labels), 527)
+        self.assertEqual(labels[0], "Speech")
+        self.assertEqual(labels[14], "Screaming")
+        self.assertEqual(labels[23], "Baby cry, infant cry")
+        self.assertEqual(labels[441], "Glass")
+        self.assertEqual(labels[443], "Shatter")
+
+    def test_emergency_mapping_uses_official_audioset_indices(self):
+        mapping = _get_hardcoded_label_indices()
+
+        self.assertEqual(mapping["Speech"], 0)
+        self.assertEqual(mapping["Screaming"], 14)
+        self.assertEqual(mapping["Glass"], 441)
+        self.assertEqual(mapping["Shatter"], 443)
+
+    def test_analysis_window_keeps_latest_audio(self):
+        service = AudioDetectionService()
+        state = {"pcm_float_buffer": deque(), "buffered_samples": 0}
+
+        with patch(
+            "apps.detection.audio_service._ascfg",
+            side_effect=lambda key: {
+                "SAMPLE_RATE": 4,
+                "AUDIO_ANALYSIS_WINDOW_SECONDS": 2,
+            }[key],
+        ):
+            self.assertIsNone(
+                service._append_analysis_window(state, np.array([0, 1, 2, 3]))
+            )
+            np.testing.assert_array_equal(
+                service._append_analysis_window(state, np.array([4, 5, 6, 7])),
+                np.array([0, 1, 2, 3, 4, 5, 6, 7], dtype=np.float32),
+            )
+            np.testing.assert_array_equal(
+                service._append_analysis_window(state, np.array([8, 9, 10, 11])),
+                np.array([4, 5, 6, 7, 8, 9, 10, 11], dtype=np.float32),
+            )
 
     def test_audio_alerts_use_very_low_thresholds(self):
         self.assertEqual(AUDIO_SERVICE_CONFIG["AUDIO_MULTI_LABEL_THRESHOLD"], 0.01)
