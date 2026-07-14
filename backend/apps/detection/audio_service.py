@@ -694,8 +694,8 @@ class AudioDetectionService:
                 power=2.0,
             )
 
-            # 对数变换: log10(x + epsilon)
-            log_mel = np.log10(np.maximum(mel_spec, 1e-10))
+            # 对数变换: ln(x + epsilon) — 必须与 PANNs 训练时一致
+            log_mel = np.log(np.maximum(mel_spec, 1e-10))
 
             return log_mel.astype(np.float32)
 
