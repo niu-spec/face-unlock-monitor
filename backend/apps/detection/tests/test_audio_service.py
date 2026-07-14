@@ -84,10 +84,16 @@ class AudioDetectionServiceTests(TestCase):
         self.assertEqual(output.dtype, np.float32)
         self.assertTrue(np.all(output == -20.0))
 
-    def test_crying_uses_a_lower_threshold_and_one_chunk_confirmation(self):
+    def test_audio_alerts_use_very_low_thresholds(self):
+        self.assertEqual(AUDIO_SERVICE_CONFIG["AUDIO_MULTI_LABEL_THRESHOLD"], 0.01)
         self.assertEqual(
-            AUDIO_SERVICE_CONFIG["AUDIO_CONFIDENCE_THRESHOLDS"]["CRYING"],
-            0.02,
+            AUDIO_SERVICE_CONFIG["AUDIO_CONFIDENCE_THRESHOLDS"],
+            {
+                "SCREAM": 0.01,
+                "CRYING": 0.01,
+                "GLASS_BREAK": 0.01,
+                "FIGHT": 0.01,
+            },
         )
         self.assertEqual(AUDIO_SERVICE_CONFIG["CRYING_CONSECUTIVE_FRAMES"], 1)
 

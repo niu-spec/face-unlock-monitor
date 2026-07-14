@@ -39,15 +39,15 @@ logger = logging.getLogger(__name__)
 AUDIO_SERVICE_CONFIG = {
     # 模型
     "AUDIO_MODEL": "panns_cnn14",
-    "AUDIO_MULTI_LABEL_THRESHOLD": 0.08,  # 多标签组合判断使用的宽松阈值
+    # 低灵敏度部署：1% 即进入多标签组合判断，优先捕获微弱异常声。
+    "AUDIO_MULTI_LABEL_THRESHOLD": 0.01,
     # 分类型置信度阈值（不同声音类型 PANNs 输出天然差异大）
     "AUDIO_CONFIDENCE_THRESHOLDS": {
-        "SCREAM": 0.08,       # 尖叫特征明显，阈值适中
-        # 哭声通常音量较低且持续时间长；先用正确的 PANNs 特征尺度，
-        # 再略微放宽该类别阈值。冷却时间用于抑制重复告警。
-        "CRYING": 0.02,
-        "GLASS_BREAK": 0.03,  # 玻璃破碎瞬时事件，概率偏低
-        "FIGHT": 0.08,        # 打架多标签已做加权，阈值适中
+        # 所有声音告警以 1% 为阈值；连续帧确认与冷却时间仍会抑制重复告警。
+        "SCREAM": 0.01,
+        "CRYING": 0.01,
+        "GLASS_BREAK": 0.01,
+        "FIGHT": 0.01,
     },
     # 音频预处理
     "SAMPLE_RATE": 32000,
