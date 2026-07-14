@@ -25,7 +25,9 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 AV_CORRELATION_CONFIG = {
-    "WINDOW_SECONDS": 5.0,           # 滑动时间窗口（秒）
+    # Slightly longer than INTRUSION cooldown (10s) so glass/crying can still
+    # pair with the next zone alert when events are a few seconds apart.
+    "WINDOW_SECONDS": 15.0,          # 滑动时间窗口（秒）
     "MAX_EVENTS_PER_STREAM": 100,    # 每个流最多缓存的事件数
     "EMERGENCY_COOLDOWN": 30,        # 联动紧急告警冷却时间（秒）
 }
@@ -118,7 +120,7 @@ class AVCorrelationBuffer:
         buffer.enqueue_audio_event("living_room", "CRYING", 0.85, timestamp)
         buffer.enqueue_video_event("living_room", "FALL", 1.0, "摔倒检测")
 
-        若窗口内同时存在 CRYING 和 FALL:
+        若约 15 秒窗口内同时存在 CRYING 和 FALL:
             → 自动创建 EMERGENCY 告警
     """
 

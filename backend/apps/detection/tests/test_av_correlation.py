@@ -1,6 +1,11 @@
 from unittest import TestCase
 
-from apps.detection.av_correlation import CORRELATION_RULES
+from apps.detection import audio_service as audio_service_module
+from apps.detection.av_correlation import (
+    AV_CORRELATION_CONFIG,
+    CORRELATION_RULES,
+    AVCorrelationBuffer,
+)
 
 
 class AVCorrelationRulesTests(TestCase):
@@ -18,3 +23,21 @@ class AVCorrelationRulesTests(TestCase):
                 (frozenset({"GLASS_BREAK"}), frozenset({"INTRUSION"})),
             },
         )
+
+    def test_correlation_window_covers_intrusion_cooldown(self):
+        self.assertGreaterEqual(AV_CORRELATION_CONFIG["WINDOW_SECONDS"], 10.0)
+
+
+class AudioServiceCorrelationInjectionTests(TestCase):
+    def tearDown(self):
+        audio_service_module._audio_service = None
+
+    def test_get_audio_service_attaches_buffer_after_early_create(self):
+        early = audio_service_module.get_audio_service()
+        self.assertIsNone(early._av_correlation)
+
+        buffer = AVCorrelationBuffer()
+        again = audio_service_module.get_audio_service(av_correlation_buffer=buffer)
+
+        self.assertIs(again, early)
+        self.assertIs(again._av_correlation, buffer)

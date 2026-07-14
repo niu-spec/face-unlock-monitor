@@ -819,7 +819,15 @@ class AudioDetectionService:
         except Exception as e:
             logger.error("创建音频告警失败: %s", e, exc_info=True)
 
-        # 入队音视频联动缓冲器
+        # 入队音视频联动缓冲器（懒挂载：避免 audio/status 先创建单例后缓冲器为 None）
+        if self._av_correlation is None:
+            try:
+                from .av_correlation import get_av_correlation_buffer
+
+                self._av_correlation = get_av_correlation_buffer()
+            except Exception as e:
+                logger.warning("音视频联动缓冲器懒加载失败: %s", e)
+
         if self._av_correlation:
             try:
                 self._av_correlation.enqueue_audio_event(
@@ -1043,7 +1051,8 @@ def get_audio_service(
     """获取全局 AudioDetectionService 单例。
 
     Args:
-        av_correlation_buffer: 可选，AVCorrelationBuffer 实例（首次创建时生效）。
+        av_correlation_buffer: 可选，AVCorrelationBuffer。首次创建时注入；
+            若单例已存在但尚未挂载缓冲器，也会补挂（避免 audio/status 抢先创建导致联动失效）。
 
     Returns:
         AudioDetectionService 实例。
@@ -1053,4 +1062,9 @@ def get_audio_service(
         with _service_lock:
             if _audio_service is None:
                 _audio_service = AudioDetectionService(av_correlation_buffer)
+    if (
+        av_correlation_buffer is not None
+        and getattr(_audio_service, "_av_correlation", None) is None
+    ):
+        _audio_service._av_correlation = av_correlation_buffer
     return _audio_service

@@ -139,8 +139,8 @@ def audio_status(request):
         from .audio_capture import _captures
         from .av_correlation import get_av_correlation_buffer
 
-        audio_svc = get_audio_service()
         av_buffer = get_av_correlation_buffer()
+        audio_svc = get_audio_service(av_correlation_buffer=av_buffer)
 
         # 全局音频服务状态
         audio_status_data = audio_svc.get_global_status()
