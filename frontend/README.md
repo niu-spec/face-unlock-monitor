@@ -19,13 +19,13 @@ Vite proxies `/api` and `/video_feed` to Django at `http://localhost:8000` (see 
 
 ## Environment
 
-Copy `.env.development.example` to `.env.development`:
+Copy `.env.development.example` → `.env.development`（本地），或 `.env.production.example` → `.env.production`（构建）：
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `VITE_API_TARGET` | `http://localhost:8000` | API proxy target |
-| `VITE_VIDEO_FEED_TARGET` | same as API | MJPEG fallback proxy (can point to cloud) |
-| `VITE_WEBRTC_HOST` | cloud IP | WebRTC iframe host (MediaMTX :8889) |
+| `VITE_API_TARGET` | `http://localhost:8000` | Dev only: API proxy target |
+| `VITE_VIDEO_FEED_TARGET` | same as API | Dev only: MJPEG fallback proxy |
+| `VITE_WEBRTC_BASE_URL` | `http://127.0.0.1:8889` | MediaMTX WebRTC base（生产改成公网主机或 `/webrtc`） |
 
 ## Routes
 

@@ -1,6 +1,5 @@
-// home-camera-monitor — Jenkins Pipeline (primary CI/CD for course scoring)
-// Install guide: docs/部署运维/B组-Jenkins安装指引.md
-// Team usage: docs/部署运维/CI-CD使用说明.md
+// home-camera-monitor — optional Jenkins Pipeline (CD on your own server)
+// See deploy/README.md and deploy/install_jenkins.sh
 
 pipeline {
     agent any

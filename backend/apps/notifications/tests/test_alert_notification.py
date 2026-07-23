@@ -15,7 +15,7 @@ User = get_user_model()
 
 class AlertNotificationTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(phone="15333601865", password="123456")
+        self.user = User.objects.create_user(phone="13800138000", password="123456")
         self.household = Household.objects.create(name="测试家庭", created_by=self.user)
         HouseholdMembership.objects.create(
             household=self.household,
@@ -75,7 +75,7 @@ class AlertNotificationTests(TestCase):
 
 class EscalationNotificationTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(phone="15333601865", password="123456")
+        self.user = User.objects.create_user(phone="13800138000", password="123456")
         self.supervisor = User.objects.create_user(phone="13800000001", password="123456")
         self.user.supervisor = self.supervisor
         self.user.save(update_fields=["supervisor"])

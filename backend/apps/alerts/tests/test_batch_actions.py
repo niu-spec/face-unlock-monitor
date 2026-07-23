@@ -10,7 +10,7 @@ User = get_user_model()
 
 class BatchAlertActionTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(phone="15333601865", password="123456")
+        self.user = User.objects.create_user(phone="13800138000", password="123456")
         self.household = Household.objects.create(name="测试家庭", created_by=self.user)
         self.pending_a = Alert.objects.create(
             household=self.household,

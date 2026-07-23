@@ -1,13 +1,14 @@
 server {
     listen 80;
-    server_name _;
+    server_name _;   # 改成你的域名，或保持 _ 匹配任意 Host
 
-    root /service/frontend/dist;
+    # 前端构建产物（deploy-all.sh: npm run build）
+    root /service/home-camera-monitor/frontend/dist;
     index index.html;
 
     client_max_body_size 50m;
 
-    # Django 静态资源（Swagger /admin 等）。必须放在 SPA try_files 之前，且不要回落到 index.html
+    # Django 静态资源（Swagger /admin）。必须放在 SPA try_files 之前
     location /static/ {
         alias /service/home-camera-monitor/backend/staticfiles/;
         access_log off;
@@ -34,6 +35,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # MJPEG 备用预览（长连接，关闭缓冲）
     location /video_feed/ {
         proxy_pass http://127.0.0.1:8010/video_feed/;
         proxy_buffering off;
@@ -44,4 +46,17 @@ server {
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
+
+    # 可选：把 MediaMTX WebRTC HTTP 挂到同源 /webrtc/
+    # 启用后请将前端 VITE_WEBRTC_BASE_URL 设为 https://你的域名/webrtc
+    # 注意：WebRTC ICE 仍使用 MediaMTX :8189/UDP，安全组需放行
+    # location /webrtc/ {
+    #     proxy_pass http://127.0.0.1:8889/;
+    #     proxy_http_version 1.1;
+    #     proxy_set_header Host $host;
+    #     proxy_set_header X-Real-IP $remote_addr;
+    #     proxy_set_header Upgrade $http_upgrade;
+    #     proxy_set_header Connection "upgrade";
+    #     proxy_read_timeout 3600;
+    # }
 }

@@ -59,10 +59,10 @@ Copy [.env.example](.env.example) and adjust:
 | `DB_HOST` | `127.0.0.1` | MySQL host |
 | `DB_PORT` | `3306` | MySQL port |
 | `DB_USER` | `root` | MySQL user |
-| `DB_PASSWORD` | `Root@1234` | MySQL password |
+| `DB_PASSWORD` | `changeme` | MySQL password |
 | `DB_NAME` | `home_camera_monitor` | Database name |
-| `DJANGO_SECRET_KEY` | dev key in settings | Change in production |
-| `DJANGO_DEBUG` | `True` | Set `False` in production |
+| `DJANGO_SECRET_KEY` | dev key in settings | Django secret key |
+| `DJANGO_DEBUG` | `True` | Debug mode |
 
 ## Linux (server)
 

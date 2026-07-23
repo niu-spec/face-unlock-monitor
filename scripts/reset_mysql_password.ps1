@@ -4,7 +4,7 @@
 $MyIni = "C:\ProgramData\MySQL\MySQL Server 9.6\my.ini"
 $InitSqlWin = "C:\ProgramData\MySQL\MySQL Server 9.6\reset-root-init.sql"
 $InitSqlIni = "C:/ProgramData/MySQL/MySQL Server 9.6/reset-root-init.sql"
-$NewPassword = "Root@1234"
+$NewPassword = "changeme"
 $ServiceName = "MySQL96"
 $MysqlExe = "C:\Program Files\MySQL\MySQL Server 9.6\bin\mysql.exe"
 
@@ -87,7 +87,7 @@ if ($ok) {
     Write-Host ""
     Write-Host "Next in backend folder:" -ForegroundColor Cyan
     Write-Host "  conda activate home-camera"
-    Write-Host '  $env:DB_PASSWORD = "Root@1234"'
+    Write-Host '  $env:DB_PASSWORD = "changeme"'
     Write-Host "  python manage.py migrate"
     Write-Host "  python manage.py runserver 8000"
 } else {

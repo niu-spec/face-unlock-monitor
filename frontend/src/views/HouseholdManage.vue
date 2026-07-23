@@ -256,7 +256,7 @@ onMounted(loadHouseholds)
                   v-if="editingMember?.id === m.id"
                   v-model="editMemberForm.name"
                   size="small"
-                  placeholder="真实姓名"
+                  placeholder="姓名"
                 />
                 <span v-else>{{ m.name }}</span>
               </template>

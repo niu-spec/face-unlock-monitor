@@ -1,4 +1,4 @@
-"""清空告警与关联事件记录（测试/联调重置用）。"""
+"""清空告警与关联事件记录（测试重置用）。"""
 from django.core.management.base import BaseCommand
 from django.db import transaction
 

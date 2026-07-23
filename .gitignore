@@ -26,12 +26,16 @@ dist/
 backend/dat/*.dat
 backend/registered_faces.json
 backend/snapshots/
+backend/staticfiles/
 backend/ci_test.sqlite3
 backend/.env.production
 backend/yolov8n.pt
 
-# Production data (keep outside git tree on server; see docs/部署运维/记录/生产目录文件策略.md)
+# Production data (keep outside git tree on server)
 mysql8-data/
+
+# Local frontend env (keep example only)
+frontend/.env.development
 
 # Logs
 *.log
@@ -43,3 +47,9 @@ Thumbs.db
 # Build
 *.tar
 *.zip
+
+# Local scratch
+_cleanup*.py
+_find_recycle*.py
+_search_copies.py
+_restored_*/

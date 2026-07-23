@@ -8,7 +8,7 @@
         ──→ AudioCapture 后台线程循环读取
         ──→ 累积至 chunk_duration 秒后回调 on_audio_chunk
 
-由团队成员 D（李东礼）负责实现和维护。
+由检测模块维护。
 """
 
 import logging

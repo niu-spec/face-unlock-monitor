@@ -30,10 +30,10 @@ urlpatterns = [
     path("api/reports/", include("apps.reports.urls")),
     path("api/snapshots/<str:filename>/", snapshot_file, name="snapshot-replay"),
     path("api/clips/<str:filename>/", clip_file, name="clip-replay"),
-    path("api/detection/", include("apps.detection.urls")),  # D-李东礼
-    path("api/face/", include("apps.face.urls")),            # C-王梓铭
-    path("", include("apps.video_stream.urls")),              # B-苏哲勋：视频流
-    path("api/", include("apps.households.urls")),            # E-刘帅华：家庭/摄像头
+    path("api/detection/", include("apps.detection.urls")),
+    path("api/face/", include("apps.face.urls")),
+    path("", include("apps.video_stream.urls")),  # 视频流
+    path("api/", include("apps.households.urls")),  # 家庭 / 摄像头
 
     path("api/notifications/", include("apps.notifications.urls")),
 

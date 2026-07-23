@@ -16,7 +16,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--phone",
-            default="15333601865",
+            default="13800138000",
             help="作为家庭管理员的用户手机号",
         )
 
@@ -80,7 +80,7 @@ class Command(BaseCommand):
         alerts_data = [
             ("FACE_UNKNOWN", "HIGH", "living_room", "客厅检测到陌生人", "pending"),
             ("INTRUSION", "HIGH", "kitchen", "小孩进入厨房禁区", "pending"),
-            ("WATER", "MEDIUM", "kitchen", "厨房地面检测到积水", "handled"),
+            ("FIRE", "MEDIUM", "kitchen", "厨房检测到火情", "handled"),
             ("FALL", "HIGH", "living_room", "客厅检测到人员摔倒", "pending"),
         ]
         for alert_type, level, stream_id, desc, status in alerts_data:

@@ -184,7 +184,7 @@ class OverlayPublicationTests(SimpleTestCase):
                 "severity": "high",
             },
             {
-                "alert_type": "WATER",
+                "alert_type": "TAILGATE",
                 "bbox": (1, 2, 3, 4),
             },
             {

@@ -35,6 +35,6 @@ export function videoFeedPath(streamId) {
 
 /** WebRTC 低延迟预览（MediaMTX :8889） */
 export function webrtcPreviewUrl(streamId) {
-  const base = (import.meta.env.VITE_WEBRTC_BASE_URL || 'http://152.136.29.158:8889').replace(/\/$/, '')
+  const base = (import.meta.env.VITE_WEBRTC_BASE_URL || 'http://127.0.0.1:8889').replace(/\/$/, '')
   return `${base}/stream/${toVideoStreamId(streamId)}/`
 }

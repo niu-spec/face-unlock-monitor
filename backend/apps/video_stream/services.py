@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 RTSP_BASE_URL = os.getenv("RTSP_BASE_URL", "rtsp://127.0.0.1:8554/stream")
 RTMP_PUBLIC_BASE_URL = os.getenv(
-    "RTMP_PUBLIC_BASE_URL", "rtmp://152.136.29.158:9090/stream"
+    "RTMP_PUBLIC_BASE_URL", "rtmp://127.0.0.1:9090/stream"
 )
 FRAME_SKIP = int(os.getenv("VIDEO_FRAME_SKIP", "5"))
 JPEG_QUALITY = max(40, min(95, int(os.getenv("VIDEO_JPEG_QUALITY", "80"))))

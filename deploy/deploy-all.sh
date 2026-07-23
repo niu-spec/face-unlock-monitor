@@ -18,7 +18,7 @@ cd "$APP_DIR"
 if [ "${SKIP_GIT_UPDATE:-0}" = "1" ]; then
   echo "[deploy] skip git update"
 else
-  DEPLOY_BRANCH="${DEPLOY_BRANCH:-dev}"
+  DEPLOY_BRANCH="${DEPLOY_BRANCH:-main}"
   if ! git diff --quiet || ! git diff --cached --quiet; then
     echo "[deploy] working tree has local changes; commit/stash them or set SKIP_GIT_UPDATE=1" >&2
     git status --short >&2
@@ -56,6 +56,7 @@ else
 fi
 
 python manage.py migrate --noinput
+python manage.py collectstatic --noinput
 python manage.py check
 
 if command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files "$DJANGO_SERVICE.service" --no-legend 2>/dev/null | grep -q "^$DJANGO_SERVICE.service"; then

@@ -30,6 +30,13 @@ if (-not $Conda) {
 Write-Host "conda: $Conda" -ForegroundColor Cyan
 Write-Host "env:   $EnvName" -ForegroundColor Cyan
 
+$EnvFile = Join-Path $Backend ".env"
+$EnvExample = Join-Path $Backend ".env.example"
+if (-not (Test-Path $EnvFile) -and (Test-Path $EnvExample)) {
+    Copy-Item $EnvExample $EnvFile
+    Write-Host "Created backend/.env from .env.example." -ForegroundColor Yellow
+}
+
 $envList = & $Conda env list 2>&1 | Out-String
 if ($envList -match "\s$EnvName\s") {
     Write-Host "Updating existing env..." -ForegroundColor Yellow

@@ -3,7 +3,8 @@
 
 告警来源：
   - C（人脸识别）→ FACE_UNKNOWN 陌生人
-  - D（异常检测）→ INTRUSION / PROXIMITY / LOITER / TAILGATE / FIRE / WATER / FALL
+  - D（异常检测）→ INTRUSION / PROXIMITY / LOITER / TAILGATE / FIRE / FALL
+  - WATER 积水已下线，choices 仅保留兼容历史数据
 """
 
 from django.db import models
@@ -25,7 +26,7 @@ class Alert(models.Model):
         ("FIRE", "火情"),
         ("WATER", "积水"),
         ("FALL", "人员摔倒"),
-        # 音频异常检测（D-李东礼，v1.3）
+        # 音频异常检测（v1.3）
         ("SCREAM", "尖叫/呼救声"),
         ("FIGHT", "打架/争吵声"),
         ("CRYING", "哭喊声"),

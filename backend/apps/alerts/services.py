@@ -37,7 +37,7 @@ def create_alert(
     创建告警 — 供 C/D 服务调用。
 
     Args:
-        type: 告警类型 (FACE_UNKNOWN/INTRUSION/PROXIMITY/LOITER/TAILGATE/FIRE/WATER/FALL)
+        type: 告警类型 (FACE_UNKNOWN/INTRUSION/PROXIMITY/LOITER/TAILGATE/FIRE/FALL/...)
         level: 严重等级 (HIGH/MEDIUM/LOW)
         stream_id: 视频流ID (living_room/kitchen)
         description: 告警描述

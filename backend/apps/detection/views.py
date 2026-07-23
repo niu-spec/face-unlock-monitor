@@ -5,7 +5,7 @@
   - GET  /api/detection/status/        获取检测服务运行状态
   - GET  /api/detection/audio/status/  获取音频检测服务状态 ★ v1.3
 
-由团队成员 D（李东礼）负责实现和维护。
+由检测模块维护。
 """
 
 import logging

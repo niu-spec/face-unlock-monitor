@@ -24,14 +24,14 @@ gunicorn~=21.2.0
 opencv-python~=4.8.0
 numpy~=1.26.0
 pillow~=10.0.0
-ultralytics~=8.2.0    # D-李东礼：YOLOv8 行人检测（自动下载 yolov8n.pt）
+ultralytics~=8.2.0    # YOLOv8 行人检测（自动下载 yolov8n.pt）
 
 # Face recognition (requires conda dlib on Windows)
 dlib==19.24.6; platform_system != "Windows"
 face-recognition~=1.3.0
 setuptools<81
 
-# Audio detection (D-李东礼, v1.3) — 异常声学事件检测
+# Audio detection (v1.3) — 异常声学事件检测
 librosa~=0.10.0
 soundfile~=0.12.0
 scipy~=1.11.0

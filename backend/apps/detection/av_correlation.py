@@ -9,7 +9,7 @@
 
 告警通过 apps.alerts.services.create_alert() 写入。
 
-由团队成员 D（李东礼）负责实现和维护。
+由检测模块维护。
 """
 
 import logging

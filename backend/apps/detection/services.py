@@ -7,7 +7,7 @@
   - 异常声学事件检测（PANNs CNN14 音频分类）★ v1.3 新增
   - 音视频联动告警（AVCorrelationBuffer）★ v1.3 新增
 
-由团队成员 D（李东礼）负责实现和维护。
+由检测模块维护。
 
 告警通过 apps.alerts.services.create_alert() 写入（同进程直调，避免 HTTP POST
 被 AlertViewSet 的 IsAuthenticated 拦截，OpenSpec design.md 已注明同进程允许直调）。

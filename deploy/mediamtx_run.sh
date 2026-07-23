@@ -17,6 +17,8 @@ fi
 
 "${docker_cmd[@]}" rm -f home-mediamtx 2>/dev/null || true
 
+PUBLIC_HOST="${PUBLIC_HOST:-127.0.0.1}"
+
 "${docker_cmd[@]}" run -d \
   --name home-mediamtx \
   --restart=always \
@@ -24,7 +26,7 @@ fi
   -p 8554:8554 \
   -p 8889:8889 \
   -p 8189:8189/udp \
-  -e MTX_WEBRTCADDITIONALHOSTS=152.136.29.158 \
+  -e "MTX_WEBRTCADDITIONALHOSTS=${PUBLIC_HOST}" \
   bluenviron/mediamtx:latest
 
 "${docker_cmd[@]}" ps | grep home-mediamtx

@@ -14,7 +14,7 @@
         → LogMel(dB) 频谱图 → PANNs CNN14 推理
         → 527 类概率 → 映射到业务告警类型 → create_alert()
 
-由团队成员 D（李东礼）负责实现和维护。
+由检测模块维护。
 """
 
 import json

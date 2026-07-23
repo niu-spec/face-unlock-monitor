@@ -57,16 +57,16 @@ INSTALLED_APPS = [
     "apps.zones",
     "apps.alerts",
     "apps.events",
-    "apps.detection",  # D-李东礼：危险区域与异常检测
-    "apps.face",  # C-王梓铭：人脸识别与人数统计
-    "apps.households",  # E-刘帅华：家庭管理
-    "apps.video_stream",  # B-苏哲勋：MediaMTX + RTSP 视频预览
-    "apps.reports",  # A：AI 监控日报
+    "apps.detection",  # 危险区域与异常检测
+    "apps.face",  # 人脸识别与人数统计
+    "apps.households",  # 家庭管理
+    "apps.video_stream",  # MediaMTX + RTSP 视频预览
+    "apps.reports",  # AI 监控日报
     "apps.notifications",  # 钉钉告警通知 + 逐级升级
 ]
 
 # ── Detection config ─────────────────────────────────────────────────
-# D-李东礼：检测参数可在 Django settings 中覆盖，未设置时使用 services.py 默认值
+# 检测参数可在 Django settings 中覆盖，未设置时使用 services.py 默认值
 
 DETECTION_CONFIG = {
     # "FLOOD_AREA_THRESHOLD": 0.20,  # 示例：覆盖默认阈值
@@ -113,7 +113,7 @@ DATABASES = {
         "ENGINE": "django.db.backends.mysql",
         "NAME": os.environ.get("DB_NAME", "home_camera_monitor"),
         "USER": os.environ.get("DB_USER", "root"),
-        "PASSWORD": os.environ.get("DB_PASSWORD", "Root@1234"),
+        "PASSWORD": os.environ.get("DB_PASSWORD", "changeme"),
         "HOST": os.environ.get("DB_HOST", "127.0.0.1"),
         "PORT": os.environ.get("DB_PORT", "3306"),
         "OPTIONS": {
@@ -150,6 +150,8 @@ USE_TZ = True
 # ── Static files ────────────────────────────────────────────────────
 
 STATIC_URL = "static/"
+# collectstatic 输出目录；Nginx 需 alias 到此路径，供 Swagger(drf-yasg) 等静态资源
+STATIC_ROOT = BASE_DIR / "staticfiles"
 SNAPSHOT_ROOT = BASE_DIR / "snapshots"
 CLIP_ROOT = BASE_DIR / "snapshots" / "clips"
 EVENT_CLIP_ENABLED = os.getenv("EVENT_CLIP_ENABLED", "true").lower() in ("1", "true", "yes")
@@ -171,8 +173,12 @@ LIVENESS_CONFIG = {
 
 CORS_ALLOW_ALL_ORIGINS = DEBUG
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vite dev server
-    "http://127.0.0.1:5173",
+    origin.strip()
+    for origin in os.environ.get(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
 ]
 
 # ── DRF ─────────────────────────────────────────────────────────────

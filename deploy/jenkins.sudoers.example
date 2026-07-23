@@ -4,7 +4,7 @@
 #   sudo cp deploy/jenkins.sudoers.example /etc/sudoers.d/jenkins-deploy
 #   sudo chmod 440 /etc/sudoers.d/jenkins-deploy
 #
-# Server 152.136.29.158 uses Baota panel nginx at /www/server/nginx/sbin/nginx.
+# If you use Baota panel, nginx is often at /www/server/nginx/sbin/nginx.
 # Pick the paths that exist on your host (`which nginx`, `ls /etc/init.d/nginx`).
 
 jenkins ALL=(ALL) NOPASSWD: \
